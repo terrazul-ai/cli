@@ -17,7 +17,6 @@ import {
 } from './targets';
 import { seaManifestSchema, type SeaManifest, type SeaManifestTarget } from '../types/sea-manifest';
 import { decompressZst } from '../utils/compression';
-import { runCommand } from '../utils/proc';
 
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
@@ -145,20 +144,6 @@ async function setExecutablePermissions(filePath: string, platform: NodeJS.Platf
   await fs.chmod(filePath, 0o755);
 }
 
-async function signBinaryMacOS(filePath: string): Promise<void> {
-  const result = await runCommand('codesign', ['--sign', '-', '--force', filePath]);
-  if (result.exitCode !== 0) {
-    throw new Error(`Failed to sign binary: ${result.stderr || result.stdout}`);
-  }
-}
-
-async function ensureBinarySigned(filePath: string, platform: NodeJS.Platform): Promise<void> {
-  if (platform !== 'darwin') {
-    return;
-  }
-  await signBinaryMacOS(filePath);
-}
-
 async function fileExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath, fsConstants.F_OK);
@@ -252,7 +237,6 @@ export async function ensureSeaBinary(options: EnsureSeaBinaryOptions = {}): Pro
       await decompressZst(downloadPath, tmpBinary);
       await moveFileAtomic(tmpBinary, binaryPath);
       await setExecutablePermissions(binaryPath, platform);
-      await ensureBinarySigned(binaryPath, platform);
       return binaryPath;
     } finally {
       await fs.rm(downloadPath, { force: true }).catch(() => {});

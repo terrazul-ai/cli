@@ -227,6 +227,18 @@ async function main() {
     await fs.chmod(binaryOutputPath, 0o755);
   }
 
+  // Sign the binary on macOS to prevent Gatekeeper from blocking it
+  if (process.platform === 'darwin') {
+    try {
+      console.log('[build_sea] Signing binary with ad-hoc signature');
+      await run('codesign', ['--sign', '-', '--force', binaryOutputPath]);
+      console.log('[build_sea] Binary signed successfully');
+    } catch (error) {
+      console.warn('[build_sea] codesign failed:', error.message);
+      console.warn('[build_sea] Binary may not run on macOS without manual signing');
+    }
+  }
+
   console.log(`[build_sea] SEA binary ready: ${binaryOutputPath}`);
 }
 
