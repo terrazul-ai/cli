@@ -40,11 +40,11 @@ module.exports = {
     },
     // Inform eslint-plugin-n of the supported Node.js version
     node: {
-      version: '>=22.18.0',
+      version: '>=18.0.0',
     },
   },
   globals: {
-    // Node 22 has global fetch and related Web APIs; mark as readonly to avoid no-undef
+    // Node 18+ has global fetch and related Web APIs; mark as readonly to avoid no-undef
     fetch: 'readonly',
     Request: 'readonly',
     Response: 'readonly',
@@ -104,7 +104,7 @@ module.exports = {
     /* ---------- Node ---------- */
     'n/no-missing-import': 'off', // TS resolver handles this
     'n/no-unsupported-features/es-syntax': 'off',
-    'n/no-unsupported-features/node-builtins': ['error', { version: '>=22.18.0' }],
+    'n/no-unsupported-features/node-builtins': ['error', { version: '>=18.0.0' }],
 
     /* ---------- Promises ---------- */
     'promise/no-multiple-resolved': 'error',

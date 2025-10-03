@@ -106,7 +106,7 @@ Task file here: cli/docs/cli-tasks.md
 M0 — Project Foundation
 Tasks:
 
-- Initialize package.json, tsconfig (strict), build.config.mjs (esbuild → ESM bundle with shebang), vitest.config.ts, CI workflow (Linux/macOS/Windows; Node 22).
+- Initialize package.json, tsconfig (strict), build.config.mjs (esbuild → ESM bundle with shebang), vitest.config.ts, CI workflow (Linux/macOS/Windows; Node 18+).
 - Add scripts: build, test, prepublishOnly.
   Tests:
 - unit: smoke (bundle exists; shebang present).

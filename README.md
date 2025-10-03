@@ -1,24 +1,12 @@
 <h1 align="center">Terrazul CLI (`tz`)</h1>
 
-<p align="center"><code>pnpm i -g @terrazul/cli</code><br />or download the latest release binary</p>
+<p align="center"><code>npm i -g @terrazul/cli</code></p>
 
 <p align="center"><strong>Terrazul CLI</strong> is the package manager for AI agent configurations. Ship reproducible Claude Code, Cursor, Gemini, and MCP setups with deterministic installs, secure packaging, and profile-aware rendering.</p>
 
 ---
 
-## Release Automation
-
-- Release Please runs on pushes to `main` that touch `cli/` using the `RELEASE_PLEASE_TOKEN` PAT so downstream SEA packaging and npm publish fire automatically.
-- To cut a new release, land at least one conventional commit under `cli/`, merge the generated `chore(main): release …` PR, and let the automation handle tagging plus artifact publication.
-- After the release workflow completes, verify the new bundle locally with `node dist/tz.mjs --version`; it should print the tag that was just published.
-
 ## Quickstart
-
-### Prerequisites
-
-- Node.js 22.18 or newer
-- pnpm 9+ (enable via `corepack enable`)
-- Access to a Terrazul registry (staging token: `tz_eM94WWtBUtF1DbuojEOvRko1TU088vIK`)
 
 ### Install `tz`
 
@@ -29,41 +17,6 @@ pnpm i -g @terrazul/cli
 # or
 npm i -g @terrazul/cli
 ```
-
-### Switch registries & authenticate
-
-```shell
-# List known registries and the active target
-tz env list
-
-# Point at staging (https://staging.api.terrazul.com)
-tz env use staging
-
-# Log in (supports ChatGPT token or API key)
-tz auth login
-```
-
-Tokens are stored per environment in `~/.terrazul/config.json` with 0600 permissions. Use `tz env` commands to rotate between staging, production, or local dummy registries without editing the config file by hand.
-
-### Configure staging in `~/.terrazul/config.json`
-
-If you prefer to edit the config directly, create `~/.terrazul/config.json` (or update the existing file) with the staging registry URL and cache defaults:
-
-```json
-{
-  "registry": "https://staging.api.terrazul.com",
-  "token": "tz_eM94WWtBUtF1DbuojEOvRko1TU088vIK",
-  "cache": { "ttl": 3600, "maxSize": 500 },
-  "telemetry": false
-}
-```
-
-Restart any running `tz` processes so they reload the updated configuration. Future `tz env use` commands will migrate this legacy single-registry config into the newer environment-aware layout automatically.
-
-### Built-in safety nets
-
-- Every destructive operation (install overwrite, update with `--apply-force`, apply with `--force`) snapshots files into `.tz-backup/<timestamp>/...` at your project root.
-- Lockfiles capture exact tarball hashes (`sha256-<base64>`) to guarantee reproducible installs, even offline.
 
 ---
 
@@ -111,6 +64,43 @@ See `tz --help` for the full command catalog and flags.
 - **Status bar** only appears during background work, animating a spinner while analyzing or executing plans.
 - **Log drawer** starts hidden; press `V` to reveal recent log lines or hide them again.
 - **Review step** groups artifacts, MCP servers, and destination with counts and offers a clipboard-friendly summary via `C`.
+
+---
+
+## Switch registries & authenticate
+
+```shell
+# List known registries and the active target
+tz env list
+
+# Point at staging (https://staging.api.terrazul.com)
+tz env use staging
+
+# Log in (supports ChatGPT token or API key)
+tz auth login
+```
+
+Tokens are stored per environment in `~/.terrazul/config.json` with 0600 permissions. Use `tz env` commands to rotate between staging, production, or local dummy registries without editing the config file by hand.
+
+### Configure staging in `~/.terrazul/config.json`
+
+If you prefer to edit the config directly, create `~/.terrazul/config.json` (or update the existing file) with the staging registry URL and cache defaults:
+
+```json
+{
+  "registry": "https://staging.api.terrazul.com",
+  "token": "tz_eM94WWtBUtF1DbuojEOvRko1TU088vIK",
+  "cache": { "ttl": 3600, "maxSize": 500 },
+  "telemetry": false
+}
+```
+
+Restart any running `tz` processes so they reload the updated configuration. Future `tz env use` commands will migrate this legacy single-registry config into the newer environment-aware layout automatically.
+
+## Built-in safety nets
+
+- Every destructive operation (install overwrite, update with `--apply-force`, apply with `--force`) snapshots files into `.tz-backup/<timestamp>/...` at your project root.
+- Lockfiles capture exact tarball hashes (`sha256-<base64>`) to guarantee reproducible installs, even offline.
 
 ---
 
@@ -185,3 +175,11 @@ Any semantic commit that touches `cli/` triggers CI to lint, build, test, and pr
 ## License
 
 Licensing will be published alongside the first public release. Until then, Terrazul CLI is available for internal evaluation only.
+
+---
+
+## Release Automation
+
+- Release Please runs on pushes to `main` that touch `cli/` using the `RELEASE_PLEASE_TOKEN` PAT so downstream SEA packaging and npm publish fire automatically.
+- To cut a new release, land at least one conventional commit under `cli/`, merge the generated `chore(main): release …` PR, and let the automation handle tagging plus artifact publication.
+- After the release workflow completes, verify the new bundle locally with `node dist/tz.mjs --version`; it should print the tag that was just published.

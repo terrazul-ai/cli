@@ -24,7 +24,7 @@ Goals, Principles 3. goals — “List concrete goals for the current version (b
 Structure 6. repo_layout — “Produce a concise 1–3‑level directory tree of key files and folders (use a fenced text or bash block), then 1‑line notes per top‑level folder.”
 → §3 Repository Layout (tree + comments)
 
-Tech stack & toolchain 7. runtime_language — “State the runtime(s) and language(s) with minimum versions (e.g., Node 22.x, TypeScript strict), and TypeScript→ESM bundle bundling policy.”
+Tech stack & toolchain 7. runtime_language — "State the runtime(s) and language(s) with minimum versions (e.g., Node 18+, TypeScript strict), and TypeScript→ESM bundle bundling policy."
 → §4 Runtime & Language 8. core_deps — “List core runtime dependencies with a brief role each (bullets).”
 → §4 Core Dependencies 9. dev_deps — “List dev/build/test dependencies with a brief role each (bullets).”
 → §4 Dev Dependencies 10. lint_format — “Describe lint/format policy (linters used, zero‑warnings rule, Prettier interop, scripts to run).”
@@ -100,7 +100,7 @@ export const QUESTIONS = [
 
 { id: 'repo_layout', prompt: 'Produce a concise 1–3-level directory tree of key files and folders (use a fenced text or bash block), then 1-line notes per top-level folder.' },
 
-{ id: 'runtime_language', prompt: 'State the runtime(s) and language(s) with minimum versions (e.g., Node 22.x, TypeScript strict), and TypeScript→ESM bundle bundling policy.' },
+{ id: 'runtime_language', prompt: 'State the runtime(s) and language(s) with minimum versions (e.g., Node 18+, TypeScript strict), and TypeScript→ESM bundle bundling policy.' },
 { id: 'core_deps', prompt: 'List core runtime dependencies with a brief role each (bullets).' },
 { id: 'dev_deps', prompt: 'List dev/build/test dependencies with a brief role each (bullets).' },
 { id: 'lint_format', prompt: 'Describe lint/format policy (linters used, zero-warnings rule, Prettier interop, scripts to run).' },
@@ -529,7 +529,7 @@ describe('renderCodex', () => {
         qa('repo_layout', '```text\ncli/\n  src/\n  tests/\n```'),
         qa(
           'runtime_language',
-          '- Node 22.18+\n- TypeScript 5+ (strict)\n- TypeScript→ESM bundle bundle',
+          '- Node 18+\n- TypeScript 5+ (strict)\n- TypeScript→ESM bundle bundle',
         ),
         qa('core_deps', '- commander\n- chalk'),
         qa('dev_deps', '- esbuild\n- vitest\n- tsx'),

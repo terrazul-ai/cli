@@ -74,7 +74,7 @@ cli/
 
 **Exit Criteria**
 
-- CI green (Linux/macOS/Windows, Node 22)
+- CI green (Linux/macOS/Windows, Node 18+)
 - `pnpm run build` creates `dist/tz.mjs` with shebang and sourcemap
 - `vitest` passes baseline tests
 

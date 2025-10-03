@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "542d901ea0ee59c51daaff33350a7426deed8371",
+  "bump-minor-pre-major": true,
+  "packages": {
+    ".": {
+      "path": ".",
+      "release-type": "node",
+      "package-name": "@terrazul/cli",
+      "include-component-in-tag": false,
+      "initial-version": "0.0.1"
+    }
+  },
+  "changelog-types": [
+    { "type": "feat", "section": "Features", "hidden": false },
+    { "type": "fix", "section": "Bug Fixes", "hidden": false },
+    { "type": "perf", "section": "Performance", "hidden": false },
+    { "type": "refactor", "section": "Refactors", "hidden": false },
+    { "type": "docs", "section": "Documentation", "hidden": false },
+    { "type": "build", "section": "Build System", "hidden": true },
+    { "type": "chore", "section": "Chores", "hidden": true },
+    { "type": "test", "section": "Tests", "hidden": true },
+    { "type": "ci", "section": "CI", "hidden": true }
+  ]
+}

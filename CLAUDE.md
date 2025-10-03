@@ -116,7 +116,7 @@ cli/
 
 ### Runtime & Language
 
-- **Node.js 22.18+** (native fetch, fs/promises)
+- **Node.js 18+** (native fetch, fs/promises)
 - **TypeScript 5+** (strict mode)
 - **ESM source → ESM bundle** with require shim for compatibility
 
@@ -142,7 +142,7 @@ cli/
 
 ### Linting & Formatting
 
-- **Linter**: ESLint (TypeScript‑aware; Node 22, Import, Promise, Unicorn, eslint‑comments).
+- **Linter**: ESLint (TypeScript‑aware; Node 18+, Import, Promise, Unicorn, eslint‑comments).
 - **Formatter**: Prettier; ESLint defers styling via `eslint-config-prettier`.
 - **Type‑aware config**: `tsconfig.eslint.json` includes `src`, `tests`, `tools`, and config files.
 - **Scripts**: `lint`, `lint:fix`, `format`, `format:check`.
@@ -536,7 +536,7 @@ We aim for **high coverage** on core logic and **deterministic** integration/e2e
 - **Security**: HTTPS‑only (except localhost), tarbomb prevention
 - **Perf**: parallel installs within target (skippable on CI if flaky)
 
-CI matrix runs on **Linux/macOS/Windows** with **Node 22.18**, sourced from `.nvmrc` via `actions/setup-node`.
+CI matrix runs on **Linux/macOS/Windows** with **Node 18+**, sourced from `.nvmrc` via `actions/setup-node`.
 
 ---
 
@@ -571,7 +571,7 @@ pnpm test
 
 ## 16) CI & Quality Gates
 
-- **Matrix**: Ubuntu, macOS, Windows × Node 22.18 (read from `.nvmrc`)
+- **Matrix**: Ubuntu, macOS, Windows × Node 18+ (read from `.nvmrc`)
 - **Steps**: checkout → setup node → install → lint → format:check → build → test
 - **Artifacts**: upload `dist/tz.mjs` for smoke verification
 - **Smoke**: `node dist/tz.mjs --help`
