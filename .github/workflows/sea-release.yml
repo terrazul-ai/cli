@@ -1,6 +1,12 @@
 name: SEA Release
 
 on:
+  push:
+    tags:
+      - 'v*'
+      - 'sea-v*'
+      - 'cli-v*'
+      - 'terrazul-cli-v*'
   release:
     types:
       - published
