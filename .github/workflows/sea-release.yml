@@ -121,24 +121,6 @@ jobs:
           fi
         shell: bash
 
-      - name: Strip SEA binary (POSIX)
-        if: matrix.os != 'windows-latest'
-        run: |
-          set -e
-          BINARY_NAME="${TOOL_NAME}-${{ matrix.target }}"
-          BINARY_PATH="build/out/${{ matrix.target }}/$BINARY_NAME"
-          if [[ ! -f "$BINARY_PATH" ]]; then
-            echo "Binary not found at $BINARY_PATH; skipping strip step"
-            exit 0
-          fi
-          # shellcheck disable=SC2193
-          if [[ "${{ matrix.target }}" == darwin-* ]]; then
-            strip -x "$BINARY_PATH" || echo "strip -x failed; continuing"
-          else
-            strip "$BINARY_PATH" || echo "strip failed; continuing"
-          fi
-        shell: bash
-
       - name: Build SEA binary (Windows)
         if: matrix.os == 'windows-latest'
         run: |
@@ -149,24 +131,6 @@ jobs:
             node .github/scripts/build_sea.mjs --target ${{ matrix.target }}
           }
         shell: pwsh
-
-      - name: Strip SEA binary (Windows)
-        if: startsWith(matrix.os, 'windows')
-        shell: pwsh
-        run: |
-          $binaryName = "${env:TOOL_NAME}-${{ matrix.target }}.exe"
-          $binaryPath = Join-Path $PWD "build/out/${{ matrix.target }}/$binaryName"
-          if (-not (Test-Path $binaryPath)) {
-            Write-Host "Binary not found at $binaryPath; skipping strip step"
-            return
-          }
-          $stripTool = Get-Command llvm-strip.exe -ErrorAction SilentlyContinue
-          if ($stripTool) {
-            & $stripTool.Path $binaryPath
-          }
-          else {
-            Write-Host 'llvm-strip not available; skipping strip step'
-          }
 
       - name: Prepare artifacts (POSIX)
         if: matrix.os != 'windows-latest'

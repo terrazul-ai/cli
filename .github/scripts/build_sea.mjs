@@ -227,7 +227,27 @@ async function main() {
     await fs.chmod(binaryOutputPath, 0o755);
   }
 
+  // Strip debug symbols before signing (strip modifies the binary and would invalidate signatures)
+  if (process.platform === 'darwin') {
+    try {
+      console.log('[build_sea] Stripping debug symbols');
+      await run('strip', ['-x', binaryOutputPath]);
+      console.log('[build_sea] Binary stripped successfully');
+    } catch (error) {
+      console.warn('[build_sea] strip failed:', error.message);
+    }
+  } else if (process.platform === 'linux') {
+    try {
+      console.log('[build_sea] Stripping binary');
+      await run('strip', [binaryOutputPath]);
+      console.log('[build_sea] Binary stripped successfully');
+    } catch (error) {
+      console.warn('[build_sea] strip failed:', error.message);
+    }
+  }
+
   // Sign the binary on macOS to prevent Gatekeeper from blocking it
+  // This MUST happen after stripping since strip modifies the binary
   if (process.platform === 'darwin') {
     try {
       console.log('[build_sea] Signing binary with ad-hoc signature');
