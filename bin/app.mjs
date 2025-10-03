@@ -155,7 +155,9 @@ const shouldAutostart = (() => {
   const entryPath = process.argv?.[1];
   if (!entryPath) return false;
   try {
-    return import.meta.url === pathToFileURL(entryPath).href;
+    // Resolve symlinks to get the real path before comparing
+    const realEntryPath = fs.realpathSync(entryPath);
+    return import.meta.url === pathToFileURL(realEntryPath).href;
   } catch (error) {
     console.warn('Unable to determine launcher auto-start status:', error);
     return false;
