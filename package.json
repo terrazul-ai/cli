@@ -1,7 +1,11 @@
 {
   "name": "@terrazul/cli",
-  "version": "0.4.2-m0",
+  "version": "0.5.0",
   "description": "Terrazul CLI (tz): package manager for AI agent configuration bundles",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/terrazul-ai/cli.git"
+  },
   "bin": {
     "tz": "dist/tz.mjs"
   },
