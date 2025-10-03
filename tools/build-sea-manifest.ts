@@ -18,7 +18,7 @@ import { SEA_TARGETS, archiveNameForTarget } from '../src/runtime/targets';
 
 export type { SeaManifest } from '../src/types/sea-manifest';
 
-const DEFAULT_RELEASE_BASE = 'https://github.com/terrazul-ai/terrazul/releases/download';
+const DEFAULT_RELEASE_BASE = 'https://github.com/terrazul-ai/cli/releases/download';
 
 export interface BuildSeaManifestOptions {
   cliVersion: string;
