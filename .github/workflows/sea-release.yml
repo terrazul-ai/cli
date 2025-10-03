@@ -1,0 +1,509 @@
+name: SEA Release
+
+on:
+  release:
+    types:
+      - published
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to stage (e.g., 0.0.0-alpha.1)'
+        required: true
+        default: '0.0.0-alpha.0'
+
+permissions:
+  contents: write
+  actions: read
+  id-token: write
+
+env:
+  TOOL_NAME: tz
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: darwin-arm64
+          - os: ubuntu-24.04
+            target: linux-x64
+          - os: ubuntu-24.04
+            target: linux-arm64
+            node_download: linux-arm64
+          - os: windows-latest
+            target: win32-x64
+          - os: windows-latest
+            target: win32-arm64
+            node_download: win-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI bundle
+        run: pnpm run build
+
+      - name: Install packaging tools (Linux)
+        if: contains(matrix.os, 'ubuntu')
+        run: sudo apt-get update && sudo apt-get install -y zstd
+
+      - name: Install packaging tools (macOS)
+        if: matrix.os == 'macos-14'
+        run: brew install zstd
+
+      - name: Install packaging tools (Windows)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $zstdVersion = '1.5.6'
+          $zstdUrl = "https://github.com/facebook/zstd/releases/download/v${zstdVersion}/zstd-v${zstdVersion}-win64.zip"
+          $zstdZip = Join-Path $env:RUNNER_TEMP 'zstd.zip'
+          $zstdDir = Join-Path $env:RUNNER_TEMP 'zstd'
+          Invoke-WebRequest -Uri $zstdUrl -OutFile $zstdZip
+          if (Test-Path $zstdDir) { Remove-Item $zstdDir -Recurse -Force }
+          Expand-Archive -Path $zstdZip -DestinationPath $zstdDir -Force
+          $zstdExe = Get-ChildItem -Path $zstdDir -Recurse -Filter 'zstd.exe' | Select-Object -First 1
+          if (-not $zstdExe) {
+            throw "Unable to locate zstd.exe inside downloaded archive"
+          }
+          $targetExe = Join-Path $env:RUNNER_TEMP 'zstd.exe'
+          Copy-Item $zstdExe.FullName $targetExe -Force
+          "ZSTD_EXE=$targetExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download Node binary for target (Linux ARM64)
+        if: matrix.node_download == 'linux-arm64'
+        run: |
+          NODE_VERSION=$(node -p "process.versions.node")
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-arm64.tar.xz" -o node.tar.xz
+          tar -xf node.tar.xz
+          echo "SEA_NODE_BINARY=$PWD/node-v${NODE_VERSION}-linux-arm64/bin/node" >> "$GITHUB_ENV"
+        shell: bash
+
+      - name: Download Node binary for target (Windows ARM64)
+        if: matrix.node_download == 'win-arm64'
+        run: |
+          $nodeVersion = node -p "process.versions.node"
+          $zipName = "node-v$nodeVersion-win-arm64.zip"
+          Invoke-WebRequest -Uri "https://nodejs.org/dist/v$nodeVersion/$zipName" -OutFile $zipName
+          Expand-Archive -Path $zipName -DestinationPath . -Force
+          $nodePath = (Resolve-Path "node-v$nodeVersion-win-arm64/node.exe").Path
+          "SEA_NODE_BINARY=$nodePath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        shell: pwsh
+
+      - name: Build SEA binary (POSIX)
+        if: matrix.os != 'windows-latest'
+        run: |
+          if [ -n "${SEA_NODE_BINARY:-}" ]; then
+            node .github/scripts/build_sea.mjs --target ${{ matrix.target }} --node-binary "$SEA_NODE_BINARY"
+          else
+            node .github/scripts/build_sea.mjs --target ${{ matrix.target }}
+          fi
+        shell: bash
+
+      - name: Strip SEA binary (POSIX)
+        if: matrix.os != 'windows-latest'
+        run: |
+          set -e
+          BINARY_NAME="${TOOL_NAME}-${{ matrix.target }}"
+          BINARY_PATH="build/out/${{ matrix.target }}/$BINARY_NAME"
+          if [[ ! -f "$BINARY_PATH" ]]; then
+            echo "Binary not found at $BINARY_PATH; skipping strip step"
+            exit 0
+          fi
+          # shellcheck disable=SC2193
+          if [[ "${{ matrix.target }}" == darwin-* ]]; then
+            strip -x "$BINARY_PATH" || echo "strip -x failed; continuing"
+          else
+            strip "$BINARY_PATH" || echo "strip failed; continuing"
+          fi
+        shell: bash
+
+      - name: Build SEA binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          if ($env:SEA_NODE_BINARY) {
+            node .github/scripts/build_sea.mjs --target ${{ matrix.target }} --node-binary "$env:SEA_NODE_BINARY"
+          }
+          else {
+            node .github/scripts/build_sea.mjs --target ${{ matrix.target }}
+          }
+        shell: pwsh
+
+      - name: Strip SEA binary (Windows)
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          $binaryName = "${env:TOOL_NAME}-${{ matrix.target }}.exe"
+          $binaryPath = Join-Path $PWD "build/out/${{ matrix.target }}/$binaryName"
+          if (-not (Test-Path $binaryPath)) {
+            Write-Host "Binary not found at $binaryPath; skipping strip step"
+            return
+          }
+          $stripTool = Get-Command llvm-strip.exe -ErrorAction SilentlyContinue
+          if ($stripTool) {
+            & $stripTool.Path $binaryPath
+          }
+          else {
+            Write-Host 'llvm-strip not available; skipping strip step'
+          }
+
+      - name: Prepare artifacts (POSIX)
+        if: matrix.os != 'windows-latest'
+        run: |
+          set -e
+          BINARY_NAME="${TOOL_NAME}-${{ matrix.target }}"
+          # shellcheck disable=SC2193
+          if [[ "${{ matrix.target }}" == win32-* ]]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+          mkdir -p dist/${{ matrix.target }}
+          cp build/out/${{ matrix.target }}/"$BINARY_NAME" dist/${{ matrix.target }}/"$BINARY_NAME"
+          pushd dist/${{ matrix.target }}
+          tar -czf "${BINARY_NAME}.tar.gz" "$BINARY_NAME"
+          # shellcheck disable=SC2193
+          if [[ "${{ matrix.target }}" == win32-* ]]; then
+            7z a "${BINARY_NAME}.zip" "$BINARY_NAME" >/dev/null
+          fi
+          zstd -T0 -19 --rm "$BINARY_NAME"
+          popd
+        shell: bash
+
+      - name: Prepare artifacts (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          $binaryName = "${env:TOOL_NAME}-${{ matrix.target }}.exe"
+          New-Item -ItemType Directory -Path "dist/${{ matrix.target }}" -Force | Out-Null
+          Copy-Item "build/out/${{ matrix.target }}/$binaryName" "dist/${{ matrix.target }}/$binaryName" -Force
+          Push-Location "dist/${{ matrix.target }}"
+          tar.exe -czf "$binaryName.tar.gz" "$binaryName"
+          Compress-Archive -Path "$binaryName" -DestinationPath "$binaryName.zip" -Force
+          if (-not $env:ZSTD_EXE) { throw 'ZSTD_EXE is not set' }
+          & $env:ZSTD_EXE -f -19 --rm "$binaryName"
+          Pop-Location
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sea-${{ matrix.target }}
+          path: dist/${{ matrix.target }}
+          if-no-files-found: error
+
+  stage-release:
+    name: Stage npm package
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      release_version: ${{ steps.meta.outputs.release_version }}
+      npm_tarball: ${{ steps.meta.outputs.npm_tarball }}
+      release_tag: ${{ steps.compute-release.outputs.release_tag }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 10.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI workspace
+        run: pnpm run build
+
+      - name: Install staging tools
+        run: sudo apt-get update && sudo apt-get install -y jq zstd
+
+      - name: Download SEA artifacts from build matrix
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sea-*
+          path: dist/sea-artifacts
+
+      - name: Organize SEA artifacts for manifest generation
+        run: |
+          set -euo pipefail
+          ROOT="$PWD"
+          DEST="$ROOT/dist/sea"
+          mkdir -p "$DEST"
+          if [ -d "$ROOT/dist/sea-artifacts" ]; then
+            find "$ROOT/dist/sea-artifacts" -mindepth 1 -maxdepth 1 -type d | while read -r artifact_dir; do
+              target="${artifact_dir##*/}"
+              target="${target#sea-}"
+              mkdir -p "$DEST/$target"
+              find "$artifact_dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
+                cp "$file" "$DEST/$target/"
+              done
+            done
+          fi
+          rm -rf "$ROOT/dist/sea-artifacts"
+
+      - name: Compute release version
+        id: compute-release
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+            TAG=""
+            CHANNEL="dispatch"
+          else
+            if [ "${{ github.event_name }}" = "release" ]; then
+              TAG="${{ github.event.release.tag_name }}"
+            else
+              TAG="$GITHUB_REF_NAME"
+            fi
+            case "$TAG" in
+              sea-v*)
+                VERSION="${TAG#sea-v}"
+                CHANNEL="stable"
+                ;;
+              alpha-v*)
+                VERSION="${TAG#alpha-v}"
+                CHANNEL="alpha"
+                ;;
+              cli-v*)
+                VERSION="${TAG#cli-v}"
+                CHANNEL="stable"
+                ;;
+              terrazul-cli-v*)
+                VERSION="${TAG#terrazul-cli-v}"
+                CHANNEL="stable"
+                ;;
+              v*)
+                VERSION="${TAG#v}"
+                CHANNEL="stable"
+                ;;
+              *)
+                echo "Unsupported tag format: $TAG" >&2
+                exit 1
+                ;;
+            esac
+          fi
+
+          STAGE_ROOT="${RUNNER_TEMP}/sea-stage"
+
+          {
+            echo "RELEASE_VERSION=$VERSION"
+            echo "RELEASE_TAG=$TAG"
+            echo "RELEASE_CHANNEL=$CHANNEL"
+            echo "STAGE_ROOT=$STAGE_ROOT"
+          } >> "$GITHUB_ENV"
+
+          {
+            echo "release_tag=$TAG"
+            echo "release_channel=$CHANNEL"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate SEA manifest
+        run: |
+          set -euo pipefail
+          EXTRA_ARGS=()
+          if [ -n "${RELEASE_TAG:-}" ]; then
+            EXTRA_ARGS+=("--tag" "${RELEASE_TAG}")
+          fi
+          pnpm exec tsx tools/build-sea-manifest.ts --version "${RELEASE_VERSION}" "${EXTRA_ARGS[@]}"
+
+      - name: Stage release assets
+        run: |
+          mkdir -p "$STAGE_ROOT"
+          bash scripts/stage_release.sh --release-version "$RELEASE_VERSION" --tmp "$STAGE_ROOT"
+
+      - name: Pack npm artifact
+        run: |
+          DIST_DIR="$PWD/dist/npm"
+          mkdir -p "$DIST_DIR"
+          (cd "$STAGE_ROOT/package" && npm pack --pack-destination "$DIST_DIR")
+          mv "$DIST_DIR"/*.tgz "$DIST_DIR/${TOOL_NAME}-npm-$RELEASE_VERSION.tgz"
+
+      - id: meta
+        run: |
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "npm_tarball=${TOOL_NAME}-npm-$RELEASE_VERSION.tgz" >> "$GITHUB_OUTPUT"
+
+      - name: Verify npm tarball contents
+        run: |
+          TAR_PATH="dist/npm/${TOOL_NAME}-npm-$RELEASE_VERSION.tgz"
+          tar -tzf "$TAR_PATH" | tee /tmp/tar-list.txt
+          if grep -E 'package/dist/sea/' /tmp/tar-list.txt; then
+            echo "Unexpected SEA binaries detected in npm tarball" >&2
+            cat /tmp/tar-list.txt >&2
+            exit 1
+          fi
+          if ! grep -E 'package/dist/manifest\.json' /tmp/tar-list.txt; then
+            echo "Manifest missing from npm tarball" >&2
+            cat /tmp/tar-list.txt >&2
+            exit 1
+          fi
+
+      - name: Setup Node 20 for launcher smoke test
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Launcher smoke test (download & cache)
+        run: |
+          set -euo pipefail
+          ASSETS_DIR="$(mktemp -d)"
+          SMOKE_PORT=4789
+          PACKAGE_DIR="$STAGE_ROOT/package"
+          export ASSETS_DIR SMOKE_PORT PACKAGE_DIR
+          cp "$STAGE_ROOT/package/dist/manifest.json" "$ASSETS_DIR/original-manifest.json"
+          find dist/sea -maxdepth 2 -type f -print0 | while IFS= read -r -d '' file; do
+            cp "$file" "$ASSETS_DIR/"
+          done
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+
+          const assetsDir = process.env.ASSETS_DIR;
+          const port = Number(process.env.SMOKE_PORT);
+          const original = JSON.parse(fs.readFileSync(path.join(assetsDir, 'original-manifest.json'), 'utf8'));
+          const baseUrl = `http://127.0.0.1:${port}`;
+          original.cdn.baseUrl = baseUrl;
+          for (const entry of Object.values(original.targets)) {
+            const artifact = entry.url.split('/').pop();
+            entry.url = `${baseUrl}/${artifact}`;
+          }
+          fs.writeFileSync(path.join(assetsDir, 'manifest.json'), JSON.stringify(original));
+          NODE
+          node <<'NODE'
+          const { createServer } = require('node:http');
+          const { createReadStream, existsSync, statSync } = require('node:fs');
+          const path = require('node:path');
+          const { spawn } = require('node:child_process');
+
+          const assetsDir = process.env.ASSETS_DIR;
+          const port = Number(process.env.SMOKE_PORT);
+          const packageDir = process.env.PACKAGE_DIR;
+
+          const server = createServer((req, res) => {
+            const url = new URL(req.url ?? '/', `http://127.0.0.1:${port}`);
+            const filePath = path.join(assetsDir, url.pathname.replace(/^\//, ''));
+            if (!existsSync(filePath)) {
+              res.statusCode = 404;
+              res.end('not found');
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Length', statSync(filePath).size);
+            createReadStream(filePath).pipe(res);
+          });
+
+          server.listen(port, '127.0.0.1', () => {
+            const child = spawn('node', ['bin/app.mjs', '--help'], {
+              cwd: packageDir,
+              env: {
+                ...process.env,
+                TERRAZUL_SEA_MANIFEST: path.join(assetsDir, 'manifest.json'),
+                TERRAZUL_SEA_BASE_URL: `http://127.0.0.1:${port}`,
+              },
+              stdio: 'inherit',
+            });
+
+            child.on('exit', (code) => {
+              server.close(() => {
+                process.exit(code ?? 0);
+              });
+            });
+
+            child.on('error', (error) => {
+              console.error('Smoke test failed to launch CLI:', error);
+              server.close(() => process.exit(1));
+            });
+          });
+          NODE
+          rm -rf "$ASSETS_DIR"
+
+      - name: Collect release archives
+        run: |
+          mkdir -p dist/release
+          find dist/sea -type f -print0 | while IFS= read -r -d '' file; do
+            cp "$file" "dist/release/$(basename "$file")"
+          done
+          cp dist/manifest.json dist/release/manifest.json
+
+      - name: Create or update GitHub release
+        if: env.RELEASE_TAG != ''
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          PRERELEASE=""
+          if [[ "$RELEASE_CHANNEL" == "alpha" ]]; then
+            PRERELEASE="--prerelease"
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" $PRERELEASE --title "SEA Release $RELEASE_VERSION" --notes "Automated SEA release for version $RELEASE_VERSION."
+          fi
+          readarray -d '' release_files < <(find dist/release -type f -print0)
+          gh release upload "$TAG" "dist/npm/${TOOL_NAME}-npm-$RELEASE_VERSION.tgz" --clobber
+          if [ ${#release_files[@]} -gt 0 ]; then
+            gh release upload "$TAG" "${release_files[@]}" --clobber
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: dist/npm/${{ env.TOOL_NAME }}-npm-${{ env.RELEASE_VERSION }}.tgz
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm
+    needs: stage-release
+    runs-on: ubuntu-24.04
+    if: >-
+      (github.event_name == 'push' && (
+        startsWith(github.ref_name, 'v') ||
+        startsWith(github.ref_name, 'sea-v') ||
+        startsWith(github.ref_name, 'cli-v') ||
+        startsWith(github.ref_name, 'terrazul-cli-v')
+      )) ||
+      (github.event_name == 'release' && (
+        startsWith(github.event.release.tag_name, 'v') ||
+        startsWith(github.event.release.tag_name, 'sea-v') ||
+        startsWith(github.event.release.tag_name, 'cli-v') ||
+        startsWith(github.event.release.tag_name, 'terrazul-cli-v')
+      ))
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_VERSION: ${{ needs.stage-release.outputs.release_version }}
+      NPM_TARBALL: ${{ needs.stage-release.outputs.npm_tarball }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: dist/npm
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Use latest npm
+        run: npm install -g npm@latest
+
+      - name: Publish package
+        run: npm publish "dist/npm/$NPM_TARBALL" --access public
