@@ -17,8 +17,13 @@ export interface ProjectManifest {
     name?: string;
     version?: string;
     description?: string;
+    homepage?: string;
+    repository?: string;
+    documentation?: string;
     license?: string;
     keywords?: string[];
+    authors?: string[];
+    is_private?: boolean;
   };
   dependencies?: Record<string, string>;
   compatibility?: Record<string, string>;
@@ -47,8 +52,13 @@ const ManifestSchema = z.object({
       name: z.string().min(1).optional(),
       version: z.string().min(1).optional(),
       description: z.string().optional(),
+      homepage: z.string().optional(),
+      repository: z.string().optional(),
+      documentation: z.string().optional(),
       license: z.string().optional(),
       keywords: z.array(z.string()).optional(),
+      authors: z.array(z.string()).optional(),
+      is_private: z.boolean().optional(),
     })
     .partial()
     .optional(),
@@ -140,8 +150,13 @@ export async function readManifest(projectDir: string): Promise<ProjectManifest 
         name: typeof pkgObj.name === 'string' ? pkgObj.name : undefined,
         version: typeof pkgObj.version === 'string' ? pkgObj.version : undefined,
         description: typeof pkgObj.description === 'string' ? pkgObj.description : undefined,
+        homepage: typeof pkgObj.homepage === 'string' ? pkgObj.homepage : undefined,
+        repository: typeof pkgObj.repository === 'string' ? pkgObj.repository : undefined,
+        documentation: typeof pkgObj.documentation === 'string' ? pkgObj.documentation : undefined,
         license: typeof pkgObj.license === 'string' ? pkgObj.license : undefined,
         keywords: isStringArray(pkgObj.keywords) ? pkgObj.keywords : undefined,
+        authors: isStringArray(pkgObj.authors) ? pkgObj.authors : undefined,
+        is_private: typeof pkgObj.is_private === 'boolean' ? pkgObj.is_private : undefined,
       },
       dependencies: Object.keys(deps).length > 0 ? deps : undefined,
       compatibility: Object.keys(compat).length > 0 ? compat : undefined,

@@ -310,33 +310,24 @@ export class RegistryClient {
   async publishPackage(
     packageName: string,
     tarball: Buffer,
-    metadata?: Record<string, unknown>,
+    metadata: Record<string, unknown>,
   ): Promise<{ message: string; version: string }> {
     if (!this.token) {
       throw new TerrazulError(ErrorCode.AUTH_REQUIRED, 'Authentication required for publishing');
     }
     const { name } = splitPackageName(packageName);
-    const version = String(metadata?.version ?? '0.0.0');
-    const form = new FormData();
-    form.append('version', version);
-    if (metadata) {
-      form.append('metadata', JSON.stringify(metadata));
-    }
+    const version = String(metadata.version ?? '0.0.0');
+    const formData = new FormData();
     const sanitizedFile = `${name.replaceAll(/[^\w.-]/g, '_')}-${version}.tgz`;
-    const tarballBuffer: ArrayBuffer =
-      tarball.buffer instanceof ArrayBuffer
-        ? tarball.buffer.slice(tarball.byteOffset, tarball.byteOffset + tarball.byteLength)
-        : (() => {
-            const copy = new Uint8Array(tarball.byteLength);
-            copy.set(tarball);
-            return copy.buffer;
-          })();
-    form.append('tarball', new Blob([tarballBuffer]), sanitizedFile);
+    const tarballBlob = new Blob([new Uint8Array(tarball)], { type: 'application/gzip' });
+
+    formData.append('tarball', tarballBlob, sanitizedFile);
+    formData.append('metadata', JSON.stringify(metadata));
 
     return await this.request<{ message: string; version: string }>(
       'POST',
       buildPackageApiPath(packageName, 'publish'),
-      form,
+      formData,
     );
   }
 
@@ -441,17 +432,20 @@ export class RegistryClient {
   private async request<T>(
     method: string,
     path: string,
-    body?: Record<string, unknown> | FormData,
+    body?: BodyInit | Record<string, unknown>,
   ): Promise<T> {
     const url = `${this.registryUrl}${path}`;
     const headers = this.createHeaders();
 
     let payload: BodyInit | undefined;
-    if (body instanceof FormData) {
-      payload = body;
-    } else if (body !== undefined) {
-      headers['Content-Type'] = 'application/json';
-      payload = JSON.stringify(body);
+    if (body !== undefined) {
+      // Only set Content-Type for JSON bodies; FormData sets its own boundary
+      if (typeof body === 'object' && !(body instanceof FormData) && !('arrayBuffer' in body)) {
+        headers['Content-Type'] = 'application/json';
+        payload = JSON.stringify(body);
+      } else {
+        payload = body as BodyInit;
+      }
     }
 
     const options: RequestInit = { method, headers };
