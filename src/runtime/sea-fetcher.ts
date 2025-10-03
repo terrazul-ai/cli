@@ -144,6 +144,26 @@ async function setExecutablePermissions(filePath: string, platform: NodeJS.Platf
   await fs.chmod(filePath, 0o755);
 }
 
+async function signBinaryOnMacOS(filePath: string, platform: NodeJS.Platform) {
+  if (platform !== 'darwin') {
+    return;
+  }
+
+  try {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const execFileAsync = promisify(execFile);
+
+    await execFileAsync('codesign', ['--sign', '-', '--force', filePath]);
+  } catch (error) {
+    // If code signing fails, warn but don't fail the entire operation
+    // The binary might still work depending on the user's security settings
+    if (error instanceof Error) {
+      console.warn(`Warning: Failed to sign binary at ${filePath}:`, error.message);
+    }
+  }
+}
+
 async function fileExists(filePath: string): Promise<boolean> {
   try {
     await fs.access(filePath, fsConstants.F_OK);
@@ -237,6 +257,10 @@ export async function ensureSeaBinary(options: EnsureSeaBinaryOptions = {}): Pro
       await decompressZst(downloadPath, tmpBinary);
       await moveFileAtomic(tmpBinary, binaryPath);
       await setExecutablePermissions(binaryPath, platform);
+
+      // Sign the binary on macOS after decompression to prevent Gatekeeper from blocking it
+      await signBinaryOnMacOS(binaryPath, platform);
+
       return binaryPath;
     } finally {
       await fs.rm(downloadPath, { force: true }).catch(() => {});
