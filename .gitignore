@@ -1,0 +1,28 @@
+# Build output
+dist/
+!bin/
+!bin/**
+
+# Dependencies
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / Editor
+.DS_Store
+.idea/
+.vscode/
+
+# Lockfiles from other managers
+package-lock.json
+yarn.lock
+
+agent_modules/
+.tmp-home/
+.tmp-package/
+.tmp-project/
+.tz-backup/

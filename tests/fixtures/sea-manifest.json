@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "cliVersion": "0.0.0-fixture",
+  "cdn": {
+    "baseUrl": "http://127.0.0.1:0"
+  },
+  "targets": {
+    "linux-x64": {
+      "url": "http://127.0.0.1:0/tz-linux-x64.zst",
+      "size": 0,
+      "sha256": ""
+    }
+  }
+}

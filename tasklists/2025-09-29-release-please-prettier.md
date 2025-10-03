@@ -1,0 +1,12 @@
+- [x] Analyze Release Please vs Prettier conflict and choose mitigation strategy
+- [x] Add CHANGELOG.md to .prettierignore
+- [x] Run `pnpm run format:check` to confirm formatting passes
+- [x] Monitor Release Please and CI runs after merging release PR
+- [x] Confirm GitHub release/tag creation for v0.2.1-m0
+- [x] Investigate missing SEA release automation for tag v0.2.1-m0
+- [x] Update cli-sea-release workflow to handle v\* tags and release events
+- [x] Validate workflow changes (lint/format or dry run as applicable)
+- [x] Diagnose npm publish failure (ERR_STRING_TOO_LONG)
+- [x] Reduce SEA package footprint below npm limits
+- [ ] Verify release workflow end-to-end (Release Please + SEA + npm publish)
+- [ ] Investigate release workflow failure: Resource not accessible by integration

@@ -1,0 +1,203 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+
+import React from 'react';
+import { render } from 'ink';
+
+import { isTerrazulError, wrapError } from '../core/errors';
+import {
+  analyzeExtractSources,
+  executeExtract,
+  performExtract,
+  type ExtractOptions,
+  type ExtractResult,
+  type ExtractPlan,
+  type ExecuteOptions,
+} from '../core/extract/orchestrator';
+import { ExtractWizard } from '../ui/extract/ExtractWizard';
+import { createInkLogger } from '../ui/logger-adapter';
+
+import type { CLIContext } from '../utils/context';
+import type { Command } from 'commander';
+
+function slugifySegment(input: string): string {
+  const normalized = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return normalized || 'package';
+}
+
+function deriveDefaultName(fromDir: string): string {
+  const base = path.basename(fromDir) || 'project';
+  return `@local/${slugifySegment(base)}`;
+}
+
+function deriveDefaultOut(fromDir: string): string {
+  return path.join(fromDir, 'extracted-package');
+}
+
+interface ExtractArgs {
+  from?: string;
+  out?: string;
+  name?: string;
+  pkgVersion?: string;
+  includeClaudeLocal?: boolean;
+  includeClaudeUser?: boolean;
+  force?: boolean;
+  dryRun?: boolean;
+  interactive?: boolean;
+}
+
+function buildInteractiveBaseOptions(args: ExtractArgs): ExtractOptions {
+  const fromAbs = path.resolve(args.from ?? process.cwd());
+  return {
+    from: fromAbs,
+    out: args.out ? path.resolve(args.out) : deriveDefaultOut(fromAbs),
+    name: args.name ?? deriveDefaultName(fromAbs),
+    version: args.pkgVersion ?? '1.0.0',
+    includeClaudeLocal: Boolean(args.includeClaudeLocal),
+    includeClaudeUser: Boolean(args.includeClaudeUser),
+    force: Boolean(args.force),
+    dryRun: Boolean(args.dryRun),
+  };
+}
+
+interface InteractiveWizardResult {
+  result: ExtractResult | null;
+  execOptions: ExecuteOptions | null;
+}
+
+async function runInteractiveWizard(
+  baseOptions: ExtractOptions,
+  ctx: CLIContext,
+): Promise<InteractiveWizardResult> {
+  const inkLogger = createInkLogger({ baseLogger: ctx.logger });
+  let finalResult: ExtractResult | null = null;
+  let cancelled = false;
+  let finalExecOptions: ExecuteOptions | null = null;
+  let initialPlan: ExtractPlan | undefined;
+
+  const planPath = process.env.TZ_EXTRACT_PLAN_PATH;
+  if (planPath) {
+    try {
+      const raw = await fs.readFile(planPath, 'utf8');
+      initialPlan = JSON.parse(raw) as ExtractPlan;
+      ctx.logger.info('[tz-extract] wizard-ready');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.logger.warn(`Loading extract plan from ${planPath} failed: ${message}`);
+    }
+  } else if (process.env.TZ_EXTRACT_PRECOMPUTE_PLAN === '1') {
+    try {
+      initialPlan = await analyzeExtractSources(baseOptions);
+      ctx.logger.info('[tz-extract] wizard-ready');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ctx.logger.warn(`Precomputing extract plan failed: ${message}`);
+    }
+  }
+
+  const ink = render(
+    <ExtractWizard
+      baseOptions={baseOptions}
+      analyze={analyzeExtractSources}
+      execute={(plan, execOptions) => executeExtract(plan, execOptions, inkLogger)}
+      logger={inkLogger}
+      initialPlan={initialPlan}
+      onComplete={(result, execOptions) => {
+        finalResult = result;
+        finalExecOptions = execOptions;
+      }}
+      onCancel={() => {
+        cancelled = true;
+      }}
+    />,
+    { exitOnCtrlC: false },
+  );
+
+  await ink.waitUntilExit();
+
+  if (cancelled) {
+    process.exitCode = 1;
+    return { result: null, execOptions: null };
+  }
+
+  return { result: finalResult, execOptions: finalExecOptions };
+}
+
+export function registerExtractCommand(
+  program: Command,
+  createCtx: (opts: { verbose?: boolean }) => CLIContext,
+): void {
+  program
+    .command('extract')
+    .description('Extract AI configs from a project into a package scaffold')
+    .option('--from <path>', 'Source directory (project root or .claude)')
+    .option('--out <path>', 'Output directory for the new package')
+    .option('--name <name>', 'Package name, e.g., @user/ctx')
+    .option('--pkg-version <semver>', 'Package version, e.g., 1.0.0')
+    .option('--include-claude-local', 'Include .claude/settings.local.json (sanitized)', false)
+    .option('--include-claude-user', 'Include user-scoped ~/.claude.json (sanitized)', false)
+    .option('--force', 'Overwrite non-empty output directory', false)
+    .option('--dry-run', 'Print plan without writing files', false)
+    .option('--no-interactive', 'Disable interactive wizard')
+    .action(async (raw: Record<string, unknown>) => {
+      const opts = program.opts<{ verbose?: boolean }>();
+      const ctx = createCtx({ verbose: opts.verbose });
+      try {
+        const r = raw as ExtractArgs;
+        const wantsInteractive = r.interactive ?? true;
+        const canInteractive = process.stdout.isTTY && wantsInteractive;
+
+        if (canInteractive) {
+          const baseOptions = buildInteractiveBaseOptions(r);
+          const { result, execOptions } = await runInteractiveWizard(baseOptions, ctx);
+          if (result) {
+            const effectiveOptions = execOptions ?? baseOptions;
+            if (effectiveOptions.dryRun) {
+              ctx.logger.info(JSON.stringify(result.summary, null, 2));
+            } else {
+              ctx.logger.info(`Extracted → ${path.resolve(effectiveOptions.out)}`);
+            }
+          }
+          return;
+        }
+
+        const missing: string[] = [];
+        if (!r.from) missing.push('--from');
+        if (!r.out) missing.push('--out');
+        if (!r.name) missing.push('--name');
+        if (!r.pkgVersion) missing.push('--pkg-version');
+        if (missing.length > 0) {
+          program.error(`error: required option(s) ${missing.join(', ')} not specified`);
+        }
+
+        const options: ExtractOptions = {
+          from: String(r.from),
+          out: String(r.out),
+          name: String(r.name),
+          version: String(r.pkgVersion),
+          includeClaudeLocal: Boolean(r.includeClaudeLocal),
+          includeClaudeUser: Boolean(r.includeClaudeUser),
+          force: Boolean(r.force),
+          dryRun: Boolean(r.dryRun),
+        };
+        const result = await performExtract(options, ctx.logger);
+        if (options.dryRun) {
+          ctx.logger.info(JSON.stringify(result.summary, null, 2));
+        } else {
+          ctx.logger.info(`Extracted → ${path.resolve(options.out)}`);
+        }
+      } catch (error) {
+        const te = isTerrazulError(error) ? error : wrapError(error);
+        if (!isTerrazulError(error) && ctx.logger.isVerbose()) {
+          const original = error instanceof Error ? (error.stack ?? error.message) : String(error);
+          ctx.logger.error(original);
+        }
+        ctx.logger.error(te.toUserMessage());
+        process.exitCode = te.getExitCode();
+      }
+    });
+}

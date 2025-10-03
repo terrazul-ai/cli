@@ -1,0 +1,4 @@
+{
+  "main": "dist/tz.mjs",
+  "output": "dist/sea-prep.blob"
+}
