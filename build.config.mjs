@@ -37,6 +37,7 @@ async function ensureYogaAsset() {
 }
 
 async function build() {
+  // Build the ESM bundle (for regular npm usage)
   await esbuild.build({
     entryPoints: ['src/index.ts'],
     outfile: 'dist/tz.mjs',
@@ -62,6 +63,42 @@ async function build() {
     },
     plugins: [stripInkDevtoolsPlugin],
   });
+
+  // Create a CJS wrapper for SEA that dynamically imports the ESM bundle
+  const seaWrapperCode = `#!/usr/bin/env node
+// CJS wrapper that dynamically imports the ESM bundle
+(async () => {
+  try {
+    const { getAsset } = require('node:sea');
+    const { writeFileSync, mkdirSync } = require('node:fs');
+    const { tmpdir } = require('node:os');
+    const { join } = require('node:path');
+
+    // Create temp directory for extracted assets
+    const tempDir = join(tmpdir(), 'tz-' + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+
+    // Extract the ESM bundle from SEA assets
+    const esmBundle = getAsset('tz.mjs', 'utf8');
+    const tempFile = join(tempDir, 'tz.mjs');
+    writeFileSync(tempFile, esmBundle);
+
+    // Extract yoga.wasm from SEA assets
+    const yogaWasm = getAsset('yoga.wasm');
+    const yogaFile = join(tempDir, 'yoga.wasm');
+    writeFileSync(yogaFile, Buffer.from(yogaWasm));
+
+    // Dynamically import the ESM bundle
+    await import(tempFile);
+  } catch (error) {
+    console.error('Failed to load Terrazul CLI:', error);
+    process.exit(1);
+  }
+})();
+`;
+
+  await fsPromises.writeFile('dist/sea-entry.cjs', seaWrapperCode);
+  await fsPromises.chmod('dist/sea-entry.cjs', 0o755);
 
   await esbuild.build({
     entryPoints: ['src/runtime/sea-fetcher.ts'],
