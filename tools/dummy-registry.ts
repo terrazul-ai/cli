@@ -18,6 +18,7 @@ import { join } from 'path';
 import os from 'os';
 import crypto from 'crypto';
 import * as tar from 'tar';
+import Busboy from 'busboy';
 
 const PORT = Number(process.env.PORT || 8787);
 const FIXTURES_DIR = join(__dirname, '../fixtures/packages');
@@ -133,64 +134,13 @@ function collectBody(req: IncomingMessage): Promise<Buffer> {
   });
 }
 
-interface MultipartPart {
-  name: string;
-  filename?: string;
-  contentType?: string;
-  data: Buffer;
-}
-
-function parseMultipart(buffer: Buffer, boundary: string): MultipartPart[] {
-  const results: MultipartPart[] = [];
-  const boundaryMarker = Buffer.from(`--${boundary}`);
-  let searchIndex = 0;
-
-  while (searchIndex < buffer.length) {
-    const boundaryIndex = buffer.indexOf(boundaryMarker, searchIndex);
-    if (boundaryIndex === -1) break;
-    let partStart = boundaryIndex + boundaryMarker.length;
-    if (buffer[partStart] === 45 && buffer[partStart + 1] === 45) break; // final boundary
-    if (buffer[partStart] === 13 && buffer[partStart + 1] === 10) partStart += 2;
-
-    const headerEnd = buffer.indexOf(Buffer.from('\r\n\r\n'), partStart);
-    if (headerEnd === -1) break;
-    const headerText = buffer.slice(partStart, headerEnd).toString('utf8');
-    const nameMatch = /name="([^"]+)"/.exec(headerText);
-    if (!nameMatch) break;
-    const filenameMatch = /filename="([^"]*)"/.exec(headerText);
-    const contentTypeMatch = /content-type:\s*([^\n\r;]+)/i.exec(headerText);
-
-    const dataStart = headerEnd + 4;
-    let nextBoundary = buffer.indexOf(boundaryMarker, dataStart);
-    if (nextBoundary === -1) {
-      nextBoundary = buffer.length;
-    }
-    let dataEnd = nextBoundary;
-    while (dataEnd > dataStart && buffer[dataEnd - 1] === 10 && buffer[dataEnd - 2] === 13) {
-      dataEnd -= 2;
-    }
-    const data = buffer.slice(dataStart, dataEnd);
-
-    results.push({
-      name: nameMatch[1],
-      filename: filenameMatch?.[1],
-      contentType: contentTypeMatch?.[1],
-      data,
-    });
-
-    searchIndex = nextBoundary + boundaryMarker.length;
-  }
-
-  return results;
-}
-
-async function handlePublish(
+function handlePublish(
   req: IncomingMessage,
   res: ServerResponse,
   pkg: DummyPackage,
   owner: string,
   pkgName: string,
-) {
+): void {
   if (!requireAuth(req)) {
     respondJson(res, 401, { error: 'Authentication required' });
     return;
@@ -207,44 +157,74 @@ async function handlePublish(
     return;
   }
 
-  const body = await collectBody(req);
-  const parts = parseMultipart(body, boundaryMatch[1]);
-  const versionPart = parts.find((p) => p.name === 'version');
-  const tarballPart = parts.find((p) => p.name === 'tarball');
-  const metadataPart = parts.find((p) => p.name === 'metadata');
+  // Use busboy to parse multipart form data
+  const busboy = Busboy({ headers: req.headers });
+  let metadataJson: string | null = null;
+  let tarballData: Buffer | null = null;
 
-  if (!versionPart || !tarballPart) {
-    respondJson(res, 400, { error: 'Missing version or tarball part' });
-    return;
-  }
-
-  const version = versionPart.data.toString('utf8').trim();
-  const metadata = metadataPart ? JSON.parse(metadataPart.data.toString('utf8')) : undefined;
-
-  const integrity = `sha256-${crypto.createHash('sha256').update(tarballPart.data).digest('base64url')}`;
-  const publishedVersion: DummyVersion = {
-    version,
-    dependencies: metadata?.dependencies ?? {},
-    compatibility: metadata?.compatibility ?? {},
-    publishedAt: new Date().toISOString(),
-    yanked: false,
-    integrity,
-  };
-
-  pkg.versions[version] = publishedVersion;
-  pkg.latest = version;
-
-  const slug = `${owner}-${pkgName}`;
-  const filename = `${slug.replaceAll(/[^\w.-]/g, '_')}-${version}.tgz`;
-  const outPath = join(PUBLISHED_DIR, filename);
-  writeFileSync(outPath, tarballPart.data);
-
-  respondJson(res, 200, {
-    message: `Package ${pkg.fullName}@${version} published`,
-    version,
-    name: pkg.fullName,
-    url: `http://localhost:${PORT}/cdn/${encodeURIComponent(owner)}/${encodeURIComponent(`${owner}-${pkgName}`)}/${version}.tgz`,
+  busboy.on('field', (name, value) => {
+    if (name === 'metadata') {
+      metadataJson = value;
+    }
   });
+
+  busboy.on('file', (name, file, info) => {
+    if (name === 'tarball') {
+      const chunks: Buffer[] = [];
+      file.on('data', (chunk: Buffer) => chunks.push(chunk));
+      file.on('end', () => {
+        tarballData = Buffer.concat(chunks);
+      });
+    } else {
+      file.resume(); // Drain unneeded files
+    }
+  });
+
+  busboy.on('finish', () => {
+    if (!metadataJson || !tarballData) {
+      respondJson(res, 400, { error: 'Missing metadata or tarball part' });
+      return;
+    }
+
+    const metadata = JSON.parse(metadataJson);
+    const version = metadata.version;
+
+    if (!version) {
+      respondJson(res, 400, { error: 'Missing version in metadata' });
+      return;
+    }
+
+    const integrity = `sha256-${crypto.createHash('sha256').update(tarballData).digest('base64url')}`;
+    const publishedVersion: DummyVersion = {
+      version,
+      dependencies: metadata?.dependencies ?? {},
+      compatibility: metadata?.compatibility ?? {},
+      publishedAt: new Date().toISOString(),
+      yanked: false,
+      integrity,
+    };
+
+    pkg.versions[version] = publishedVersion;
+    pkg.latest = version;
+
+    const slug = `${owner}-${pkgName}`;
+    const filename = `${slug.replaceAll(/[^\w.-]/g, '_')}-${version}.tgz`;
+    const outPath = join(PUBLISHED_DIR, filename);
+    writeFileSync(outPath, tarballData);
+
+    respondJson(res, 200, {
+      message: `Package ${pkg.fullName}@${version} published`,
+      version,
+      name: pkg.fullName,
+      url: `http://localhost:${PORT}/cdn/${encodeURIComponent(owner)}/${encodeURIComponent(`${owner}-${pkgName}`)}/${version}.tgz`,
+    });
+  });
+
+  busboy.on('error', (err: Error) => {
+    respondJson(res, 400, { error: `Multipart parsing error: ${err.message}` });
+  });
+
+  req.pipe(busboy);
 }
 
 async function ensureTarball(owner: string, pkgName: string, version: string): Promise<Buffer> {
@@ -404,7 +384,7 @@ const server = createServer(async (req, res) => {
       };
       addPackage(pkg);
     }
-    await handlePublish(req, res, pkg, owner, pkgName);
+    handlePublish(req, res, pkg, owner, pkgName);
     return;
   }
 

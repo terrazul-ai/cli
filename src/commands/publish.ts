@@ -1,5 +1,3 @@
-import path from 'node:path';
-
 import { buildPublishPlan, createTarball } from '../core/publisher';
 
 import type { CLIContext } from '../utils/context';
@@ -30,15 +28,28 @@ export function registerPublishCommand(
         // Build tarball
         const tarball = await createTarball(root, plan.files);
 
-        // Submit to registry
-        const { getCliVersion } = await import('../utils/version.js');
-        const meta = {
-          cliVersion: getCliVersion(),
-          cwd: path.basename(root),
+        // Read full manifest for metadata
+        const { readManifest } = await import('../utils/manifest.js');
+        const manifest = await readManifest(root);
+        if (!manifest?.package) {
+          throw new Error('Invalid manifest: missing package section');
+        }
+
+        // Prepare publish metadata matching Go API's PublishMetadata struct
+        const metadata = {
           name: plan.name,
           version: plan.version,
+          description: manifest.package.description,
+          homepage: manifest.package.homepage,
+          repository: manifest.package.repository,
+          documentation: manifest.package.documentation,
+          license: manifest.package.license,
+          keywords: manifest.package.keywords,
+          authors: manifest.package.authors,
+          is_private: manifest.package.is_private ?? false,
         };
-        const res = await ctx.registry.publishPackage(plan.name, tarball, meta);
+
+        const res = await ctx.registry.publishPackage(plan.name, tarball, metadata);
         ctx.logger.info(`Published ${plan.name}@${res.version}`);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
