@@ -20,12 +20,7 @@ import {
   WizardFrame,
   type StatusMessage,
 } from './components';
-import {
-  buildReviewSummary,
-  formatReviewSummaryText,
-  getArtifactLabel,
-  type ReviewSummary,
-} from './summary';
+import { buildReviewSummary, getArtifactLabel, type ReviewSummary } from './summary';
 
 const TASK_NAME = 'Extract';
 
@@ -445,13 +440,6 @@ export function ExtractWizard({
     });
   }, [plan, selectedArtifacts, selectedMcp, options]);
 
-  const handleCopySummary = useCallback(() => {
-    if (!reviewSummary) return;
-    const text = formatReviewSummaryText(reviewSummary);
-    pushLog('info', 'Summary copied to log output');
-    pushLog('info', text);
-  }, [reviewSummary, pushLog]);
-
   useInput((input, key) => {
     const lower = input.toLowerCase();
 
@@ -606,10 +594,6 @@ export function ExtractWizard({
         break;
       }
       case 'preview': {
-        if (lower === 'c') {
-          handleCopySummary();
-          return;
-        }
         if (key.return) {
           return;
         }
@@ -702,9 +686,6 @@ export function ExtractWizard({
     }
     hints.push({ key: 'V', label: logsVisible ? 'Hide logs' : 'Show logs' });
     hints.push({ key: '?', label: 'Help' });
-    if (currentStep === 'preview') {
-      hints.push({ key: 'C', label: 'Copy summary', disabled: !reviewSummary });
-    }
     return hints;
   }, [
     artifactItems.length,
@@ -712,7 +693,6 @@ export function ExtractWizard({
     logsVisible,
     metadataError,
     primaryDisabled,
-    reviewSummary,
     selectedArtifacts.size,
     selectedMcp.size,
     stepConfig.primaryLabel,
