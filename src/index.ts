@@ -26,7 +26,7 @@ function buildProgram(argv: string[]): Command {
 
   program
     .name('tz')
-    .description('Terrazul CLI — AI agent package manager')
+    .description('Terrazul CLI — The AI agent package manager')
     .version(getCliVersion())
     .option('-v, --verbose', 'Enable verbose logging', false);
 
