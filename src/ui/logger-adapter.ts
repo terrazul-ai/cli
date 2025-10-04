@@ -21,11 +21,13 @@ function createLogEntry(level: LogLevel, message: string): LogEntry {
 export interface CreateInkLoggerOptions {
   baseLogger?: Logger;
   historyLimit?: number;
+  mirrorToBaseLogger?: boolean;
 }
 
 export function createInkLogger({
   baseLogger,
   historyLimit = 200,
+  mirrorToBaseLogger = true,
 }: CreateInkLoggerOptions = {}): InkLogger {
   let entries: LogEntry[] = [];
   const listeners = new Set<(entries: LogEntry[]) => void>();
@@ -37,25 +39,27 @@ export function createInkLogger({
     }
   }
 
+  const shouldMirror = Boolean(baseLogger) && mirrorToBaseLogger;
+
   const inkLogger: InkLogger = {
     info: (msg: string) => {
       const norm = normalizeMessage(msg);
-      baseLogger?.info(norm);
+      if (shouldMirror) baseLogger?.info(norm);
       emit(createLogEntry('info', norm));
     },
     warn: (msg: string) => {
       const norm = normalizeMessage(msg);
-      baseLogger?.warn(norm);
+      if (shouldMirror) baseLogger?.warn(norm);
       emit(createLogEntry('warn', norm));
     },
     error: (msg: string | Error) => {
       const norm = normalizeMessage(msg);
-      baseLogger?.error(norm);
+      if (shouldMirror) baseLogger?.error(norm);
       emit(createLogEntry('error', norm));
     },
     debug: (msg: string) => {
       const norm = normalizeMessage(msg);
-      baseLogger?.debug(norm);
+      if (shouldMirror) baseLogger?.debug(norm);
       emit(createLogEntry('debug', norm));
     },
     isVerbose: () => baseLogger?.isVerbose?.() ?? false,
