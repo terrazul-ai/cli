@@ -73,7 +73,7 @@ async function runInteractiveWizard(
   baseOptions: ExtractOptions,
   ctx: CLIContext,
 ): Promise<InteractiveWizardResult> {
-  const inkLogger = createInkLogger({ baseLogger: ctx.logger });
+  const inkLogger = createInkLogger({ baseLogger: ctx.logger, mirrorToBaseLogger: false });
   let finalResult: ExtractResult | null = null;
   let cancelled = false;
   let finalExecOptions: ExecuteOptions | null = null;
