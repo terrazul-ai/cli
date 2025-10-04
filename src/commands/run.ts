@@ -2,8 +2,8 @@ import path from 'node:path';
 
 import { planAndRender } from '../core/template-renderer';
 
-import type { CLIContext } from '../utils/context';
 import type { Command } from 'commander';
+import type { CLIContext } from '../utils/context';
 
 export function registerRunCommand(
   program: Command,
@@ -13,7 +13,7 @@ export function registerRunCommand(
     .command('run')
     .allowExcessArguments(true)
     .argument('[args...]', 'Args forwarded to integration tool')
-    .description('Aggregate MCP configs and spawn integration tool')
+    .description('Run Claude / Codex with a package(s)')
     .option('--profile <profile>', 'Limit execution to the packages under the given profile')
     .action(async (_args: string[], cmdOpts: { profile?: string }) => {
       const globalOpts = program.opts<{ verbose?: boolean }>();
