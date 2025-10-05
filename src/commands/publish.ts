@@ -1,7 +1,7 @@
 import { buildPublishPlan, createTarball } from '../core/publisher';
 
-import type { Command } from 'commander';
 import type { CLIContext } from '../utils/context.js';
+import type { Command } from 'commander';
 
 export function registerPublishCommand(
   program: Command,
