@@ -190,6 +190,8 @@ describe('ExtractWizard', () => {
     stdin.write('\r');
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 5/6 — Toggle Options');
+    await expectFrameContains(lastFrame, 'Space • Toggle');
+    await expectFrameNotContains(lastFrame, 'L • Claude local');
 
     stdin.write('\r');
     await pause();
