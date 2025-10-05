@@ -8,7 +8,11 @@ export function run(
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    const env = Object.assign({}, process.env, opts.env);
+    const baseEnv = { ...process.env };
+    if (!baseEnv.TERRAZUL_TOKEN) {
+      baseEnv.TERRAZUL_TOKEN = 'tz_pat_test_token';
+    }
+    const env = Object.assign({}, baseEnv, opts.env);
     execFile(cmd, args, { cwd: opts.cwd, env, encoding: 'utf8' }, (err, stdout, stderr) => {
       if (err) return reject(new Error(stderr || err.message));
       resolve({ stdout, stderr });
@@ -22,7 +26,11 @@ export function runReject(
   opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<{ stdout: string; stderr: string; error: Error }> {
   return new Promise((resolve) => {
-    const env = Object.assign({}, process.env, opts.env);
+    const baseEnv = { ...process.env };
+    if (!baseEnv.TERRAZUL_TOKEN) {
+      baseEnv.TERRAZUL_TOKEN = 'tz_pat_test_token';
+    }
+    const env = Object.assign({}, baseEnv, opts.env);
     execFile(cmd, args, { cwd: opts.cwd, env, encoding: 'utf8' }, (err, stdout, stderr) => {
       resolve({ stdout, stderr, error: err || new Error(stderr || 'failed') });
     });
