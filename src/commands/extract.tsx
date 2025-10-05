@@ -2,7 +2,6 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-import React from 'react';
 import { render } from 'ink';
 
 import { isTerrazulError, wrapError } from '../core/errors.js';
@@ -10,16 +9,16 @@ import {
   analyzeExtractSources,
   executeExtract,
   performExtract,
-  type ExtractOptions,
-  type ExtractResult,
-  type ExtractPlan,
   type ExecuteOptions,
+  type ExtractOptions,
+  type ExtractPlan,
+  type ExtractResult,
 } from '../core/extract/orchestrator.js';
 import { ExtractWizard } from '../ui/extract/ExtractWizard.js';
 import { createInkLogger } from '../ui/logger-adapter.js';
 
-import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
+import type { CLIContext } from '../utils/context.js';
 
 function slugifySegment(input: string): string {
   const normalized = input
@@ -50,15 +49,46 @@ interface ExtractArgs {
   interactive?: boolean;
 }
 
-export const DEFAULT_PACKAGE_VERSION = '0.0.0';
+async function resolveProfileScope(ctx: CLIContext): Promise<string | undefined> {
+  try {
+    const cfg = await ctx.config.load();
+    const activeEnv = cfg.environments?.[cfg.environment];
+    const username = activeEnv?.username ?? cfg.username;
+    const trimmed = username?.trim().replace(/^@+/, '');
+    if (!trimmed) return undefined;
+    const normalized = slugifySegment(trimmed);
+    return normalized || undefined;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    ctx.logger.debug(`extract: unable to read profile scope: ${message}`);
+    return undefined;
+  }
+}
 
-export function buildInteractiveBaseOptions(args: ExtractArgs): ExtractOptions {
+export async function buildInteractiveBaseOptions(
+  args: ExtractArgs,
+  ctx: CLIContext,
+): Promise<ExtractOptions> {
   const fromAbs = path.resolve(args.from ?? process.cwd());
+  const defaultOut = args.out ? path.resolve(args.out) : deriveDefaultOut(fromAbs);
+
+  let name = args.name?.trim();
+  if (!name) {
+    const scope = await resolveProfileScope(ctx);
+    if (scope) {
+      const pkgSegment = slugifySegment(path.basename(fromAbs) || 'package');
+      name = `@${scope}/${pkgSegment}`;
+    }
+  }
+  if (!name) {
+    name = deriveDefaultName(fromAbs);
+  }
+
   return {
     from: fromAbs,
-    out: args.out ? path.resolve(args.out) : deriveDefaultOut(fromAbs),
-    name: args.name ?? deriveDefaultName(fromAbs),
-    version: args.pkgVersion ?? DEFAULT_PACKAGE_VERSION,
+    out: defaultOut,
+    name,
+    version: args.pkgVersion ?? '1.0.0',
     includeClaudeLocal: Boolean(args.includeClaudeLocal),
     includeClaudeUser: Boolean(args.includeClaudeUser),
     force: Boolean(args.force),
@@ -154,7 +184,7 @@ export function registerExtractCommand(
         const canInteractive = process.stdout.isTTY && wantsInteractive;
 
         if (canInteractive) {
-          const baseOptions = buildInteractiveBaseOptions(r);
+          const baseOptions = await buildInteractiveBaseOptions(r, ctx);
           const { result, execOptions } = await runInteractiveWizard(baseOptions, ctx);
           if (result) {
             const effectiveOptions = execOptions ?? baseOptions;
