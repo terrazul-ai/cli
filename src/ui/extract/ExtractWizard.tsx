@@ -29,6 +29,40 @@ const SPINNER_INTERVAL = 96;
 
 type StepId = 'artifacts' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
 
+type OptionToggleId = 'includeClaudeLocal' | 'includeClaudeUser' | 'dryRun' | 'force';
+
+interface OptionToggleConfig {
+  id: OptionToggleId;
+  label: string;
+  detail: string;
+  requiresReanalysis?: boolean;
+}
+
+const OPTION_TOGGLE_CONFIG: OptionToggleConfig[] = [
+  {
+    id: 'includeClaudeLocal',
+    label: 'Include .claude/settings.local.json',
+    detail: 'Adds user-specific Claude configuration to the bundle.',
+    requiresReanalysis: true,
+  },
+  {
+    id: 'includeClaudeUser',
+    label: 'Include Claude user settings',
+    detail: 'Copies user-scoped Claude settings alongside package assets.',
+    requiresReanalysis: true,
+  },
+  {
+    id: 'dryRun',
+    label: 'Dry run',
+    detail: 'Preview actions without writing to disk.',
+  },
+  {
+    id: 'force',
+    label: 'Force overwrite',
+    detail: 'Overwrite non-empty directories in the destination.',
+  },
+];
+
 type Status = 'idle' | 'analyzing' | 'executing' | 'completed' | 'error';
 
 interface StepConfig {
@@ -60,7 +94,7 @@ const STEP_CONFIG: Record<StepId, StepConfig> = {
   },
   options: {
     title: 'Toggle Options',
-    instruction: 'Enable optional behaviors for this run.',
+    instruction: 'Enable optional behaviors for this run. Use ↑/↓ to move, Space to toggle.',
     primaryLabel: 'Continue',
   },
   preview: {
@@ -133,6 +167,7 @@ export function ExtractWizard({
   const [selectedArtifacts, setSelectedArtifacts] = useState<Set<string>>(new Set());
   const [mcpCursor, setMcpCursor] = useState(0);
   const [selectedMcp, setSelectedMcp] = useState<Set<string>>(new Set());
+  const [optionsCursor, setOptionsCursor] = useState(0);
 
   const [metadataFocus, setMetadataFocus] = useState<0 | 1>(0);
   const [metadataError, setMetadataError] = useState<string | null>(null);
@@ -315,6 +350,22 @@ export function ExtractWizard({
     );
   }, [plan, selectedMcp]);
 
+  const optionItems: (SelectableListItem & { id: OptionToggleId })[] = useMemo(() => {
+    return OPTION_TOGGLE_CONFIG.map((config) => ({
+      id: config.id,
+      label: config.label,
+      detail: config.detail,
+      selected:
+        config.id === 'includeClaudeLocal'
+          ? Boolean(options.includeClaudeLocal)
+          : config.id === 'includeClaudeUser'
+            ? Boolean(options.includeClaudeUser)
+            : config.id === 'dryRun'
+              ? Boolean(options.dryRun)
+              : Boolean(options.force),
+    }));
+  }, [options.dryRun, options.force, options.includeClaudeLocal, options.includeClaudeUser]);
+
   const goNextStep = useCallback(() => {
     const idx = stepOrder.indexOf(currentStep);
     if (idx === -1) {
@@ -324,6 +375,10 @@ export function ExtractWizard({
     const nextIdx = Math.min(idx + 1, stepOrder.length - 1);
     setCurrentStep(stepOrder[nextIdx]);
   }, [currentStep, stepOrder]);
+
+  useEffect(() => {
+    setOptionsCursor((prev) => Math.min(prev, Math.max(optionItems.length - 1, 0)));
+  }, [optionItems.length]);
 
   const goPrevStep = useCallback(() => {
     const idx = stepOrder.indexOf(currentStep);
@@ -415,6 +470,40 @@ export function ExtractWizard({
       return next;
     });
   }, []);
+
+  const toggleOption = useCallback(
+    (id: OptionToggleId) => {
+      switch (id) {
+        case 'includeClaudeLocal': {
+          setOptions((prev) => {
+            const next = { ...prev, includeClaudeLocal: !prev.includeClaudeLocal };
+            void runAnalysis(next, true, 'Re-analyzing project…');
+            return next;
+          });
+          break;
+        }
+        case 'includeClaudeUser': {
+          setOptions((prev) => {
+            const next = { ...prev, includeClaudeUser: !prev.includeClaudeUser };
+            void runAnalysis(next, true, 'Re-analyzing project…');
+            return next;
+          });
+          break;
+        }
+        case 'dryRun': {
+          setOptions((prev) => ({ ...prev, dryRun: !prev.dryRun }));
+          break;
+        }
+        case 'force': {
+          setOptions((prev) => ({ ...prev, force: !prev.force }));
+          break;
+        }
+        default:
+          break;
+      }
+    },
+    [runAnalysis],
+  );
 
   const selectAllArtifacts = useCallback(() => {
     if (!plan) return;
@@ -578,24 +667,17 @@ export function ExtractWizard({
         break;
       }
       case 'options': {
-        if (lower === 'l') {
-          const next = { ...options, includeClaudeLocal: !options.includeClaudeLocal };
-          setOptions(next);
-          void runAnalysis(next, true, 'Re-analyzing project…');
+        if (key.upArrow) {
+          setOptionsCursor((prev) => Math.max(prev - 1, 0));
           return;
         }
-        if (lower === 'u') {
-          const next = { ...options, includeClaudeUser: !options.includeClaudeUser };
-          setOptions(next);
-          void runAnalysis(next, true, 'Re-analyzing project…');
+        if (key.downArrow) {
+          setOptionsCursor((prev) => Math.min(prev + 1, Math.max(optionItems.length - 1, 0)));
           return;
         }
-        if (lower === 'd') {
-          setOptions((prev: ExtractOptions) => ({ ...prev, dryRun: !prev.dryRun }));
-          return;
-        }
-        if (lower === 'f') {
-          setOptions((prev: ExtractOptions) => ({ ...prev, force: !prev.force }));
+        if (input === ' ') {
+          const active = optionItems[optionsCursor];
+          if (active) toggleOption(active.id);
           return;
         }
         break;
@@ -675,21 +757,27 @@ export function ExtractWizard({
     if (stepIndex > 0) {
       hints.push({ key: 'Shift+Tab', label: 'Back' });
     }
-    if (currentStep === 'artifacts' || currentStep === 'mcp') {
-      const total = currentStep === 'artifacts' ? artifactItems.length : mcpItems.length;
-      const selected = currentStep === 'artifacts' ? selectedArtifacts.size : selectedMcp.size;
+    if (currentStep === 'artifacts' || currentStep === 'mcp' || currentStep === 'options') {
+      const total =
+        currentStep === 'artifacts'
+          ? artifactItems.length
+          : currentStep === 'mcp'
+            ? mcpItems.length
+            : optionItems.length;
+      const selected =
+        currentStep === 'artifacts'
+          ? selectedArtifacts.size
+          : currentStep === 'mcp'
+            ? selectedMcp.size
+            : optionItems.filter((item) => item.selected).length;
       hints.push({ key: 'Space', label: 'Toggle', disabled: total === 0 });
-      hints.push({ key: 'A', label: 'Select all', disabled: total === 0 });
-      hints.push({ key: 'N', label: 'Select none', disabled: selected === 0 });
+      if (currentStep !== 'options') {
+        hints.push({ key: 'A', label: 'Select all', disabled: total === 0 });
+        hints.push({ key: 'N', label: 'Select none', disabled: selected === 0 });
+      }
     }
     if (currentStep === 'metadata') {
       hints.push({ key: 'Tab', label: 'Next field' });
-    }
-    if (currentStep === 'options') {
-      hints.push({ key: 'L', label: 'Claude local' });
-      hints.push({ key: 'U', label: 'Claude user' });
-      hints.push({ key: 'D', label: 'Dry run' });
-      hints.push({ key: 'F', label: 'Force overwrite' });
     }
     hints.push({ key: 'V', label: logsVisible ? 'Hide logs' : 'Show logs' });
     hints.push({ key: '?', label: 'Help' });
@@ -702,6 +790,8 @@ export function ExtractWizard({
     primaryDisabled,
     selectedArtifacts.size,
     selectedMcp.size,
+    optionItems,
+    optionItems.length,
     stepConfig.primaryLabel,
     stepIndex,
     mcpItems.length,
@@ -815,43 +905,12 @@ export function ExtractWizard({
           </Box>
         );
       case 'options': {
-        const toggles = [
-          {
-            key: 'L',
-            label: 'Include .claude/settings.local.json',
-            description: 'Adds user-specific Claude configuration to the bundle.',
-            active: options.includeClaudeLocal,
-          },
-          {
-            key: 'U',
-            label: 'Include Claude user settings',
-            description: 'Copies user-scoped Claude settings alongside package assets.',
-            active: options.includeClaudeUser,
-          },
-          {
-            key: 'D',
-            label: 'Dry run',
-            description: 'Preview actions without writing to disk.',
-            active: options.dryRun,
-          },
-          {
-            key: 'F',
-            label: 'Force overwrite',
-            description: 'Overwrite non-empty directories in the destination.',
-            active: options.force,
-          },
-        ];
         return (
-          <Box flexDirection="column" gap={1}>
-            {toggles.map((toggle) => (
-              <Box key={toggle.key} flexDirection="column">
-                <Text color={toggle.active ? 'green' : undefined}>
-                  {toggle.active ? '●' : '○'} {toggle.label} (press {toggle.key})
-                </Text>
-                <Text dimColor>{toggle.description}</Text>
-              </Box>
-            ))}
-          </Box>
+          <SelectableList
+            items={optionItems}
+            activeIndex={optionsCursor}
+            emptyMessage="No options available"
+          />
         );
       }
       case 'preview':
