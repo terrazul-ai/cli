@@ -3,11 +3,11 @@ import path from 'node:path';
 
 import Handlebars from 'handlebars';
 
-import { ErrorCode, TerrazulError } from './errors';
-import { loadConfig } from '../utils/config';
-import { ensureDir } from '../utils/fs';
-import { readManifest, type ExportEntry } from '../utils/manifest';
-import { resolveWithin } from '../utils/path';
+import { ErrorCode, TerrazulError } from './errors.js';
+import { loadConfig } from '../utils/config.js';
+import { ensureDir } from '../utils/fs.js';
+import { readManifest, type ExportEntry } from '../utils/manifest.js';
+import { resolveWithin } from '../utils/path.js';
 
 export interface RenderContext {
   project: {

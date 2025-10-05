@@ -77,6 +77,10 @@ module.exports = {
     '@typescript-eslint/no-unsafe-assignment': 'off',
     '@typescript-eslint/no-unsafe-call': 'off',
     '@typescript-eslint/no-unsafe-member-access': 'off',
+    '@typescript-eslint/no-unsafe-argument': 'off',
+    '@typescript-eslint/no-unsafe-return': 'off',
+    '@typescript-eslint/no-redundant-type-constituents': 'off',
+    '@typescript-eslint/restrict-template-expressions': 'off',
 
     /* ---------- Imports ---------- */
     'import/no-default-export': 'error',
@@ -104,7 +108,10 @@ module.exports = {
     /* ---------- Node ---------- */
     'n/no-missing-import': 'off', // TS resolver handles this
     'n/no-unsupported-features/es-syntax': 'off',
-    'n/no-unsupported-features/node-builtins': ['error', { version: '>=18.0.0' }],
+    'n/no-unsupported-features/node-builtins': [
+      'error',
+      { version: '>=18.0.0', ignores: ['fetch', 'FormData', 'Response', 'stream/web'] },
+    ],
 
     /* ---------- Promises ---------- */
     'promise/no-multiple-resolved': 'error',

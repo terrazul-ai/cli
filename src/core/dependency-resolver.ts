@@ -1,7 +1,7 @@
 import { rcompare, compare, satisfies } from 'semver';
 
-import type { LockfileData } from './lock-file';
-import type { PackageVersions } from './registry-client';
+import type { LockfileData } from './lock-file.js';
+import type { PackageVersions } from './registry-client.js';
 
 export interface ResolverOptions {
   skipYanked?: boolean;

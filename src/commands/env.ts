@@ -1,7 +1,7 @@
 import { URL } from 'node:url';
 
-import type { EnvironmentConfig, EnvironmentName, UserConfig } from '../types/config';
-import type { CLIContext } from '../utils/context';
+import type { EnvironmentConfig, EnvironmentName, UserConfig } from '../types/config.js';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 interface UseEnvOptions {

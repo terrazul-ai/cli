@@ -2,19 +2,19 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { buildAgentsToml, type ExportMap } from './build-manifest';
-import { TerrazulError, ErrorCode } from '../errors';
-import { parseCodexMcpServers } from './mcp/codex-config';
-import { parseProjectMcpServers } from './mcp/project-config';
+import { buildAgentsToml, type ExportMap } from './build-manifest.js';
+import { TerrazulError, ErrorCode } from '../errors.js';
+import { parseCodexMcpServers } from './mcp/codex-config.js';
+import { parseProjectMcpServers } from './mcp/project-config.js';
 import {
   resolveProjectRoot,
   sanitizeEnv,
   sanitizeMcpServers,
   sanitizeSettingsJson,
   sanitizeText,
-} from './sanitize';
-import { ensureDir } from '../../utils/fs';
-import { resolveWithin } from '../../utils/path';
+} from './sanitize.js';
+import { ensureDir } from '../../utils/fs.js';
+import { resolveWithin } from '../../utils/path.js';
 
 import type {
   ExtractOptions,
@@ -25,7 +25,7 @@ import type {
   ManifestPatch,
   MCPServerPlan,
   PlannedOutput,
-} from './types';
+} from './types.js';
 
 export type {
   ExtractOptions,
@@ -35,7 +35,7 @@ export type {
   MCPServerPlan,
   PlannedOutput,
   LoggerLike,
-} from './types';
+} from './types.js';
 
 async function pathExists(p: string): Promise<boolean> {
   try {
@@ -511,7 +511,9 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
 
   plan.mcpServers = dedupeMcpServers(plan.mcpServers).sort((a, b) => a.id.localeCompare(b.id));
 
-  const mcpOutput = plan.outputs.find((output) => output.artifactId === 'claude.mcp_servers');
+  const mcpOutput = plan.outputs.find(
+    (output: PlannedOutput) => output.artifactId === 'claude.mcp_servers',
+  );
   if (mcpOutput) {
     mcpOutput.data = buildMcpServersObject(plan.mcpServers);
   }
@@ -537,7 +539,7 @@ export async function executeExtract(
   const selectedArtifacts = new Set(execOptions.includedArtifacts ?? []);
 
   const outputsToWrite = plan.outputs.filter(
-    (output) => output.alwaysInclude || selectedArtifacts.has(output.artifactId),
+    (output: PlannedOutput) => output.alwaysInclude || selectedArtifacts.has(output.artifactId),
   );
 
   const detected: Record<string, string | string[]> = {};
@@ -588,7 +590,7 @@ export async function executeExtract(
 
   const selectedMcpIds = new Set(execOptions.includedMcpServers ?? []);
   const includeAllMcp = selectedMcpIds.size === 0;
-  const selectedMcpServers = plan.mcpServers.filter((server) =>
+  const selectedMcpServers = plan.mcpServers.filter((server: MCPServerPlan) =>
     includeAllMcp ? true : selectedMcpIds.has(server.id),
   );
   const mcpJson = buildMcpServersObject(selectedMcpServers);
@@ -653,7 +655,7 @@ export async function performExtract(
   const execOptions: ExecuteOptions = {
     ...options,
     includedArtifacts: Object.keys(plan.detected),
-    includedMcpServers: plan.mcpServers.map((server) => server.id),
+    includedMcpServers: plan.mcpServers.map((server: MCPServerPlan) => server.id),
   };
   return await executeExtract(plan, execOptions, logger);
 }

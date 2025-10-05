@@ -1,7 +1,7 @@
-import packageJson from '../../package.json';
-import { listSupportedTargets, prefetchSeaTargets } from '../runtime/sea-fetcher';
+import packageJson from '../../package.json' with { type: 'json' };
+import { listSupportedTargets, prefetchSeaTargets } from '../runtime/sea-fetcher.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 function parseTargets(raw?: string): string[] | undefined {

@@ -14,9 +14,13 @@ import {
   archiveNameForTarget,
   binaryNameFromArchive,
   resolveSeaTarget,
-} from './targets';
-import { seaManifestSchema, type SeaManifest, type SeaManifestTarget } from '../types/sea-manifest';
-import { decompressZst } from '../utils/compression';
+} from './targets.js';
+import {
+  seaManifestSchema,
+  type SeaManifest,
+  type SeaManifestTarget,
+} from '../types/sea-manifest.js';
+import { decompressZst } from '../utils/compression.js';
 
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 
@@ -283,7 +287,9 @@ export async function prefetchSeaTargets(
   const cliVersion = options.cliVersion ?? manifest.cliVersion;
 
   const targetsToFetch = options.targets?.length
-    ? SEA_TARGETS.filter((definition) => options.targets?.includes(definition.target))
+    ? SEA_TARGETS.filter((definition: { target: string }) =>
+        options.targets?.includes(definition.target),
+      )
     : SEA_TARGETS;
 
   const results: Record<string, string> = {};
@@ -303,5 +309,5 @@ export async function prefetchSeaTargets(
 }
 
 export function listSupportedTargets(): string[] {
-  return SEA_TARGETS.map((target) => target.target);
+  return SEA_TARGETS.map((target: { target: string }) => target.target);
 }

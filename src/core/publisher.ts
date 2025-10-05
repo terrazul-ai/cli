@@ -3,9 +3,9 @@ import path from 'node:path';
 
 import * as tar from 'tar';
 
-import { TerrazulError, ErrorCode } from './errors';
-import { readManifest, validateManifest } from '../utils/manifest';
-import { resolveWithin } from '../utils/path';
+import { TerrazulError, ErrorCode } from './errors.js';
+import { readManifest, validateManifest } from '../utils/manifest.js';
+import { resolveWithin } from '../utils/path.js';
 
 import type { Stats } from 'node:fs';
 

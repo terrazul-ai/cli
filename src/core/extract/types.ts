@@ -1,5 +1,5 @@
-import type { ExportMap } from './build-manifest';
-import type { Logger } from '../../utils/logger';
+import type { ExportMap } from './build-manifest.js';
+import type { Logger } from '../../utils/logger.js';
 
 export type MCPSource = 'claude' | 'codex' | 'project';
 

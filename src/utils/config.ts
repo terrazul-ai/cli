@@ -7,7 +7,7 @@ import {
   UserConfigSchema,
   type EnvironmentConfig,
   type UserConfig,
-} from '../types/config';
+} from '../types/config.js';
 
 const CONFIG_DIRNAME = '.terrazul';
 const CONFIG_FILENAME = 'config.json';

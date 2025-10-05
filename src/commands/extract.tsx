@@ -5,7 +5,7 @@ import process from 'node:process';
 import React from 'react';
 import { render } from 'ink';
 
-import { isTerrazulError, wrapError } from '../core/errors';
+import { isTerrazulError, wrapError } from '../core/errors.js';
 import {
   analyzeExtractSources,
   executeExtract,
@@ -14,11 +14,11 @@ import {
   type ExtractResult,
   type ExtractPlan,
   type ExecuteOptions,
-} from '../core/extract/orchestrator';
-import { ExtractWizard } from '../ui/extract/ExtractWizard';
-import { createInkLogger } from '../ui/logger-adapter';
+} from '../core/extract/orchestrator.js';
+import { ExtractWizard } from '../ui/extract/ExtractWizard.js';
+import { createInkLogger } from '../ui/logger-adapter.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 function slugifySegment(input: string): string {
@@ -103,10 +103,12 @@ async function runInteractiveWizard(
     <ExtractWizard
       baseOptions={baseOptions}
       analyze={analyzeExtractSources}
-      execute={(plan, execOptions) => executeExtract(plan, execOptions, inkLogger)}
+      execute={(plan: ExtractPlan, execOptions: ExecuteOptions) =>
+        executeExtract(plan, execOptions, inkLogger)
+      }
       logger={inkLogger}
       initialPlan={initialPlan}
-      onComplete={(result, execOptions) => {
+      onComplete={(result: ExtractResult, execOptions: ExecuteOptions) => {
         finalResult = result;
         finalExecOptions = execOptions;
       }}

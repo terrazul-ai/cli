@@ -44,7 +44,7 @@ name = "@u/p"
     expect(m?.exports?.codex?.template).toBe('templates/AGENTS.md.hbs');
     expect(m?.exports?.claude?.template).toBe('templates/CLAUDE.md.hbs');
 
-    const { warnings, errors } = await validateManifest(proj, m!);
+    const { warnings, errors } = await validateManifest(proj, m);
     expect(errors).toHaveLength(0);
     // no warnings for known keys
     expect(warnings).toHaveLength(0);
@@ -70,7 +70,7 @@ name = "@u/p"
     });
     const m = await readManifest(proj);
     expect(m).not.toBeNull();
-    const { warnings, errors } = await validateManifest(proj, m!);
+    const { warnings, errors } = await validateManifest(proj, m);
     // Missing task file and missing codex template
     expect(errors.some((e) => e.includes('Missing task file'))).toBe(true);
     expect(errors.some((e) => e.includes('Missing template'))).toBe(true);

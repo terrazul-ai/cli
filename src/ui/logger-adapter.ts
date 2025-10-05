@@ -1,7 +1,12 @@
-import type { Logger } from '../utils/logger';
-import type { LogEntry, LogLevel } from './extract/components';
+import type { Logger } from '../utils/logger.js';
+import type { LogEntry, LogLevel } from './extract/components.js';
 
-export interface InkLogger extends Logger {
+export interface InkLogger {
+  info: (msg: string) => void;
+  warn: (msg: string) => void;
+  error: (msg: string | Error) => void;
+  debug: (msg: string) => void;
+  isVerbose: () => boolean;
   getEntries(): LogEntry[];
   subscribe(listener: (entries: LogEntry[]) => void): () => void;
 }

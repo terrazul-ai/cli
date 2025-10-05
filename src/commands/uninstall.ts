@@ -1,14 +1,14 @@
-import { LockfileManager } from '../core/lock-file';
-import { exists, remove } from '../utils/fs';
+import { LockfileManager } from '../core/lock-file.js';
+import { exists, remove } from '../utils/fs.js';
 import {
   readManifest,
   removeDependenciesFromManifest,
   removePackageFromProfiles,
-} from '../utils/manifest';
-import { agentModulesPath } from '../utils/path';
-import { computeRemovalSet, listDependents } from '../utils/prune';
+} from '../utils/manifest.js';
+import { agentModulesPath } from '../utils/path.js';
+import { computeRemovalSet, listDependents } from '../utils/prune.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 export function registerUninstallCommand(

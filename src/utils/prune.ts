@@ -1,4 +1,4 @@
-import type { LockfilePackage } from '../core/lock-file';
+import type { LockfilePackage } from '../core/lock-file.js';
 
 function buildDependentsMap(packages: Record<string, LockfilePackage>): Map<string, Set<string>> {
   const dependents = new Map<string, Set<string>>();

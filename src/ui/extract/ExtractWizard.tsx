@@ -1,24 +1,24 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import semver from 'semver';
 
 import {
+  type ExecuteOptions,
   type ExtractOptions,
   type ExtractPlan,
   type ExtractResult,
-  type ExecuteOptions,
   type LoggerLike,
-} from '../../core/extract/orchestrator';
-import { parseSafePackageName } from '../../utils/path';
+} from '../../core/extract/orchestrator.js';
+import { parseSafePackageName } from '../../utils/path.js';
 import {
   type KeyHint,
-  LogPanel,
   type LogEntry,
+  LogPanel,
   SelectableList,
   type SelectableListItem,
-  WizardFrame,
   type StatusMessage,
+  WizardFrame,
 } from './components';
 import { buildReviewSummary, getArtifactLabel, type ReviewSummary } from './summary';
 
@@ -218,7 +218,7 @@ export function ExtractWizard({
       return Math.min(prev, maxIndex);
     });
     setSelectedMcp((prev) => {
-      const available = nextPlan.mcpServers.map((s) => s.id);
+      const available = nextPlan.mcpServers.map((s: { id: string }) => s.id);
       if (available.length === 0) return new Set();
       if (preferExistingSelections && prev.size > 0) {
         const prevMcp = lastMcpIdsRef.current;
@@ -235,7 +235,7 @@ export function ExtractWizard({
       return Math.min(prev, maxIndex);
     });
     lastArtifactIdsRef.current = new Set(Object.keys(nextPlan.detected));
-    lastMcpIdsRef.current = new Set(nextPlan.mcpServers.map((s) => s.id));
+    lastMcpIdsRef.current = new Set(nextPlan.mcpServers.map((s: { id: string }) => s.id));
   }, []);
 
   const runAnalysis = useCallback(
@@ -300,12 +300,19 @@ export function ExtractWizard({
 
   const mcpItems: SelectableListItem[] = useMemo(() => {
     if (!plan) return [];
-    return plan.mcpServers.map((server) => ({
-      id: server.id,
-      label: `${server.source.toUpperCase()} • ${server.name}`,
-      detail: `${server.definition.command} ${server.definition.args.join(' ')}`.trim(),
-      selected: selectedMcp.has(server.id),
-    }));
+    return plan.mcpServers.map(
+      (server: {
+        id: string;
+        source: string;
+        name: string;
+        definition: { command: string; args: string[] };
+      }) => ({
+        id: server.id,
+        label: `${server.source.toUpperCase()} • ${server.name}`,
+        detail: `${server.definition.command} ${server.definition.args.join(' ')}`.trim(),
+        selected: selectedMcp.has(server.id),
+      }),
+    );
   }, [plan, selectedMcp]);
 
   const goNextStep = useCallback(() => {
@@ -420,7 +427,7 @@ export function ExtractWizard({
 
   const selectAllMcp = useCallback(() => {
     if (!plan) return;
-    setSelectedMcp(new Set(plan.mcpServers.map((s) => s.id)));
+    setSelectedMcp(new Set(plan.mcpServers.map((s: { id: string }) => s.id)));
   }, [plan]);
 
   const clearMcp = useCallback(() => {
@@ -584,11 +591,11 @@ export function ExtractWizard({
           return;
         }
         if (lower === 'd') {
-          setOptions((prev) => ({ ...prev, dryRun: !prev.dryRun }));
+          setOptions((prev: ExtractOptions) => ({ ...prev, dryRun: !prev.dryRun }));
           return;
         }
         if (lower === 'f') {
-          setOptions((prev) => ({ ...prev, force: !prev.force }));
+          setOptions((prev: ExtractOptions) => ({ ...prev, force: !prev.force }));
           return;
         }
         break;
@@ -771,7 +778,7 @@ export function ExtractWizard({
             <Text>Package directory:</Text>
             <TextInput
               value={options.out}
-              onChange={(value) => setOptions((prev) => ({ ...prev, out: value }))}
+              onChange={(value) => setOptions((prev: ExtractOptions) => ({ ...prev, out: value }))}
               highlightPastedText
             />
             <Text dimColor>
@@ -787,7 +794,9 @@ export function ExtractWizard({
               <TextInput
                 value={options.name}
                 focus={metadataFocus === 0}
-                onChange={(value) => setOptions((prev) => ({ ...prev, name: value }))}
+                onChange={(value) =>
+                  setOptions((prev: ExtractOptions) => ({ ...prev, name: value }))
+                }
               />
               <Text dimColor>Must be a valid scoped or unscoped package name.</Text>
             </Box>
@@ -796,7 +805,9 @@ export function ExtractWizard({
               <TextInput
                 value={options.version}
                 focus={metadataFocus === 1}
-                onChange={(value) => setOptions((prev) => ({ ...prev, version: value }))}
+                onChange={(value) =>
+                  setOptions((prev: ExtractOptions) => ({ ...prev, version: value }))
+                }
               />
               <Text dimColor>Use semantic versioning, e.g., 1.0.0.</Text>
               {metadataError ? <Text color="red">⚠ {metadataError}</Text> : null}
@@ -850,24 +861,35 @@ export function ExtractWizard({
         }
         return (
           <Box flexDirection="column" gap={1}>
-            {reviewSummary.sections.map((section) => (
-              <Box key={section.id} flexDirection="column">
-                <Text bold>
-                  {section.title} • {section.selectedCount}/
-                  {section.totalCount || section.selectedCount} selected
-                </Text>
-                {section.items.length > 0 ? (
-                  section.items.map((item) => (
-                    <Text key={item.id}>
-                      ✓ {item.primary}
-                      {item.secondary ? ` (${item.secondary})` : ''}
-                    </Text>
-                  ))
-                ) : (
-                  <Text dimColor>{section.emptyLabel}</Text>
-                )}
-              </Box>
-            ))}
+            {reviewSummary.sections.map(
+              (section: {
+                id: string;
+                title: string;
+                selectedCount: number;
+                totalCount: number;
+                items: Array<{ id: string; primary: string; secondary?: string }>;
+                emptyLabel?: string;
+              }) => (
+                <Box key={section.id} flexDirection="column">
+                  <Text bold>
+                    {section.title} • {section.selectedCount}/
+                    {section.totalCount || section.selectedCount} selected
+                  </Text>
+                  {section.items.length > 0 ? (
+                    section.items.map(
+                      (item: { id: string; primary: string; secondary?: string }) => (
+                        <Text key={item.id}>
+                          ✓ {item.primary}
+                          {item.secondary ? ` (${item.secondary})` : ''}
+                        </Text>
+                      ),
+                    )
+                  ) : (
+                    <Text dimColor>{section.emptyLabel}</Text>
+                  )}
+                </Box>
+              ),
+            )}
             <Box flexDirection="column">
               <Text bold>Destination</Text>
               <Text>{reviewSummary.destination.path}</Text>

@@ -1,4 +1,4 @@
-import { TerrazulError, ErrorCode } from '../core/errors';
+import { TerrazulError, ErrorCode } from '../core/errors.js';
 
 export interface PackagePath {
   owner: string;

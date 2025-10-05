@@ -1,8 +1,8 @@
 import path from 'node:path';
 
-import { readManifest, validateManifest } from '../utils/manifest';
+import { readManifest, validateManifest } from '../utils/manifest.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 export function registerValidateCommand(

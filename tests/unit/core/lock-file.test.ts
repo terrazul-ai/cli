@@ -76,7 +76,7 @@ describe('core/lock-file', () => {
 
     const hex = LockfileManager.integrityToHex(integrity);
     expect(hex).not.toBeNull();
-    const roundTrip = LockfileManager.hexToIntegrity(hex!);
+    const roundTrip = LockfileManager.hexToIntegrity(hex);
     expect(roundTrip).toBe(integrity);
   });
 

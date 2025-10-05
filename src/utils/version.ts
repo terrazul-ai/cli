@@ -2,7 +2,7 @@
 // Using esbuild bundling, the JSON import is inlined into the single-file output.
 
 // @ts-ignore - resolveJsonModule allows this import and esbuild will inline it
-import pkg from '../../package.json';
+import pkg from '../../package.json' with { type: 'json' };
 
 export function getCliVersion(): string {
   // Fallback defensively in case of unexpected shapes
