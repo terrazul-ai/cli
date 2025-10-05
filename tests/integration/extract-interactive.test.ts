@@ -97,11 +97,11 @@ describe('tz extract (interactive wizard)', () => {
       );
 
       const suffix = '-custom';
-      const expectedOutDir = path.join(project.root, `extracted-package${suffix}`);
+      const expectedOutDir = path.join(project.root, `my-first-package${suffix}`);
 
       const baseOptions: ExtractOptions = {
         from: project.root,
-        out: path.join(project.root, 'extracted-package'),
+        out: path.join(project.root, 'my-first-package'),
         name: `@local/${slugifySegment(path.basename(project.root) || 'project')}`,
         version: '1.0.0',
         includeClaudeLocal: false,
@@ -159,7 +159,7 @@ describe('tz extract (interactive wizard)', () => {
       child.stdin.write('\t');
       await waitForText('Step 3/6');
       child.stdin.write(suffix);
-      await waitForText(`extracted-package${suffix}`);
+      await waitForText(`my-first-package${suffix}`);
       child.stdin.write('\t');
       await waitForText('Step 4/6');
       child.stdin.write('\t');

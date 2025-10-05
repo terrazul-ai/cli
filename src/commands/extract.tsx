@@ -35,7 +35,7 @@ function deriveDefaultName(fromDir: string): string {
 }
 
 function deriveDefaultOut(fromDir: string): string {
-  return path.join(fromDir, 'extracted-package');
+  return path.join(fromDir, 'my-first-package');
 }
 
 interface ExtractArgs {
