@@ -50,13 +50,15 @@ interface ExtractArgs {
   interactive?: boolean;
 }
 
-function buildInteractiveBaseOptions(args: ExtractArgs): ExtractOptions {
+export const DEFAULT_PACKAGE_VERSION = '0.0.0';
+
+export function buildInteractiveBaseOptions(args: ExtractArgs): ExtractOptions {
   const fromAbs = path.resolve(args.from ?? process.cwd());
   return {
     from: fromAbs,
     out: args.out ? path.resolve(args.out) : deriveDefaultOut(fromAbs),
     name: args.name ?? deriveDefaultName(fromAbs),
-    version: args.pkgVersion ?? '1.0.0',
+    version: args.pkgVersion ?? DEFAULT_PACKAGE_VERSION,
     includeClaudeLocal: Boolean(args.includeClaudeLocal),
     includeClaudeUser: Boolean(args.includeClaudeUser),
     force: Boolean(args.force),
