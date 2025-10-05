@@ -4,7 +4,7 @@ import process from 'node:process';
 
 import { render } from 'ink';
 
-import { isTerrazulError, wrapError } from '../core/errors.js';
+import { ErrorCode, TerrazulError, isTerrazulError, wrapError } from '../core/errors.js';
 import {
   analyzeExtractSources,
   executeExtract,
@@ -179,6 +179,14 @@ export function registerExtractCommand(
       const opts = program.opts<{ verbose?: boolean }>();
       const ctx = createCtx({ verbose: opts.verbose });
       try {
+        const config = await ctx.config.load();
+        const token = ctx.config.getToken(config);
+        if (!token) {
+          throw new TerrazulError(
+            ErrorCode.AUTH_REQUIRED,
+            'Extract requires authentication. Run `tz login` first.',
+          );
+        }
         const r = raw as ExtractArgs;
         const wantsInteractive = r.interactive ?? true;
         const canInteractive = process.stdout.isTTY && wantsInteractive;
