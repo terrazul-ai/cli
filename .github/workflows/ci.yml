@@ -3,20 +3,12 @@ name: CI
 on:
   push:
     branches: [main, master]
-    paths:
-      - '.github/workflows/cli-ci.yml'
   pull_request:
     branches: [main, master]
-    paths:
-      - '.github/workflows/cli-ci.yml'
 
 jobs:
   build-and-test:
-    # Simplified to single Ubuntu job: lint, build, test only
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: cli
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,9 +19,9 @@ jobs:
       - name: Setup Node.js (from .nvmrc)
         uses: actions/setup-node@v4
         with:
-          node-version-file: cli/.nvmrc
+          node-version-file: .nvmrc
           cache: 'pnpm'
-          cache-dependency-path: cli/pnpm-lock.yaml
+          cache-dependency-path: pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
