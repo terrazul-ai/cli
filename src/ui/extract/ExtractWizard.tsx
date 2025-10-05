@@ -522,11 +522,6 @@ export function ExtractWizard({
       return;
     }
 
-    if (lower === '?') {
-      pushLog('info', 'Help: run `tz extract --help` for documentation.');
-      return;
-    }
-
     switch (currentStep) {
       case 'artifacts': {
         if (key.upArrow) {
