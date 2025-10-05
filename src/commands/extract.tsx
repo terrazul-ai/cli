@@ -84,7 +84,6 @@ async function runInteractiveWizard(
     try {
       const raw = await fs.readFile(planPath, 'utf8');
       initialPlan = JSON.parse(raw) as ExtractPlan;
-      ctx.logger.info('[tz-extract] wizard-ready');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.logger.warn(`Loading extract plan from ${planPath} failed: ${message}`);
@@ -92,7 +91,6 @@ async function runInteractiveWizard(
   } else if (process.env.TZ_EXTRACT_PRECOMPUTE_PLAN === '1') {
     try {
       initialPlan = await analyzeExtractSources(baseOptions);
-      ctx.logger.info('[tz-extract] wizard-ready');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.logger.warn(`Precomputing extract plan failed: ${message}`);
