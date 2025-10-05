@@ -1,4 +1,4 @@
-import { type ExtractOptions, type ExtractPlan } from '../../core/extract/orchestrator';
+import { type ExtractOptions, type ExtractPlan } from '../../core/extract/orchestrator.js';
 
 const ARTIFACT_LABELS: Record<string, string> = {
   'codex.Agents': 'Codex • AGENTS.md',
@@ -72,12 +72,14 @@ export function buildReviewSummary({
     }));
 
   const mcpItems: SummaryItem[] = plan.mcpServers
-    .filter((server) => selectedMcp.has(server.id))
-    .map((server) => ({
-      id: server.id,
-      primary: `${server.source.toUpperCase()} • ${server.name}`,
-      secondary: server.definition.command,
-    }));
+    .filter((server: { id: string }) => selectedMcp.has(server.id))
+    .map(
+      (server: { id: string; source: string; name: string; definition: { command: string } }) => ({
+        id: server.id,
+        primary: `${server.source.toUpperCase()} • ${server.name}`,
+        secondary: server.definition.command,
+      }),
+    );
 
   const sections: SummarySection[] = [
     {

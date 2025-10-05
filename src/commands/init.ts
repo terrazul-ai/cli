@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import inquirer from 'inquirer';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 export function registerInitCommand(

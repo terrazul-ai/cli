@@ -1,8 +1,8 @@
 import path from 'node:path';
 
-import { planAndRender } from '../core/template-renderer';
+import { planAndRender } from '../core/template-renderer.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 export function registerApplyCommand(

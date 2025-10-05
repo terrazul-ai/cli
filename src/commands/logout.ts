@@ -1,6 +1,6 @@
-import { logout as logoutUtil } from '../utils/auth';
+import { logout as logoutUtil } from '../utils/auth.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 export function registerLogoutCommand(
   program: Command,

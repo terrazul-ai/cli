@@ -1,6 +1,6 @@
-import { login as loginUtil } from '../utils/auth';
+import { login as loginUtil } from '../utils/auth.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 export function registerLoginCommand(
   program: Command,

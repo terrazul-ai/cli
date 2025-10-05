@@ -4,8 +4,8 @@ import path from 'node:path';
 import { parse as parseYAML } from 'yaml';
 import { z } from 'zod';
 
-import { readManifest } from './manifest';
-import { ErrorCode, TerrazulError, wrapError } from '../core/errors';
+import { readManifest } from './manifest.js';
+import { ErrorCode, TerrazulError, wrapError } from '../core/errors.js';
 
 // Minimal v1 task spec; we keep steps opaque for now and validate structure only.
 const TaskSpecV1Schema = z.object({

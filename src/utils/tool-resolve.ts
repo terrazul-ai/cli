@@ -1,8 +1,8 @@
-import { runCommand } from './proc';
-import { ErrorCode, TerrazulError } from '../core/errors';
+import { runCommand } from './proc.js';
+import { ErrorCode, TerrazulError } from '../core/errors.js';
 
-import type { UserConfig } from '../types/config';
-import type { ToolSpec, ToolType } from '../types/context';
+import type { UserConfig } from '../types/config.js';
+import type { ToolSpec, ToolType } from '../types/context.js';
 
 export const ANSWER_TOOLS: ToolType[] = ['claude', 'codex'];
 
@@ -62,7 +62,7 @@ export async function choosePrimaryAnswerTool(
 // Targets to render: if --tool specified, just that one; otherwise every tool listed in profile (unique by type).
 export function computeOutputTargets(cfg: UserConfig, onlyTool?: ToolType): ToolType[] {
   if (onlyTool) return [onlyTool];
-  const types = (cfg.profile?.tools ?? []).map((t) => t.type);
+  const types = (cfg.profile?.tools ?? []).map((t: { type: ToolType }) => t.type);
   const list = types.length > 0 ? types : [];
   return [...new Set(list)] as ToolType[]; // empty if no profile.tools
 }

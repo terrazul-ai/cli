@@ -7,14 +7,14 @@ import {
   normalizeConfig,
   saveConfig,
   updateConfig,
-} from './config';
-import { createLogger } from './logger';
-import { RegistryClient } from '../core/registry-client';
-import { StorageManager } from '../core/storage';
-import { DEFAULT_ENVIRONMENTS } from '../types/config';
+} from './config.js';
+import { createLogger } from './logger.js';
+import { RegistryClient } from '../core/registry-client.js';
+import { StorageManager } from '../core/storage.js';
+import { DEFAULT_ENVIRONMENTS } from '../types/config.js';
 
-import type { Logger } from './logger';
-import type { UserConfig } from '../types/config';
+import type { Logger } from './logger.js';
+import type { UserConfig } from '../types/config.js';
 
 export interface CreateContextOptions {
   verbose?: boolean;

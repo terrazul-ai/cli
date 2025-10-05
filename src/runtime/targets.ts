@@ -1,4 +1,4 @@
-import type { SeaManifest } from '../types/sea-manifest';
+import type { SeaManifest } from '../types/sea-manifest.js';
 
 export interface SeaTargetDefinition {
   platform: NodeJS.Platform;

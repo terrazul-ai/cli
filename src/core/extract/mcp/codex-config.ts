@@ -1,8 +1,8 @@
 import * as TOML from '@iarna/toml';
 
-import { rewritePath, sanitizeEnv } from '../sanitize';
+import { rewritePath, sanitizeEnv } from '../sanitize.js';
 
-import type { MCPServerPlan } from '../types';
+import type { MCPServerPlan } from '../types.js';
 
 export function parseCodexMcpServers(
   toml: string,

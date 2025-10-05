@@ -1,25 +1,25 @@
 import { Command } from 'commander';
 
-import { registerApplyCommand } from './commands/apply';
-import { registerAuthCommand } from './commands/auth';
-import { registerCacheCommand } from './commands/cache';
-import { registerEnvCommand } from './commands/env';
-import { registerExtractCommand } from './commands/extract';
-import { registerInitCommand } from './commands/init';
-import { registerInstallCommand } from './commands/install';
-import { registerLinkCommand } from './commands/link';
-import { registerLoginCommand } from './commands/login';
-import { registerLogoutCommand } from './commands/logout';
-import { registerPublishCommand } from './commands/publish';
-import { registerRunCommand } from './commands/run';
-import { registerUninstallCommand } from './commands/uninstall';
-import { registerUnlinkCommand } from './commands/unlink';
-import { registerUnyankCommand } from './commands/unyank';
-import { registerUpdateCommand } from './commands/update';
-import { registerValidateCommand } from './commands/validate';
-import { registerYankCommand } from './commands/yank';
-import { createCLIContext } from './utils/context';
-import { getCliVersion } from './utils/version';
+import { registerApplyCommand } from './commands/apply.js';
+import { registerAuthCommand } from './commands/auth.js';
+import { registerCacheCommand } from './commands/cache.js';
+import { registerEnvCommand } from './commands/env.js';
+import { registerExtractCommand } from './commands/extract.js';
+import { registerInitCommand } from './commands/init.js';
+import { registerInstallCommand } from './commands/install.js';
+import { registerLinkCommand } from './commands/link.js';
+import { registerLoginCommand } from './commands/login.js';
+import { registerLogoutCommand } from './commands/logout.js';
+import { registerPublishCommand } from './commands/publish.js';
+import { registerRunCommand } from './commands/run.js';
+import { registerUninstallCommand } from './commands/uninstall.js';
+import { registerUnlinkCommand } from './commands/unlink.js';
+import { registerUnyankCommand } from './commands/unyank.js';
+import { registerUpdateCommand } from './commands/update.js';
+import { registerValidateCommand } from './commands/validate.js';
+import { registerYankCommand } from './commands/yank.js';
+import { createCLIContext } from './utils/context.js';
+import { getCliVersion } from './utils/version.js';
 
 function buildProgram(argv: string[]): Command {
   const program = new Command();

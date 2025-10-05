@@ -2,15 +2,15 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { DependencyResolver } from '../core/dependency-resolver';
-import { ErrorCode, TerrazulError } from '../core/errors';
-import { LockfileManager } from '../core/lock-file';
-import { planAndRender } from '../core/template-renderer';
-import { createSymlink, ensureDir } from '../utils/fs';
-import { addPackageToProfile } from '../utils/manifest';
-import { agentModulesPath } from '../utils/path';
+import { DependencyResolver } from '../core/dependency-resolver.js';
+import { ErrorCode, TerrazulError } from '../core/errors.js';
+import { LockfileManager } from '../core/lock-file.js';
+import { planAndRender } from '../core/template-renderer.js';
+import { createSymlink, ensureDir } from '../utils/fs.js';
+import { addPackageToProfile } from '../utils/manifest.js';
+import { agentModulesPath } from '../utils/path.js';
 
-import type { CLIContext } from '../utils/context';
+import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
 function parseSpec(spec?: string): { name: string; range: string } | null {

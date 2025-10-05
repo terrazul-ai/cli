@@ -5,11 +5,11 @@
 
 import { URL } from 'node:url';
 
-import { ErrorCode, TerrazulError } from './errors';
-import { buildPackageApiPath, splitPackageName } from '../utils/package';
-import { getCliVersion } from '../utils/version';
+import { ErrorCode, TerrazulError } from './errors.js';
+import { buildPackageApiPath, splitPackageName } from '../utils/package.js';
+import { getCliVersion } from '../utils/version.js';
 
-import type { APIErrorResponse, APISuccessResponse } from '../types/api';
+import type { APIErrorResponse, APISuccessResponse } from '../types/api.js';
 
 function isAPIErrorResponse(x: unknown): x is APIErrorResponse {
   return (

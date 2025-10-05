@@ -182,7 +182,8 @@ export async function verifyStagedPackage(options: VerifyOptions): Promise<void>
     throw error;
   }
   const manifest = await readJson<SeaManifest>(manifestPath);
-  if (!manifest.targets || Object.keys(manifest.targets).length === 0) {
+  const targets: Record<string, unknown> = manifest.targets ?? {};
+  if (Object.keys(targets).length === 0) {
     throw new TypeError('Manifest must declare at least one SEA target');
   }
 

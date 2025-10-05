@@ -8,7 +8,7 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 import * as TOML from '@iarna/toml';
 
-import { getCliVersion } from '../utils/version';
+import { getCliVersion } from '../utils/version.js';
 
 export interface LockfilePackage {
   version: string;

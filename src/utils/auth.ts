@@ -1,8 +1,8 @@
 import inquirer from 'inquirer';
 
-import { loadConfig, saveConfig } from './config';
+import { loadConfig, saveConfig } from './config.js';
 
-import type { Logger } from './logger';
+import type { Logger } from './logger.js';
 
 export function validatePAT(token: string): boolean {
   return typeof token === 'string' && (token.startsWith('tz_pat_') || token.startsWith('tz_'));

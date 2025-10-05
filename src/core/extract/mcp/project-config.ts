@@ -1,6 +1,6 @@
-import { rewritePath, sanitizeEnv } from '../sanitize';
+import { rewritePath, sanitizeEnv } from '../sanitize.js';
 
-import type { MCPServerPlan } from '../types';
+import type { MCPServerPlan } from '../types.js';
 
 export function parseProjectMcpServers(
   json: unknown,
