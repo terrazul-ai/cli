@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { buildInteractiveBaseOptions } from '../../../src/commands/extract';
 import { normalizeConfig } from '../../../src/utils/config';
+
 import type { CLIContext } from '../../../src/utils/context';
 import type { Logger } from '../../../src/utils/logger';
 
