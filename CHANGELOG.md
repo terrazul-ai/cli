@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/terrazul-ai/cli/compare/v0.7.1...v0.7.2) (2025-10-06)
+
+
+### Bug Fixes
+
+* **ci:** prevent duplicate workflow runs and add SEA cache warnings ([929b599](https://github.com/terrazul-ai/cli/commit/929b599fdc595b2878fdec2a77a9b9ecf053bb4f))
+
 ## [0.7.1](https://github.com/terrazul-ai/cli/compare/v0.7.0...v0.7.1) (2025-10-06)
 
 
