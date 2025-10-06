@@ -21,7 +21,7 @@ SCOPE
 FILES TO CREATE/MODIFY
 
 - src/index.ts
-- src/commands/{init.ts,install.ts,update.ts,publish.ts,auth.ts,run.ts,yank.ts} (stubs with help text)
+- src/commands/{init.ts,add.ts,update.ts,publish.ts,auth.ts,run.ts,yank.ts} (stubs with help text)
 - src/utils/{context.ts,logger.ts,config.ts,auth.ts}
 - src/types/{config.ts,api.ts}
 - tests/unit/utils/{config.test.ts,logger.test.ts}

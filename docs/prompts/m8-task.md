@@ -19,7 +19,7 @@ FILES TO CREATE/MODIFY
 - src/commands/unlink.ts
 - src/utils/links.ts (read/write links.json; validate paths; resolve package names)
 - src/utils/symlink.ts (create/remove symlink; Windows fallback to junction/copy)
-- Modify src/commands/install.ts to skip CDN install if dep is marked linked
+- Modify src/commands/add.ts to skip CDN install if dep is marked linked
 - tests/unit/utils/{links.test.ts,symlink.test.ts}
 - tests/integration/{link-register.test.ts,link-project.test.ts,unlink.test.ts}
 - tests/e2e/m8-link-unlink-flow.test.ts

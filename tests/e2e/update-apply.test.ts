@@ -135,11 +135,11 @@ describe('E2E: update → auto-apply', () => {
     }
   });
 
-  it('installs without apply, then update applies and creates outputs', async () => {
+  it('adds without apply, then update applies and creates outputs', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     await run('node', [cli, 'init', '--name', '@e2e/update-demo'], { cwd: tmpProj, env });
     // Install specific version without apply
-    await run('node', [cli, 'install', '--no-apply', '@terrazul/starter@1.0.0'], {
+    await run('node', [cli, 'add', '--no-apply', '@terrazul/starter@1.0.0'], {
       cwd: tmpProj,
       env,
     });

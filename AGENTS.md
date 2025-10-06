@@ -65,7 +65,7 @@ cli/
 │  ├─ index.ts                     # command wiring (commander)
 │  ├─ commands/                    # Imperative shell only
 │  │  ├─ init.ts
-│  │  ├─ install.ts
+│  │  ├─ add.ts
 │  │  ├─ update.ts
 │  │  ├─ publish.ts
 │  │  ├─ auth.ts
@@ -267,7 +267,7 @@ cli/
 - `[profiles]` is optional and maps profile names to the packages that should render when the
   profile is active. Profiles are mutually exclusive at runtime; `tz apply --profile focus` and
   `tz run --profile focus` only render packages listed under `focus`. When a package is installed
-  with `tz install --profile focus @scope/name@1.0.0`, the CLI automatically appends it to the
+  with `tz add --profile focus @scope/name@1.0.0`, the CLI automatically appends it to the
   specified profile in `agents.toml`.
 
 ### `agents-lock.toml`
@@ -326,7 +326,7 @@ cli/
 ## 12) Commands
 
 - `tz init` – Create `agents.toml`, detect `.claude/`, update `.gitignore`
-- `tz install [@scope/name@range]` – Resolve, download (CDN), verify SHA‑256, extract to `agent_modules/`, symlink for integrations, write lockfile, generate `TERRAZUL.md`. Use `--profile <name>` to append the installed package to a manifest profile.
+- `tz add [@scope/name@range]` – Resolve, download (CDN), verify SHA‑256, extract to `agent_modules/`, symlink for integrations, write lockfile, generate `TERRAZUL.md`. Use `--profile <name>` to append the added package to a manifest profile.
 - `tz uninstall [package]` – Remove package from `agent_modules/`, clean up symlinks, update manifests and lockfile; also prunes the package from any manifest profiles.
 - `tz update [package] [--dry-run]` – Highest compatible non‑yanked versions; atomic replacement; regenerate lockfile + md
 - `tz publish` – Validate structure; build tarball; POST to registry
@@ -419,7 +419,7 @@ tz extract --from .claude --out ../my-package --name @user/pkg --pkg-version 0.1
 - Removes symlink from `agent_modules/`.
 - Removes entry from `~/.terrazul/links.json` (only when run inside the linked package directory, unless `--global`).
 - Removes “linked” marker in `agents.toml`.
-- Leaves lock/install state otherwise unchanged; user may run `tz install` to re‑install the published version.
+- Leaves lockfile state otherwise unchanged; user may run `tz add` to reinstall the published version.
 
 **Acceptance Criteria**
 
@@ -761,4 +761,4 @@ IMPORTANT IMPORTANT IMPORTANT, REQUIRED RUN AND FIX ANY ERRORS FROM
   - Supports Claude extras: `settings`, `settingsLocal`, `mcpServers`, `subagentsDir`.
   - Uses Handlebars context `{ project, pkg, env, now, files }`.
   - Safe path handling ensures outputs stay within project root.
-  - `tz install` integrates apply by default; disable with `--no-apply`, overwrite with `--apply-force`.
+  - `tz add` integrates apply by default; disable with `--no-apply`, overwrite with `--apply-force`.

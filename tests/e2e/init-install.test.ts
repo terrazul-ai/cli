@@ -96,7 +96,7 @@ async function waitForHealth(base: string, timeoutMs = 10_000): Promise<void> {
   }
 }
 
-describe('E2E: init → install', () => {
+describe('E2E: init → add', () => {
   let PORT = 0;
   let BASE = '';
   let child: ChildProcessByStdio<null, Readable, Readable> | null = null;
@@ -141,7 +141,7 @@ describe('E2E: init → install', () => {
     }
   });
 
-  it('initializes project and installs explicit spec', async () => {
+  it('initializes project and adds explicit spec', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     // init
     await run('node', [cli, 'init', '--name', '@e2e/demo', '--description', 'E2E Demo'], {
@@ -151,8 +151,8 @@ describe('E2E: init → install', () => {
     const manifest = await fs.readFile(path.join(tmpProj, 'agents.toml'), 'utf8');
     expect(manifest).toMatch(/name = "@e2e\/demo"/);
 
-    // install explicit version
-    await run('node', [cli, 'install', '@terrazul/starter@1.0.0'], { cwd: tmpProj, env });
+    // add explicit version
+    await run('node', [cli, 'add', '@terrazul/starter@1.0.0'], { cwd: tmpProj, env });
 
     // verify agent_modules symlink/dir exists
     const link = path.join(tmpProj, 'agent_modules', '@terrazul', 'starter');
@@ -165,9 +165,9 @@ describe('E2E: init → install', () => {
     expect(lock).toMatch(/version = "1.0.0"/);
     expect(lock).toMatch(/integrity = "sha256-/);
 
-    // idempotent second install
+    // idempotent second add
     const _before = lock;
-    await run('node', [cli, 'install', '@terrazul/starter@1.0.0'], { cwd: tmpProj, env });
+    await run('node', [cli, 'add', '@terrazul/starter@1.0.0'], { cwd: tmpProj, env });
     const after = await fs.readFile(path.join(tmpProj, 'agents-lock.toml'), 'utf8');
     expect(after).toEqual(after); // ensure readable; determinism validated separately by order
     expect(after).toContain('"@terrazul/starter"');
@@ -179,14 +179,14 @@ describe('E2E: init → install', () => {
 
     // missing package
     await expect(
-      run('node', [cli, 'install', '@not/found@1.0.0'], { cwd: tmpProj, env }),
+      run('node', [cli, 'add', '@not/found@1.0.0'], { cwd: tmpProj, env }),
     ).rejects.toThrow(
       /Package not found in registry|Package '@not\/found' not found|Unexpected registry response|VERSION_NOT_FOUND|NETWORK_ERROR/,
     );
 
     // yanked version (base@2.1.0 is yanked in dummy)
     await expect(
-      run('node', [cli, 'install', '@terrazul/base@2.1.0'], { cwd: tmpProj, env }),
+      run('node', [cli, 'add', '@terrazul/base@2.1.0'], { cwd: tmpProj, env }),
     ).rejects.toThrow(/yanked/i);
   });
 });

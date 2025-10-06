@@ -84,7 +84,7 @@ async function ensureBuilt(): Promise<string> {
   return cli;
 }
 
-describe('integration: install with profile flag', () => {
+describe('integration: add with profile flag', () => {
   let PORT = 0;
   let BASE = '';
   let child: ChildProcessByStdio<null, Readable, Readable> | null = null;
@@ -124,18 +124,14 @@ describe('integration: install with profile flag', () => {
     await fs.rm(tmpHome, { recursive: true, force: true });
   });
 
-  it('adds the installed package to the requested profile', async () => {
+  it('adds the package to the requested profile', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     await run('node', [cli, 'init', '--name', '@e2e/profile-install'], { cwd: tmpProj, env });
 
-    await run(
-      'node',
-      [cli, 'install', '--no-apply', '--profile', 'focus', '@terrazul/starter@1.0.0'],
-      {
-        cwd: tmpProj,
-        env,
-      },
-    );
+    await run('node', [cli, 'add', '--no-apply', '--profile', 'focus', '@terrazul/starter@1.0.0'], {
+      cwd: tmpProj,
+      env,
+    });
 
     const manifest = await fs.readFile(path.join(tmpProj, 'agents.toml'), 'utf8');
     expect(manifest).toContain('[profiles]');

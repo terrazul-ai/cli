@@ -142,7 +142,7 @@ describe('integration: update flags', () => {
   it('--no-apply skips rendering', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     await run('node', [cli, 'init', '--name', '@e2e/up-noapply'], { cwd: tmpProj, env });
-    await run('node', [cli, 'install', '--no-apply', '@terrazul/starter@1.0.0'], {
+    await run('node', [cli, 'add', '--no-apply', '@terrazul/starter@1.0.0'], {
       cwd: tmpProj,
       env,
     });
@@ -153,7 +153,7 @@ describe('integration: update flags', () => {
   it('--apply-force overwrites existing files', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     await run('node', [cli, 'init', '--name', '@e2e/up-force'], { cwd: tmpProj, env });
-    await run('node', [cli, 'install', '--no-apply', '@terrazul/starter@1.0.0'], {
+    await run('node', [cli, 'add', '--no-apply', '@terrazul/starter@1.0.0'], {
       cwd: tmpProj,
       env,
     });

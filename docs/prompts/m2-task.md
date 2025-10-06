@@ -1,5 +1,5 @@
 SYSTEM ROLE
-Implement storage (CAS + safe tar extraction), lockfile, registry client (dummy API), `tz init`, and `tz install` end‑to‑end with a dummy registry and real tar fixtures. Work directly in the repo.
+Implement storage (CAS + safe tar extraction), lockfile, registry client (dummy API), `tz init`, and `tz add` end‑to‑end with a dummy registry and real tar fixtures. Work directly in the repo.
 
 CONTEXT
 Security: block path traversal/symlinks; SHA‑256 integrity. Lockfile: deterministic TOML with `sha256-<base64>`. Dummy registry returns JSON then redirect to CDN URL for tarball bytes.
@@ -14,7 +14,7 @@ SCOPE
    - GET package info, versions; GET tarball metadata (`{url}`) → fetch binary; bearer auth if token exists; refresh stub.
 4. `tz init`:
    - Create `agents.toml`; detect `.claude/` and set compatibility; update `.gitignore` (`agent_modules/`).
-5. `tz install [@scope/name@range]?`:
+5. `tz add [@scope/name@range]?`:
    - If no arg, read `[dependencies]` from `agents.toml`.
    - Temporary resolver: pick highest satisfying version from dummy API (full SAT comes in M3).
    - Download → verify → extract to `agent_modules/`.
@@ -27,7 +27,7 @@ FILES TO CREATE/MODIFY
 
 - src/core/{storage.ts,lock-file.ts,registry-client.ts,package-manager.ts,errors.ts}
 - src/utils/{fs.ts,hash.ts,terrazul-md.ts}
-- src/commands/{init.ts (real), install.ts (real)}
+- src/commands/{init.ts (real), add.ts (real)}
 - tools/{dummy-registry.ts,make-fixtures.ts}
 - fixtures/{work/\*\*,packages/@terrazul/starter/1.0.0.tgz}
 - tests/unit/core/{storage.test.ts,lock-file.test.ts,registry-client.test.ts}

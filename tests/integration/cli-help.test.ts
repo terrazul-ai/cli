@@ -37,7 +37,7 @@ describe('cli --help lists commands', () => {
     const cli = path.join(process.cwd(), 'dist', 'tz.mjs');
     const { stdout } = await run('node', [cli, '--help'] as string[]);
     expect(stdout).toMatch(/init/);
-    expect(stdout).toMatch(/install/);
+    expect(stdout).toMatch(/add/);
     expect(stdout).toMatch(/update/);
     expect(stdout).toMatch(/publish/);
     expect(stdout).toMatch(/auth/);

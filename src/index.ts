@@ -1,12 +1,12 @@
 import { Command } from 'commander';
 
+import { registerAddCommand } from './commands/add.js';
 import { registerApplyCommand } from './commands/apply.js';
 import { registerAuthCommand } from './commands/auth.js';
 import { registerCacheCommand } from './commands/cache.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerExtractCommand } from './commands/extract.js';
 import { registerInitCommand } from './commands/init.js';
-import { registerInstallCommand } from './commands/install.js';
 import { registerLinkCommand } from './commands/link.js';
 import { registerLoginCommand } from './commands/login.js';
 import { registerLogoutCommand } from './commands/logout.js';
@@ -32,7 +32,7 @@ function buildProgram(argv: string[]): Command {
 
   // Register commands (thin orchestration only)
   registerInitCommand(program, createCLIContext);
-  registerInstallCommand(program, createCLIContext);
+  registerAddCommand(program, createCLIContext);
   registerUpdateCommand(program, createCLIContext);
   registerPublishCommand(program, createCLIContext);
   registerRunCommand(program, createCLIContext);
