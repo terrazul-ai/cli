@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0](https://github.com/terrazul-ai/cli/compare/v0.5.13...v0.6.0) (2025-10-06)
+
+
+### Features
+
+* add subagent selection step to extract wizard ([02c0833](https://github.com/terrazul-ai/cli/commit/02c0833c3fe28a045b044081ece6abd4fd9818b8))
+* scope extract wizard default name to profile ([592dcde](https://github.com/terrazul-ai/cli/commit/592dcdeef5b4ea0b76bc204a9073b64e82ace6a7))
+
+
+### Bug Fixes
+
+* **ci:** correct workflow location and enable full platform matrix ([63071dd](https://github.com/terrazul-ai/cli/commit/63071dd75f5b6f5161e2e2d8afab03564c75f102))
+* **ci:** move Release Please workflow to correct location ([466dd2c](https://github.com/terrazul-ai/cli/commit/466dd2c7a068144b35e5d0eea1ccd256da9e6594))
+* **ci:** remove restrictive path filters and fix monorepo references ([2a6edc9](https://github.com/terrazul-ai/cli/commit/2a6edc9cb546f90053d462372b2aab8b58c63d84))
+* **ci:** restore RELEASE_PLEASE_TOKEN in workflow ([9aae885](https://github.com/terrazul-ai/cli/commit/9aae885835b0cda6dcfd888971c06af8913ba890))
+* **ci:** update Node.js version to v18.20.4 for pnpm compatibility ([2c82786](https://github.com/terrazul-ai/cli/commit/2c82786b223a05947306a12c63b383f509c6a4bc))
+* **copy:** plus ci ([b1771ea](https://github.com/terrazul-ai/cli/commit/b1771ea9807b08a676995192f139ae7b16a7f004))
+* Fixes publish to use the latest api format ([869211a](https://github.com/terrazul-ai/cli/commit/869211a6e24be7399e2bb9532a4182efb507df78))
+* resolve all TypeScript/ESLint errors with proper type annotations ([f73b5b6](https://github.com/terrazul-ai/cli/commit/f73b5b6a3d65f424abf1f16ac636770e24d1d717))
+* **tests:** resolve ESM compatibility and test assertion issues ([a1c745b](https://github.com/terrazul-ai/cli/commit/a1c745b613f634408585b9037a3542aa9099dde5))
+* **tools:** skip Node version check when not launching in verify-sea-package ([b626832](https://github.com/terrazul-ai/cli/commit/b6268323f9c9971fe5032f1ee8d5130ece5d34b6))
+
 ## [0.4.2-m0](https://github.com/terrazul-ai/terrazul/compare/v0.4.1-m0...v0.4.2-m0) (2025-10-02)
 
 
