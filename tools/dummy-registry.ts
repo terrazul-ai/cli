@@ -14,11 +14,15 @@ import {
   rmSync,
   writeFileSync,
 } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 import os from 'os';
 import crypto from 'crypto';
 import * as tar from 'tar';
 import Busboy from 'busboy';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const PORT = Number(process.env.PORT || 8787);
 const FIXTURES_DIR = join(__dirname, '../fixtures/packages');
