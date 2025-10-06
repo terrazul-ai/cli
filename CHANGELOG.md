@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/terrazul-ai/cli/compare/v0.6.0...v0.7.0) (2025-10-06)
+
+
+### Features
+
+* **commands:** rename install command to add ([00e80da](https://github.com/terrazul-ai/cli/commit/00e80da450182ea4b2d179d2a9438f8ae0979681))
+* **commands:** rename install command to add ([ac4ace5](https://github.com/terrazul-ai/cli/commit/ac4ace54d46feb9426e21699748cbce40931fe7f))
+
 ## [0.6.0](https://github.com/terrazul-ai/cli/compare/v0.5.13...v0.6.0) (2025-10-06)
 
 
