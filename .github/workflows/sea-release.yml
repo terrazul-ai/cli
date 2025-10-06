@@ -1,12 +1,6 @@
 name: SEA Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-      - 'sea-v*'
-      - 'cli-v*'
-      - 'terrazul-cli-v*'
   release:
     types:
       - published
@@ -445,18 +439,12 @@ jobs:
     needs: stage-release
     runs-on: ubuntu-24.04
     if: >-
-      (github.event_name == 'push' && (
-        startsWith(github.ref_name, 'v') ||
-        startsWith(github.ref_name, 'sea-v') ||
-        startsWith(github.ref_name, 'cli-v') ||
-        startsWith(github.ref_name, 'terrazul-cli-v')
-      )) ||
-      (github.event_name == 'release' && (
+      github.event_name == 'release' && (
         startsWith(github.event.release.tag_name, 'v') ||
         startsWith(github.event.release.tag_name, 'sea-v') ||
         startsWith(github.event.release.tag_name, 'cli-v') ||
         startsWith(github.event.release.tag_name, 'terrazul-cli-v')
-      ))
+      )
     permissions:
       contents: read
       id-token: write
