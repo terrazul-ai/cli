@@ -924,6 +924,9 @@ export function ExtractWizard({
     if (currentStep === 'metadata') {
       hints.push({ key: 'Tab', label: 'Next field' });
     }
+    if (currentStep === 'preview') {
+      hints.push({ key: 'C', label: 'Copy summary', hidden: !reviewSummary });
+    }
     hints.push({ key: 'V', label: logsVisible ? 'Hide logs' : 'Show logs' });
     hints.push({ key: '?', label: 'Help' });
     return hints;
@@ -942,6 +945,7 @@ export function ExtractWizard({
     stepIndex,
     mcpItems.length,
     subagentItems.length,
+    reviewSummary,
   ]);
 
   if (status === 'completed' && result) {

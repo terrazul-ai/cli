@@ -47,6 +47,8 @@ async function setupProject(): Promise<TempPaths> {
         coder: {
           command: path.join(project, 'bin', 'coder'),
           args: ['--workspace', path.join(project, 'workspace')],
+          transport: { type: 'stdio' },
+          metadata: { keep: 'yes' },
         },
       },
       null,
@@ -191,6 +193,12 @@ describe('executeExtract', () => {
     const mcpJson = mcpRaw && typeof mcpRaw === 'object' ? (mcpRaw as Record<string, unknown>) : {};
     expect(Object.keys(mcpJson)).toEqual(['coder', 'embeddings', 'search']);
     expect(JSON.stringify(mcpJson)).not.toContain(paths.project);
+    const coder =
+      mcpJson.coder && typeof mcpJson.coder === 'object'
+        ? (mcpJson.coder as Record<string, unknown>)
+        : {};
+    expect(coder.transport).toEqual({ type: 'stdio' });
+    expect(coder.metadata).toEqual({ keep: 'yes' });
     expect(result.summary.outputs).toContain('templates/claude/mcp_servers.json.hbs');
 
     // Legacy performExtract should still succeed and produce same manifest when everything included
@@ -242,5 +250,11 @@ describe('executeExtract', () => {
     ) as unknown;
     const mcpJson = mcpRaw && typeof mcpRaw === 'object' ? (mcpRaw as Record<string, unknown>) : {};
     expect(Object.keys(mcpJson)).toEqual(['coder', 'search']);
+    const coder =
+      mcpJson.coder && typeof mcpJson.coder === 'object'
+        ? (mcpJson.coder as Record<string, unknown>)
+        : {};
+    expect(coder.transport).toEqual({ type: 'stdio' });
+    expect(coder.metadata).toEqual({ keep: 'yes' });
   });
 });

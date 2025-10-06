@@ -69,6 +69,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         source: 'codex',
         origin: '~/.codex/config.toml',
         definition: { command: 'run-embeddings', args: [], env: {} },
+        config: { command: 'run-embeddings' },
       },
       {
         id: 'project:search',
@@ -76,6 +77,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         source: 'project',
         origin: '/projects/demo/.mcp.json',
         definition: { command: './scripts/search.sh', args: [], env: {} },
+        config: { command: './scripts/search.sh' },
       },
     ],
     ...overrides,

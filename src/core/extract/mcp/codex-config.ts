@@ -56,6 +56,11 @@ export function parseCodexMcpServers(
         args: sanitizedArgs,
         env: sanitizedEnv ?? {},
       },
+      config: {
+        command: rewritePath(commandRaw, projectRootAbs),
+        ...(sanitizedArgs.length > 0 ? { args: sanitizedArgs } : {}),
+        ...(sanitizedEnv && Object.keys(sanitizedEnv).length > 0 ? { env: sanitizedEnv } : {}),
+      },
     });
   }
 
