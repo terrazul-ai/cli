@@ -67,6 +67,7 @@ export interface ExtractPlan {
 export interface ExecuteOptions extends ExtractOptions {
   includedArtifacts: string[];
   includedMcpServers: string[];
+  includedSubagentFiles?: string[];
 }
 
 export type LoggerLike = Pick<Logger, 'info' | 'warn' | 'error' | 'debug' | 'isVerbose'>;

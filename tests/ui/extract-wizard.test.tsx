@@ -197,7 +197,6 @@ describe('ExtractWizard', () => {
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 6/6 — Review & Extract');
     await expectFrameContains(lastFrame, 'Enter • Extract package');
-    await expectFrameContains(lastFrame, 'C • Copy summary');
 
     stdin.write('\r');
 

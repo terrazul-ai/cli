@@ -2,8 +2,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { ensureDir } from '../../utils/fs.js';
+import { resolveWithin } from '../../utils/path.js';
+import { ErrorCode, TerrazulError } from '../errors.js';
 import { buildAgentsToml, type ExportMap } from './build-manifest.js';
-import { TerrazulError, ErrorCode } from '../errors.js';
 import { parseCodexMcpServers } from './mcp/codex-config.js';
 import { parseProjectMcpServers } from './mcp/project-config.js';
 import {
@@ -13,14 +15,12 @@ import {
   sanitizeSettingsJson,
   sanitizeText,
 } from './sanitize.js';
-import { ensureDir } from '../../utils/fs.js';
-import { resolveWithin } from '../../utils/path.js';
 
 import type {
+  ExecuteOptions,
   ExtractOptions,
   ExtractPlan,
   ExtractResult,
-  ExecuteOptions,
   LoggerLike,
   ManifestPatch,
   MCPServerPlan,
@@ -28,14 +28,42 @@ import type {
 } from './types.js';
 
 export type {
-  ExtractOptions,
-  ExtractResult,
-  ExtractPlan,
   ExecuteOptions,
+  ExtractOptions,
+  ExtractPlan,
+  ExtractResult,
+  LoggerLike,
   MCPServerPlan,
   PlannedOutput,
-  LoggerLike,
 } from './types.js';
+
+const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
+const CLAUDE_TEMPLATE_PREFIX = 'templates/claude/agents/';
+const TEMPLATE_SUFFIX = '.hbs';
+
+export function getSubagentIdFromTemplatePath(relativePath: string): string | null {
+  if (!relativePath.startsWith(CLAUDE_TEMPLATE_PREFIX)) return null;
+  const trimmed = relativePath.slice(CLAUDE_TEMPLATE_PREFIX.length);
+  if (trimmed.endsWith(TEMPLATE_SUFFIX)) {
+    return trimmed.slice(0, -TEMPLATE_SUFFIX.length);
+  }
+  return trimmed;
+}
+
+export function getSubagentIdFromSourcePath(absPath: string): string {
+  const segments = absPath.split(path.sep);
+  const claudeIndex = segments.indexOf('.claude');
+  if (claudeIndex >= 0 && segments[claudeIndex + 1] === 'agents') {
+    return segments.slice(claudeIndex + 2).join('/');
+  }
+  return segments.slice(-1).join('/');
+}
+
+export function getPlanSubagentIds(plan: ExtractPlan): string[] {
+  const raw = plan.detected[CLAUDE_SUBAGENT_ARTIFACT_ID];
+  if (!Array.isArray(raw)) return [];
+  return raw.map((abs) => getSubagentIdFromSourcePath(abs)).filter((id) => id.length > 0);
+}
 
 async function pathExists(p: string): Promise<boolean> {
   try {
@@ -537,16 +565,58 @@ export async function executeExtract(
   const outAbs = path.resolve(execOptions.out);
   const willWrite = !execOptions.dryRun;
   const selectedArtifacts = new Set(execOptions.includedArtifacts ?? []);
+  const includedSubagentSet = new Set(execOptions.includedSubagentFiles ?? []);
+  const canonicalSubagentPatch = plan.outputs.find(
+    (output) => output.artifactId === CLAUDE_SUBAGENT_ARTIFACT_ID && output.manifestPatch,
+  )?.manifestPatch;
 
-  const outputsToWrite = plan.outputs.filter(
-    (output: PlannedOutput) => output.alwaysInclude || selectedArtifacts.has(output.artifactId),
-  );
+  const outputsToWrite: PlannedOutput[] = [];
+  const subagentIndexes: number[] = [];
+
+  for (const output of plan.outputs) {
+    if (output.artifactId === CLAUDE_SUBAGENT_ARTIFACT_ID) {
+      if (!selectedArtifacts.has(CLAUDE_SUBAGENT_ARTIFACT_ID)) continue;
+      const subagentId = getSubagentIdFromTemplatePath(output.relativePath);
+      if (includedSubagentSet.size > 0 && (!subagentId || !includedSubagentSet.has(subagentId))) {
+        continue;
+      }
+      outputsToWrite.push(output);
+      subagentIndexes.push(outputsToWrite.length - 1);
+      continue;
+    }
+    if (output.alwaysInclude || selectedArtifacts.has(output.artifactId)) {
+      outputsToWrite.push(output);
+    }
+  }
+
+  if (subagentIndexes.length > 0 && canonicalSubagentPatch) {
+    const hasPatch = subagentIndexes.some((idx) => outputsToWrite[idx].manifestPatch);
+    if (!hasPatch) {
+      const firstIdx = subagentIndexes[0];
+      outputsToWrite[firstIdx] = {
+        ...outputsToWrite[firstIdx],
+        manifestPatch: canonicalSubagentPatch,
+      };
+    }
+  }
 
   const detected: Record<string, string | string[]> = {};
   for (const [key, value] of Object.entries(plan.detected)) {
-    if (selectedArtifacts.has(key)) {
-      detected[key] = value;
+    if (!selectedArtifacts.has(key)) continue;
+    if (key === CLAUDE_SUBAGENT_ARTIFACT_ID && Array.isArray(value)) {
+      if (includedSubagentSet.size === 0) {
+        detected[key] = value;
+      } else {
+        const filtered = value.filter((abs) =>
+          includedSubagentSet.has(getSubagentIdFromSourcePath(abs)),
+        );
+        if (filtered.length > 0) {
+          detected[key] = filtered;
+        }
+      }
+      continue;
     }
+    detected[key] = value;
   }
 
   if (Object.keys(detected).length === 0) {
@@ -655,7 +725,8 @@ export async function performExtract(
   const execOptions: ExecuteOptions = {
     ...options,
     includedArtifacts: Object.keys(plan.detected),
-    includedMcpServers: plan.mcpServers.map((server: MCPServerPlan) => server.id),
+    includedMcpServers: plan.mcpServers.map((server) => server.id),
+    includedSubagentFiles: getPlanSubagentIds(plan),
   };
   return await executeExtract(plan, execOptions, logger);
 }

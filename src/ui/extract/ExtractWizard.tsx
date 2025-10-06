@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -8,6 +10,9 @@ import {
   type ExtractOptions,
   type ExtractPlan,
   type ExtractResult,
+  getPlanSubagentIds,
+  getSubagentIdFromSourcePath,
+  getSubagentIdFromTemplatePath,
   type LoggerLike,
 } from '../../core/extract/orchestrator.js';
 import { parseSafePackageName } from '../../utils/path.js';
@@ -19,15 +24,17 @@ import {
   type SelectableListItem,
   type StatusMessage,
   WizardFrame,
-} from './components';
-import { buildReviewSummary, getArtifactLabel, type ReviewSummary } from './summary';
+} from './components.js';
+import { buildReviewSummary, getArtifactLabel, type ReviewSummary } from './summary.js';
 
 const TASK_NAME = 'Extract';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SPINNER_INTERVAL = 96;
 
-type StepId = 'artifacts' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
+const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
+
+type StepId = 'artifacts' | 'subagents' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
 
 type OptionToggleId = 'includeClaudeLocal' | 'includeClaudeUser' | 'dryRun' | 'force';
 
@@ -75,6 +82,11 @@ const STEP_CONFIG: Record<StepId, StepConfig> = {
   artifacts: {
     title: 'Select Artifacts',
     instruction: 'Choose which detected artifacts to include. Use ↑/↓ to move, Space to toggle.',
+    primaryLabel: 'Continue',
+  },
+  subagents: {
+    title: 'Select Claude Agent Files',
+    instruction: 'Toggle Claude agent files from .claude/agents to include in the package.',
     primaryLabel: 'Continue',
   },
   mcp: {
@@ -136,6 +148,7 @@ function useSpinner(active: boolean): string {
 
 function computeStepOrder(plan: ExtractPlan | null): StepId[] {
   const order: StepId[] = ['artifacts'];
+  if (plan && getPlanSubagentIds(plan).length > 0) order.push('subagents');
   if (plan && plan.mcpServers.length > 0) order.push('mcp');
   order.push('output', 'metadata', 'options', 'preview');
   return order;
@@ -165,6 +178,8 @@ export function ExtractWizard({
 
   const [artifactCursor, setArtifactCursor] = useState(0);
   const [selectedArtifacts, setSelectedArtifacts] = useState<Set<string>>(new Set());
+  const [subagentCursor, setSubagentCursor] = useState(0);
+  const [selectedSubagents, setSelectedSubagents] = useState<Set<string>>(new Set());
   const [mcpCursor, setMcpCursor] = useState(0);
   const [selectedMcp, setSelectedMcp] = useState<Set<string>>(new Set());
   const [optionsCursor, setOptionsCursor] = useState(0);
@@ -177,6 +192,7 @@ export function ExtractWizard({
   const analysisTokenRef = useRef(0);
   const initializedRef = useRef(false);
   const lastArtifactIdsRef = useRef<Set<string>>(new Set());
+  const lastSubagentIdsRef = useRef<Set<string>>(new Set());
   const lastMcpIdsRef = useRef<Set<string>>(new Set());
   const ctrlCRef = useRef<{
     timestamp: number;
@@ -248,8 +264,28 @@ export function ExtractWizard({
       }
       return new Set(available);
     });
+    const visibleArtifacts = Object.keys(nextPlan.detected).filter(
+      (id) => id !== CLAUDE_SUBAGENT_ARTIFACT_ID,
+    );
     setArtifactCursor((prev) => {
-      const maxIndex = Math.max(Object.keys(nextPlan.detected).length - 1, 0);
+      const maxIndex = Math.max(visibleArtifacts.length - 1, 0);
+      return Math.min(prev, maxIndex);
+    });
+    const availableSubagents = getPlanSubagentIds(nextPlan);
+    setSelectedSubagents((prev) => {
+      if (availableSubagents.length === 0) return new Set();
+      if (preferExistingSelections && prev.size > 0) {
+        const prevDetected = lastSubagentIdsRef.current;
+        const next = new Set<string>();
+        for (const id of availableSubagents) {
+          if (prev.has(id) || !prevDetected.has(id)) next.add(id);
+        }
+        if (next.size > 0) return next;
+      }
+      return new Set(availableSubagents);
+    });
+    setSubagentCursor((prev) => {
+      const maxIndex = Math.max(availableSubagents.length - 1, 0);
       return Math.min(prev, maxIndex);
     });
     setSelectedMcp((prev) => {
@@ -270,7 +306,8 @@ export function ExtractWizard({
       return Math.min(prev, maxIndex);
     });
     lastArtifactIdsRef.current = new Set(Object.keys(nextPlan.detected));
-    lastMcpIdsRef.current = new Set(nextPlan.mcpServers.map((s: { id: string }) => s.id));
+    lastSubagentIdsRef.current = new Set(availableSubagents);
+    lastMcpIdsRef.current = new Set(nextPlan.mcpServers.map((s) => s.id));
   }, []);
 
   const runAnalysis = useCallback(
@@ -321,17 +358,72 @@ export function ExtractWizard({
     }
   }, [status, result, pushLog, onComplete, exit]);
 
+  useEffect(() => {
+    if (!plan) return;
+    setSelectedArtifacts((prev) => {
+      const has = prev.has(CLAUDE_SUBAGENT_ARTIFACT_ID);
+      if (selectedSubagents.size > 0) {
+        if (has) return prev;
+        const next = new Set(prev);
+        next.add(CLAUDE_SUBAGENT_ARTIFACT_ID);
+        return next;
+      }
+      if (!has) return prev;
+      const next = new Set(prev);
+      next.delete(CLAUDE_SUBAGENT_ARTIFACT_ID);
+      return next;
+    });
+  }, [plan, selectedSubagents]);
+
   const artifactItems: SelectableListItem[] = useMemo(() => {
     if (!plan) return [];
-    return Object.keys(plan.detected).map((id) => ({
-      id,
-      label: getArtifactLabel(id),
-      detail: Array.isArray(plan.detected[id])
-        ? plan.detected[id].join(', ')
-        : (plan.detected[id] ?? undefined),
-      selected: selectedArtifacts.has(id),
-    }));
+    return Object.keys(plan.detected)
+      .filter((id) => id !== CLAUDE_SUBAGENT_ARTIFACT_ID)
+      .map((id) => ({
+        id,
+        label: getArtifactLabel(id),
+        detail: Array.isArray(plan.detected[id])
+          ? plan.detected[id].join(', ')
+          : (plan.detected[id] ?? undefined),
+        selected: selectedArtifacts.has(id),
+      }));
   }, [plan, selectedArtifacts]);
+
+  const subagentItems: SelectableListItem[] = useMemo(() => {
+    if (!plan) return [];
+    const detailMap = new Map<string, string>();
+    const detected = plan.detected[CLAUDE_SUBAGENT_ARTIFACT_ID];
+    if (Array.isArray(detected)) {
+      for (const abs of detected) {
+        const id = getSubagentIdFromSourcePath(abs);
+        const rel = path.relative(plan.projectRoot, abs).split(path.sep).join('/');
+        detailMap.set(id, rel);
+      }
+    }
+    const outputs = plan.outputs.filter(
+      (output) => output.artifactId === CLAUDE_SUBAGENT_ARTIFACT_ID,
+    );
+    if (outputs.length > 0) {
+      const items: SelectableListItem[] = [];
+      for (const output of outputs) {
+        const id = getSubagentIdFromTemplatePath(output.relativePath);
+        if (!id) continue;
+        items.push({
+          id,
+          label: id,
+          detail: detailMap.get(id),
+          selected: selectedSubagents.has(id),
+        });
+      }
+      return items;
+    }
+    return Array.from(detailMap.entries()).map(([id, rel]) => ({
+      id,
+      label: id,
+      detail: rel,
+      selected: selectedSubagents.has(id),
+    }));
+  }, [plan, selectedSubagents]);
 
   const mcpItems: SelectableListItem[] = useMemo(() => {
     if (!plan) return [];
@@ -435,6 +527,7 @@ export function ExtractWizard({
       ...options,
       includedArtifacts: Array.from(selectedArtifacts),
       includedMcpServers: Array.from(selectedMcp),
+      includedSubagentFiles: Array.from(selectedSubagents),
     };
     lastExecOptionsRef.current = execOptions;
     try {
@@ -451,7 +544,17 @@ export function ExtractWizard({
         if (error instanceof Error) logger.error(error.stack ?? message);
       }
     }
-  }, [plan, selectedArtifacts, selectedMcp, options, metadataError, execute, pushLog, logger]);
+  }, [
+    plan,
+    selectedArtifacts,
+    selectedMcp,
+    selectedSubagents,
+    options,
+    metadataError,
+    execute,
+    pushLog,
+    logger,
+  ]);
 
   const toggleArtifact = useCallback((id: string) => {
     setSelectedArtifacts((prev) => {
@@ -508,10 +611,33 @@ export function ExtractWizard({
   const selectAllArtifacts = useCallback(() => {
     if (!plan) return;
     setSelectedArtifacts(new Set(Object.keys(plan.detected)));
+    const available = getPlanSubagentIds(plan);
+    if (available.length > 0) {
+      setSelectedSubagents(new Set(available));
+    }
   }, [plan]);
 
   const clearArtifacts = useCallback(() => {
     setSelectedArtifacts(new Set());
+    setSelectedSubagents(new Set());
+  }, []);
+
+  const toggleSubagent = useCallback((id: string) => {
+    setSelectedSubagents((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAllSubagents = useCallback(() => {
+    if (!plan) return;
+    setSelectedSubagents(new Set(getPlanSubagentIds(plan)));
+  }, [plan]);
+
+  const clearSubagents = useCallback(() => {
+    setSelectedSubagents(new Set());
   }, []);
 
   const selectAllMcp = useCallback(() => {
@@ -627,6 +753,30 @@ export function ExtractWizard({
         }
         if (lower === 'n') {
           clearArtifacts();
+          return;
+        }
+        break;
+      }
+      case 'subagents': {
+        if (key.upArrow) {
+          setSubagentCursor((prev) => Math.max(prev - 1, 0));
+          return;
+        }
+        if (key.downArrow) {
+          setSubagentCursor((prev) => Math.min(prev + 1, Math.max(subagentItems.length - 1, 0)));
+          return;
+        }
+        if (input === ' ') {
+          const active = subagentItems[subagentCursor];
+          if (active) toggleSubagent(active.id);
+          return;
+        }
+        if (lower === 'a') {
+          selectAllSubagents();
+          return;
+        }
+        if (lower === 'n') {
+          clearSubagents();
           return;
         }
         break;
@@ -784,12 +934,14 @@ export function ExtractWizard({
     metadataError,
     primaryDisabled,
     selectedArtifacts.size,
+    selectedSubagents.size,
     selectedMcp.size,
     optionItems,
     optionItems.length,
     stepConfig.primaryLabel,
     stepIndex,
     mcpItems.length,
+    subagentItems.length,
   ]);
 
   if (status === 'completed' && result) {
@@ -840,7 +992,22 @@ export function ExtractWizard({
               emptyMessage="No artifacts detected"
             />
             <Text dimColor>
-              {selectedArtifacts.size}/{artifactItems.length} selected
+              {selectedArtifacts.size -
+                (selectedArtifacts.has(CLAUDE_SUBAGENT_ARTIFACT_ID) ? 1 : 0)}
+              /{artifactItems.length} selected
+            </Text>
+          </Box>
+        );
+      case 'subagents':
+        return (
+          <Box flexDirection="column" gap={1}>
+            <SelectableList
+              items={subagentItems}
+              activeIndex={subagentCursor}
+              emptyMessage="No Claude agent files detected"
+            />
+            <Text dimColor>
+              {selectedSubagents.size}/{subagentItems.length} selected
             </Text>
           </Box>
         );
