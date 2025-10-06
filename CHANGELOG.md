@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/terrazul-ai/cli/compare/v0.7.0...v0.7.1) (2025-10-06)
+
+
+### Bug Fixes
+
+* **tests:** use shared test helpers with auth token injection ([210a96e](https://github.com/terrazul-ai/cli/commit/210a96e533b3cff932cc8009a00bb8d76ef602c5))
+
 ## [0.7.0](https://github.com/terrazul-ai/cli/compare/v0.6.0...v0.7.0) (2025-10-06)
 
 
