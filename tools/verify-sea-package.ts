@@ -201,6 +201,10 @@ export async function verifyStagedPackage(options: VerifyOptions): Promise<void>
     }
   }
 
+  if (options.requireLaunch === false) {
+    return;
+  }
+
   const nodeVersionOutput = await ensureNodeVersion(options.nodeBinary);
   const normalizedVersion = nodeVersionOutput.replace(/^v/, '');
   const parsed = coerce(normalizedVersion);
@@ -208,10 +212,6 @@ export async function verifyStagedPackage(options: VerifyOptions): Promise<void>
     throw new RangeError(
       `Node binary ${options.nodeBinary} must be Node >=20 (found ${nodeVersionOutput})`,
     );
-  }
-
-  if (options.requireLaunch === false) {
-    return;
   }
 
   await runCommand(options.nodeBinary, ['bin/app.mjs', '--help'], {
