@@ -1,29 +1,10 @@
-import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
-import { ensureBuilt } from '../helpers/cli';
-
-function runWithEnv(
-  cmd: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    execFile(
-      cmd,
-      args,
-      { encoding: 'utf8', env: Object.assign({}, process.env, env) },
-      (err, stdout, stderr) => {
-        if (err) return reject(new Error(stderr || err.message));
-        resolve({ stdout, stderr });
-      },
-    );
-  });
-}
+import { ensureBuilt, run } from '../helpers/cli';
 
 async function mkdtemp(prefix: string): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
@@ -49,7 +30,7 @@ describe('tz extract include claude local and user settings', () => {
     await fs.writeFile(path.join(fakeHome, '.claude.json'), JSON.stringify(user, null, 2), 'utf8');
 
     // Without flags: should not include local/user
-    await runWithEnv(
+    await run(
       'node',
       [
         cli,
@@ -63,7 +44,7 @@ describe('tz extract include claude local and user settings', () => {
         '--pkg-version',
         '1.0.0',
       ],
-      { HOME: fakeHome },
+      { env: { HOME: fakeHome } },
     );
     await expect(
       fs.stat(path.join(outA, 'templates', 'claude', 'settings.local.json.hbs')),
@@ -73,7 +54,7 @@ describe('tz extract include claude local and user settings', () => {
     ).rejects.toBeTruthy();
 
     // With flags: both should be present and sanitized
-    await runWithEnv(
+    await run(
       'node',
       [
         cli,
@@ -89,7 +70,7 @@ describe('tz extract include claude local and user settings', () => {
         '--include-claude-local',
         '--include-claude-user',
       ],
-      { HOME: fakeHome },
+      { env: { HOME: fakeHome } },
     );
     const local = await fs.readFile(
       path.join(outB, 'templates', 'claude', 'settings.local.json.hbs'),
