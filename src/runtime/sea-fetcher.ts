@@ -273,6 +273,14 @@ export async function ensureSeaBinary(options: EnsureSeaBinaryOptions = {}): Pro
   } catch (error) {
     const fallback = await findFallbackBinary(cacheRoot, target.target, cliVersion, binaryName);
     if (fallback) {
+      const fallbackVersion = path.basename(path.dirname(path.dirname(fallback)));
+      console.warn(
+        `\n⚠️  Failed to download SEA binary for version ${cliVersion}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      console.warn(
+        `⚠️  Falling back to cached version ${fallbackVersion}. Some features may not work correctly.`,
+      );
+      console.warn(`⚠️  To fix: Clear cache with 'rm -rf ~/.terrazul/cache/sea' and retry\n`);
       return fallback;
     }
     throw error;
