@@ -538,7 +538,7 @@ describe('renderCodex', () => {
           'domain_breakdown',
           '- commands/: thin I/O shell\n- core/: business logic\n- utils/: pure helpers',
         ),
-        qa('command_catalog', '- tz install\n- tz update'),
+        qa('command_catalog', '- tz add\n- tz update'),
         qa(
           'command_acceptance_criteria',
           '#### tz uninstall\n**Purpose**: Remove package...\n\n**Behavior**: 1) ...\n\n**Acceptance Criteria**: - ...',

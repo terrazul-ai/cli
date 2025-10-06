@@ -151,7 +151,7 @@ version = "0.1.0"
 `;
     await fs.writeFile(path.join(tmpProj, 'agents.toml'), manifest, 'utf8');
 
-    await run('node', [cli, 'install', '@terrazul/starter@1.1.0'], { cwd: tmpProj, env });
+    await run('node', [cli, 'add', '@terrazul/starter@1.1.0'], { cwd: tmpProj, env });
 
     const starterPath = path.join(tmpProj, 'agent_modules', '@terrazul', 'starter');
     const basePath = path.join(tmpProj, 'agent_modules', '@terrazul', 'base');
@@ -196,7 +196,7 @@ version = "0.1.0"
 `;
     await fs.writeFile(path.join(tmpProj, 'agents.toml'), manifest, 'utf8');
 
-    await run('node', [cli, 'install', '@terrazul/starter@1.1.0'], { cwd: tmpProj, env });
+    await run('node', [cli, 'add', '@terrazul/starter@1.1.0'], { cwd: tmpProj, env });
 
     const basePath = path.join(tmpProj, 'agent_modules', '@terrazul', 'base');
     expect(await fs.lstat(basePath).then(() => true)).toBe(true);

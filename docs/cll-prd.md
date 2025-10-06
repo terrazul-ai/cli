@@ -74,7 +74,7 @@ Each milestone has a DoD (Definition of Done) and a small set of tasks you can p
 import { Command } from 'commander';
 import { version } from '../package.json';
 import { createCLIContext } from './utils/context';
-import installCmd from './commands/install';
+import installCmd from './commands/add';
 import initCmd from './commands/init';
 import updateCmd from './commands/update';
 import publishCmd from './commands/publish';
@@ -203,7 +203,7 @@ export function createLogger({ verbose }: { verbose: boolean }) {
 **DoD**
 
 - `tz init` writes `agents.toml`, detects Claude (.claude/) if present
-- `tz install` installs either a named package or all from `agents.toml`
+- `tz add` installs either a named package or all from `agents.toml`
 - Tarball download → SHA‑256 verify → extract to `agent_modules/*`
 - `agents-lock.toml` written with versions, resolved CDN URLs, integrity
 - TERRAZUL.md generated; Claude symlinks created where applicable
@@ -215,7 +215,7 @@ export function createLogger({ verbose }: { verbose: boolean }) {
 - `core/lock-file.ts`: read/write `agents-lock.toml` (use `@iarna/toml`)
 - `core/package-manager.ts`: orchestration of install/update
 - `integrations/claude-code.ts`: symlink & MCP update
-- `commands/init.ts`, `commands/install.ts`
+- `commands/init.ts`, `commands/add.ts`
 - Dummy API server (Node http) + fixtures
 
 **Skeletons**
@@ -416,7 +416,7 @@ export default cmd;
 ```
 
 ```ts
-// src/commands/install.ts
+// src/commands/add.ts
 import { Command } from 'commander';
 import ora from 'ora';
 import { promises as fs } from 'node:fs';
@@ -813,7 +813,7 @@ console.log('Fixture ready');
 - Add `agent_modules/` to `.gitignore`
 - ✅ DoD: valid `agents.toml` + console hint for starter packages
 
-**tz install \[package]**
+**tz add \[package]**
 
 - Read `agents.toml` or parse `@scope/name@range`
 - Resolve deps (SAT in M3), skip yanked unless allowed by lock
@@ -915,7 +915,7 @@ node tools/dummy-registry.ts &
 pnpm run build
 # configure registry to http://localhost:8787 in ~/.terrazul/config.json
 tz init
-tz install @terrazul/starter@^1.0.0
+tz add @terrazul/starter@^1.0.0
 ```
 
 …and see the full path from resolve → download → extract → lockfile on day one.

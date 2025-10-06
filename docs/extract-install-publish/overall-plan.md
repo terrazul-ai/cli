@@ -249,7 +249,7 @@ Also add
 
 ⸻
 
-PRD #2 — tz install
+PRD #2 — tz add
 
 Goal: Install a package into a project from the dummy registry: resolve version, download tarball, verify integrity, CAS cache, safe extract to store, link into agent_modules/, write lockfile, refresh TERRAZUL.md.
 
@@ -257,11 +257,11 @@ CLI
 
 # install one spec
 
-tz install @scope/name@^1.0.0
+tz add @scope/name@^1.0.0
 
 # or with no args: read agents.toml [dependencies] (MVP: optional)
 
-tz install
+tz add
 
 Behavior 1. Ensure project agents.toml exists (create minimal if missing when installing explicit spec). 2. Resolve version (simple semver) using GET /packages/v1/:name (skip yanked). 3. Get tarball URL: GET /packages/v1/:name/tarball/:version → { url }. 4. Download tarball buffer. 5. Compute SHA‑256 and base64; verify against registry’s metadata if provided (MVP: accept tarball as source of truth; still record integrity). 6. Write to CAS: ~/.terrazul/cache/sha256/ab/cdef.../blob.tgz. 7. Safe extract to store: ~/.terrazul/store/\_scope_pkg/<version>/:
 • Reject absolute paths, .., symlinks/devices, clear exec bits. 8. Link store path into ./agent_modules/@scope/name (symlink; junction or copy fallback on Windows). 9. Update agents-lock.toml deterministically with { version, resolved, integrity }. 10. Generate/refresh a simple TERRAZUL.md listing installed packages and their template paths.
@@ -292,7 +292,7 @@ src/core/storage.ts # writeToCAS, safeExtractCASToStore
 src/core/lock-file.ts # readLock, writeLock, mergeLock
 src/core/registry-client.ts # getPackageInfo, getTarballURL, download
 src/core/package-manager.ts # installOne(...)
-src/commands/install.ts # thin CLI
+src/commands/add.ts # thin CLI
 tests/setup/server.ts # dummy registry server
 
 Key code sketches

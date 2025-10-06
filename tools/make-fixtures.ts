@@ -53,7 +53,7 @@ A minimal starter package for testing the Terrazul CLI.
 ## Installation
 
 \`\`\`bash
-tz install @terrazul/starter
+tz add @terrazul/starter
 \`\`\`
 `,
       'agents/': {

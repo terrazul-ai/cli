@@ -20,7 +20,7 @@ FILES TO CREATE/MODIFY
 
 - src/core/dependency-resolver.ts
 - src/commands/update.ts (real)
-- src/commands/install.ts (switch to resolver)
+- src/commands/add.ts (switch to resolver)
 - tests/unit/core/dependency-resolver-{basic,transitive,conflict,prefer-latest,yanked,no-candidates}.test.ts
 - tests/integration/update-{dry-run,happy-path,yanked-skip,multi-package,atomic-swap}.test.ts
 - tests/e2e/m3-update-flow.test.ts

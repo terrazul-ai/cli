@@ -54,7 +54,7 @@ cli/
 │ ├─ index.ts
 │ ├─ commands/
 │ │ ├─ init.ts
-│ │ ├─ install.ts
+│ │ ├─ add.ts
 │ │ ├─ update.ts
 │ │ ├─ publish.ts
 │ │ ├─ auth.ts
@@ -137,14 +137,14 @@ Tasks:
 - `core/registry-client.ts`: GET package info/versions; tarball download via JSON redirect; bearer auth; dummy refresh stub.
 - `commands/init.ts`: write `agents.toml`, update `.gitignore`, detect `.claude/`.
 - `utils/terrazul-md.ts`: generate `TERRAZUL.md`.
-- `commands/install.ts`: install a spec or from `agents.toml`; placeholder resolver (select highest satisfying from dummy API); download → verify → extract → update lockfile → generate TERRAZUL.md; create Claude links if dirs exist.
+- `commands/add.ts`: install a spec or from `agents.toml`; placeholder resolver (select highest satisfying from dummy API); download → verify → extract → update lockfile → generate TERRAZUL.md; create Claude links if dirs exist.
 - `tools/dummy-registry.ts` + `tools/make-fixtures.ts` + `fixtures/**`.
   Tests:
 - unit: storage (store/retrieve/verify, tar safety), lockfile (round-trip, merge, integrity format), registry-client (auth header, redirect fetch, 401 behavior), md generation.
 - integration: init creates files; install explicit & from agents.toml; integrity mismatch aborts with cleanup; re-run idempotent.
 - e2e: init → install end-to-end using dummy server.
   DoD:
-- `tz install @terrazul/starter@^1.0.0` works against dummy API; lockfile and md generated; tampered tar fails safely.
+- `tz add @terrazul/starter@^1.0.0` works against dummy API; lockfile and md generated; tampered tar fails safely.
 
 M3 — SAT Resolver, Yanked Handling, Update
 Tasks:
@@ -231,7 +231,7 @@ RUN/DEV COMMANDS (write in README)
 
 - `node tools/dummy-registry.ts` (or via pnpm script) to start the dummy server.
 - `pnpm run build && node dist/tz.mjs --help`
-- `tz init && tz install @terrazul/starter@^1.0.0` against dummy server registry.
+- `tz init && tz add @terrazul/starter@^1.0.0` against dummy server registry.
 
 OUTPUT FORMAT
 

@@ -30,19 +30,19 @@ function getSafeLinkPath(projectDir: string, pkgName: string): string {
   }
 }
 
-export function registerInstallCommand(
+export function registerAddCommand(
   program: Command,
   createCtx: (opts: { verbose?: boolean }) => CLIContext,
 ): void {
   program
-    .command('install')
+    .command('add')
     .argument('[spec]', 'Package spec like @scope/name@1.0.0 or with range')
     .description('Resolve, download, verify, extract, and link packages')
-    .option('--no-apply', 'Do not render templates after install')
+    .option('--no-apply', 'Do not render templates after add')
     .option('--apply-force', 'Overwrite existing files when applying templates', false)
     .option(
       '--profile <profile>',
-      'Assign the installed package to the given profile in agents.toml',
+      'Assign the added package to the given profile in agents.toml',
     )
     .action(async (_spec: string | undefined, raw: Record<string, unknown>) => {
       const opts = program.opts<{ verbose?: boolean }>();
@@ -81,9 +81,9 @@ export function registerInstallCommand(
           string,
           ReturnType<typeof LockfileManager.merge>['packages'][string]
         > = {};
-        const installedNames: string[] = [];
+        const addedNames: string[] = [];
         for (const [pkgName, info] of resolved) {
-          ctx.logger.info(`Installing ${pkgName}@${info.version} ...`);
+          ctx.logger.info(`Adding ${pkgName}@${info.version} ...`);
           const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
           const tarball = await ctx.registry.downloadTarball(tarInfo.url);
           ctx.storage.store(tarball);
@@ -116,12 +116,12 @@ export function registerInstallCommand(
             dependencies: info.dependencies,
             yanked: false,
           };
-          installedNames.push(pkgName);
+          addedNames.push(pkgName);
         }
 
         const updated = LockfileManager.merge(existingLock, updates);
         LockfileManager.write(updated, projectDir);
-        ctx.logger.info('Install complete');
+        ctx.logger.info('Add complete');
 
         if (profileName) {
           const added = await addPackageToProfile(projectDir, profileName, parsed.name);
@@ -134,11 +134,11 @@ export function registerInstallCommand(
           }
         }
 
-        // Optionally render templates after install
+        // Optionally render templates after add
         const applyEnabled = raw['apply'] !== false; // --no-apply sets apply=false
         if (applyEnabled) {
           const agentModulesRoot = path.join(projectDir, 'agent_modules');
-          for (const name of installedNames) {
+          for (const name of addedNames) {
             const res = await planAndRender(projectDir, agentModulesRoot, {
               packageName: name,
               force: Boolean(raw['applyForce']),

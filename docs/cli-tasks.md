@@ -97,7 +97,7 @@ src/
 ├─ commands/
 │  ├─ auth.ts
 │  ├─ init.ts                    # stub for now
-│  ├─ install.ts                 # stub
+│  ├─ add.ts                 # stub
 │  ├─ update.ts                  # stub
 │  ├─ publish.ts                 # stub
 │  ├─ run.ts                     # stub
@@ -161,7 +161,7 @@ src/
 2. **Lockfile** (`@iarna/toml` read/write `agents-lock.toml`)
 3. **Registry Client** (dummy API JSON protocol + tarball redirects, token passthrough)
 4. **`tz init`** (agents.toml writer, `.gitignore` update, detect `.claude/`)
-5. **`tz install`** (install a package or all deps; generate `TERRAZUL.md`; basic resolver placeholder)
+5. **`tz add`** (install a package or all deps; generate `TERRAZUL.md`; basic resolver placeholder)
 6. **Dummy Registry Server** (fixtures, in-process for tests)
 
 ### File structure & contents
@@ -241,7 +241,7 @@ fixtures/
 
 - `tests/integration/install-single.test.ts`
   - Points CLI `registry` to **in-process dummy server**
-  - `tz install @terrazul/starter@^1.0.0`:
+  - `tz add @terrazul/starter@^1.0.0`:
     - Creates `agent_modules` with extracted files
     - Writes `agents-lock.toml` with `resolved`, `integrity`, `version`
     - Writes `TERRAZUL.md`
@@ -255,7 +255,7 @@ fixtures/
 **E2E**
 
 - `tests/e2e/m2-install-flow.test.ts`
-  - `tz init` → add dep → `tz install` → verify content & lockfile & md
+  - `tz init` → add dep → `tz add` → verify content & lockfile & md
 
 **Exit Criteria**
 
@@ -282,7 +282,7 @@ src/core/
 └─ package-manager.ts             # extended to call resolver and update
 src/commands/
 ├─ update.ts                      # real implementation
-└─ install.ts                     # uses resolver now
+└─ add.ts                     # uses resolver now
 ```
 
 **Implementation notes**
@@ -393,7 +393,7 @@ tools/
 **Integration**
 
 - `tests/integration/publish-roundtrip.test.ts`
-  - `tz publish` → dummy API stores tarball & metadata → `tz install` can fetch it
+  - `tz publish` → dummy API stores tarball & metadata → `tz add` can fetch it
 
 - `tests/integration/yank-unyank.test.ts`
   - `tz yank @scope/pkg@1.0.0` hides version from resolver; `tz unyank` restores it

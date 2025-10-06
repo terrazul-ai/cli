@@ -26,7 +26,7 @@ npm i -g @terrazul/cli
 - **Multi-tool ready**: Generates Claude Code, Cursor, Gemini, and MCP wiring with a single install step.
 - **Secure-by-default**: Rejects path traversal, strips exec bits, and keeps yanked versions out of fresh resolutions.
 - **Offline-first**: Local cache mirrors upstream packages so rebuilds succeed without a network connection.
-- **Profile-aware**: `tz install --profile focus` keeps workspace manifests scoped to targeted workflows.
+- **Profile-aware**: `tz add --profile focus` keeps workspace manifests scoped to targeted workflows.
 - **Team-friendly**: Environment switching, staging tokens, and deterministic outputs keep collaborators in sync.
 
 ---
@@ -44,7 +44,7 @@ npm i -g @terrazul/cli
 ## Command Tour
 
 - `tz init`: Bootstrap manifests, `.gitignore`, and optional Claude scaffolding.
-- `tz install <pkg@range>`: Resolve, verify, and extract packages; updates profiles and lockfile.
+- `tz add <pkg@range>`: Resolve, verify, and extract packages; updates profiles and lockfile.
 - `tz update [pkg]`: Plan or apply upgrades to the latest compatible non-yanked versions.
 - `tz uninstall <pkg>`: Remove packages, clean symlinks, prune profiles, and refresh docs.
 - `tz run -- [args...]`: Launch integrations (e.g., Claude Code) with generated MCP configs and optional profiles.

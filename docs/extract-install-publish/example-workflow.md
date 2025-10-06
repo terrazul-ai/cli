@@ -140,7 +140,7 @@ What tz publish does step‑by‑step 1. Validates the package:
 • Registry stores the blob (e.g., on its CDN path) and responds with a tarball URL 5. Outputs a confirmation:
 • Logs Published @you/my-ctx@1.0.0
 • Logs Tarball: <cdn-url>
-• You can now install it in any project via tz install @you/my-ctx@1.0.0
+• You can now install it in any project via tz add @you/my-ctx@1.0.0
 
 Want to double‑check without uploading?
 Run tz publish --dry-run to see { size, sha256 } for the tarball and the exact file list, without making any network calls.
@@ -153,7 +153,7 @@ From another project (or a fresh temp dir):
 
 mkdir -p ~/code/another-app && cd ~/code/another-app
 echo '[package]\nname="another-app"\nversion="0.0.0"' > agents.toml
-tz install @you/my-ctx@1.0.0
+tz add @you/my-ctx@1.0.0
 
 This will:
 • Resolve to your newly published version
@@ -179,4 +179,4 @@ In v0/dummy it doesn’t. For production, we’ll wire tz login and enforce toke
 TL;DR
 • tz extract turns your project’s AI context (Claude/Codex/Cursor/Copilot) into a portable, sanitized, assets‑only package with a clean agents.toml export map.
 • tz publish validates, tars, hashes, and uploads that package to the dummy registry, returning a CDN URL.
-• You can then tz install it anywhere—fast, deterministic, and safe.
+• You can then tz add it anywhere—fast, deterministic, and safe.

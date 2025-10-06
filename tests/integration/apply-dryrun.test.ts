@@ -142,7 +142,7 @@ describe('integration: apply --dry-run', () => {
   it('prints plan and creates no files', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     await run('node', [cli, 'init', '--name', '@e2e/dry-run'], { cwd: tmpProj, env });
-    await run('node', [cli, 'install', '--no-apply', '@terrazul/starter@1.0.0'], {
+    await run('node', [cli, 'add', '--no-apply', '@terrazul/starter@1.0.0'], {
       cwd: tmpProj,
       env,
     });

@@ -96,7 +96,7 @@ async function waitForHealth(base: string, timeoutMs = 10_000): Promise<void> {
   }
 }
 
-describe('E2E: install → auto-apply', () => {
+describe('E2E: add → auto-apply', () => {
   let PORT = 0;
   let BASE = '';
   let child: ChildProcessByStdio<null, Readable, Readable> | null = null;
@@ -136,10 +136,10 @@ describe('E2E: install → auto-apply', () => {
     }
   });
 
-  it('renders CLAUDE.md and .claude assets after install', async () => {
+  it('renders CLAUDE.md and .claude assets after add', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     await run('node', [cli, 'init', '--name', '@e2e/apply-demo'], { cwd: tmpProj, env });
-    await run('node', [cli, 'install', '@terrazul/starter@1.0.0'], { cwd: tmpProj, env });
+    await run('node', [cli, 'add', '@terrazul/starter@1.0.0'], { cwd: tmpProj, env });
 
     // Install should have auto-applied templates for @terrazul/starter
     const outFiles = [
