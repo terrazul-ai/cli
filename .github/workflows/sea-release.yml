@@ -169,7 +169,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sea-${{ matrix.target }}
+          name: sea-${{ matrix.target }}-${{ github.run_id }}
           path: dist/${{ matrix.target }}
           if-no-files-found: error
 
@@ -211,7 +211,7 @@ jobs:
       - name: Download SEA artifacts from build matrix
         uses: actions/download-artifact@v4
         with:
-          pattern: sea-*
+          pattern: sea-*-${{ github.run_id }}
           path: dist/sea-artifacts
 
       - name: Organize SEA artifacts for manifest generation
@@ -219,11 +219,13 @@ jobs:
           set -euo pipefail
           ROOT="$PWD"
           DEST="$ROOT/dist/sea"
+          RUN_ID="${{ github.run_id }}"
           mkdir -p "$DEST"
           if [ -d "$ROOT/dist/sea-artifacts" ]; then
             find "$ROOT/dist/sea-artifacts" -mindepth 1 -maxdepth 1 -type d | while read -r artifact_dir; do
               target="${artifact_dir##*/}"
               target="${target#sea-}"
+              target="${target%-${RUN_ID}}"
               mkdir -p "$DEST/$target"
               find "$artifact_dir" -maxdepth 1 -type f -print0 | while IFS= read -r -d '' file; do
                 cp "$file" "$DEST/$target/"

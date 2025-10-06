@@ -1,0 +1,18 @@
+[package]
+name = "@local/cli"
+version = "1.0.0"
+description = "Extracted AI context package"
+license = "MIT"
+
+[exports.codex]
+template = "templates/AGENTS.md.hbs"
+
+[exports.claude]
+template = "templates/CLAUDE.md.hbs"
+subagentsDir = "templates/claude/agents"
+
+[exports.cursor]
+template = "templates/cursor.rules.hbs"
+
+[metadata]
+tz_spec_version = 1

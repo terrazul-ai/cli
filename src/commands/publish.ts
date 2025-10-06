@@ -1,4 +1,4 @@
-import { buildPublishPlan, createTarball } from '../core/publisher';
+import { buildPublishPlan, createTarball } from '../core/publisher.js';
 
 import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';

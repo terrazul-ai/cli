@@ -1,20 +1,10 @@
-import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
-import { ensureBuilt } from '../helpers/cli';
-
-function run(cmd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { encoding: 'utf8' }, (err, stdout, stderr) => {
-      if (err) return reject(new Error(stderr || err.message));
-      resolve({ stdout, stderr });
-    });
-  });
-}
+import { ensureBuilt, run } from '../helpers/cli';
 
 async function mkdtemp(prefix: string): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
