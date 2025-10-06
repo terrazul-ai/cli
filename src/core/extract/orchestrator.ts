@@ -28,8 +28,13 @@ import type {
 } from './types.js';
 
 export type {
-  ExecuteOptions, ExtractOptions, ExtractPlan, ExtractResult, LoggerLike, MCPServerPlan,
-  PlannedOutput
+  ExecuteOptions,
+  ExtractOptions,
+  ExtractPlan,
+  ExtractResult,
+  LoggerLike,
+  MCPServerPlan,
+  PlannedOutput,
 } from './types.js';
 
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
@@ -47,7 +52,7 @@ export function getSubagentIdFromTemplatePath(relativePath: string): string | nu
 
 export function getSubagentIdFromSourcePath(absPath: string): string {
   const segments = absPath.split(path.sep);
-  const claudeIndex = segments.findIndex((segment) => segment === '.claude');
+  const claudeIndex = segments.indexOf('.claude');
   if (claudeIndex >= 0 && segments[claudeIndex + 1] === 'agents') {
     return segments.slice(claudeIndex + 2).join('/');
   }
@@ -602,7 +607,7 @@ export async function executeExtract(
       if (includedSubagentSet.size === 0) {
         detected[key] = value;
       } else {
-        const filtered = (value as string[]).filter((abs) =>
+        const filtered = value.filter((abs) =>
           includedSubagentSet.has(getSubagentIdFromSourcePath(abs)),
         );
         if (filtered.length > 0) {

@@ -14,8 +14,8 @@ import {
   getSubagentIdFromSourcePath,
   getSubagentIdFromTemplatePath,
   type LoggerLike,
-} from '../../core/extract/orchestrator';
-import { parseSafePackageName } from '../../utils/path';
+} from '../../core/extract/orchestrator.js';
+import { parseSafePackageName } from '../../utils/path.js';
 import {
   type KeyHint,
   type LogEntry,
@@ -24,8 +24,8 @@ import {
   type SelectableListItem,
   type StatusMessage,
   WizardFrame,
-} from './components';
-import { buildReviewSummary, getArtifactLabel, type ReviewSummary } from './summary';
+} from './components.js';
+import { buildReviewSummary, getArtifactLabel, type ReviewSummary } from './summary.js';
 
 const TASK_NAME = 'Extract';
 
@@ -34,14 +34,7 @@ const SPINNER_INTERVAL = 96;
 
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
 
-type StepId =
-  | 'artifacts'
-  | 'subagents'
-  | 'mcp'
-  | 'output'
-  | 'metadata'
-  | 'options'
-  | 'preview';
+type StepId = 'artifacts' | 'subagents' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
 
 type OptionToggleId = 'includeClaudeLocal' | 'includeClaudeUser' | 'dryRun' | 'force';
 
@@ -407,7 +400,9 @@ export function ExtractWizard({
         detailMap.set(id, rel);
       }
     }
-    const outputs = plan.outputs.filter((output) => output.artifactId === CLAUDE_SUBAGENT_ARTIFACT_ID);
+    const outputs = plan.outputs.filter(
+      (output) => output.artifactId === CLAUDE_SUBAGENT_ARTIFACT_ID,
+    );
     if (outputs.length > 0) {
       const items: SelectableListItem[] = [];
       for (const output of outputs) {
@@ -998,9 +993,8 @@ export function ExtractWizard({
             />
             <Text dimColor>
               {selectedArtifacts.size -
-                (selectedArtifacts.has(CLAUDE_SUBAGENT_ARTIFACT_ID) ? 1 : 0)}/
-              {artifactItems.length}{' '}
-              selected
+                (selectedArtifacts.has(CLAUDE_SUBAGENT_ARTIFACT_ID) ? 1 : 0)}
+              /{artifactItems.length} selected
             </Text>
           </Box>
         );
