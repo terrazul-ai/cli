@@ -128,14 +128,10 @@ describe('integration: add with profile flag', () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     await run('node', [cli, 'init', '--name', '@e2e/profile-install'], { cwd: tmpProj, env });
 
-    await run(
-      'node',
-      [cli, 'add', '--no-apply', '--profile', 'focus', '@terrazul/starter@1.0.0'],
-      {
-        cwd: tmpProj,
-        env,
-      },
-    );
+    await run('node', [cli, 'add', '--no-apply', '--profile', 'focus', '@terrazul/starter@1.0.0'], {
+      cwd: tmpProj,
+      env,
+    });
 
     const manifest = await fs.readFile(path.join(tmpProj, 'agents.toml'), 'utf8');
     expect(manifest).toContain('[profiles]');

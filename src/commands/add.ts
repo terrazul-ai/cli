@@ -40,10 +40,7 @@ export function registerAddCommand(
     .description('Resolve, download, verify, extract, and link packages')
     .option('--no-apply', 'Do not render templates after add')
     .option('--apply-force', 'Overwrite existing files when applying templates', false)
-    .option(
-      '--profile <profile>',
-      'Assign the added package to the given profile in agents.toml',
-    )
+    .option('--profile <profile>', 'Assign the added package to the given profile in agents.toml')
     .action(async (_spec: string | undefined, raw: Record<string, unknown>) => {
       const opts = program.opts<{ verbose?: boolean }>();
       const ctx = createCtx({ verbose: opts.verbose });

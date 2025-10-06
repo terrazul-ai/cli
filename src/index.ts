@@ -1,12 +1,12 @@
 import { Command } from 'commander';
 
+import { registerAddCommand } from './commands/add.js';
 import { registerApplyCommand } from './commands/apply.js';
 import { registerAuthCommand } from './commands/auth.js';
 import { registerCacheCommand } from './commands/cache.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerExtractCommand } from './commands/extract.js';
 import { registerInitCommand } from './commands/init.js';
-import { registerAddCommand } from './commands/add.js';
 import { registerLinkCommand } from './commands/link.js';
 import { registerLoginCommand } from './commands/login.js';
 import { registerLogoutCommand } from './commands/logout.js';
