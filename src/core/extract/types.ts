@@ -53,6 +53,7 @@ export interface MCPServerPlan {
     args: string[];
     env: Record<string, string>;
   };
+  config: Record<string, unknown>;
 }
 
 export interface ExtractPlan {

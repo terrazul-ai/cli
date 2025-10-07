@@ -137,10 +137,12 @@ function dedupeMcpServers(servers: MCPServerPlan[]): MCPServerPlan[] {
 
 function buildMcpServersObject(servers: MCPServerPlan[]): Record<string, unknown> {
   const entries = servers.map((server) => {
-    const def: Record<string, unknown> = { command: server.definition.command };
-    if (server.definition.args.length > 0) def.args = server.definition.args;
-    if (Object.keys(server.definition.env).length > 0) def.env = server.definition.env;
-    return [server.name, def] as const;
+    const config = server.config ?? {
+      command: server.definition.command,
+      ...(server.definition.args.length > 0 ? { args: server.definition.args } : {}),
+      ...(Object.keys(server.definition.env).length > 0 ? { env: server.definition.env } : {}),
+    };
+    return [server.name, structuredClone(config)] as const;
   });
   entries.sort(([a], [b]) => a.localeCompare(b));
   const out: Record<string, unknown> = {};
@@ -183,16 +185,23 @@ function createClaudeMcpPlans(
         )
       : [];
     const sanitizedEnv = sanitizeEnv(Object.fromEntries(envEntries));
+    const sanitizedCommand = sanitizeText(String(commandRaw), projectRootAbs);
+    const config = structuredClone(record);
+    config.command = sanitizedCommand;
+    config.args = sanitizedArgs;
+    if (sanitizedEnv) config.env = sanitizedEnv;
+    else if ('env' in config) delete config.env;
     plans.push({
       id: `claude:${name}`,
       source: 'claude',
       name,
       origin,
       definition: {
-        command: sanitizeText(String(commandRaw), projectRootAbs),
+        command: sanitizedCommand,
         args: sanitizedArgs,
         env: sanitizedEnv ?? {},
       },
+      config,
     });
   }
   plans.sort((a, b) => a.id.localeCompare(b.id));
