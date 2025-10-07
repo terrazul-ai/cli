@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.4](https://github.com/terrazul-ai/cli/compare/v0.7.3...v0.7.4) (2025-10-07)
+
+
+### Bug Fixes
+
+* **commands:** sea build issue ([5e4a81c](https://github.com/terrazul-ai/cli/commit/5e4a81cd2b1893749d3f915b1db12f30f9318c63))
+* **commands:** sea build issue ([31b21cb](https://github.com/terrazul-ai/cli/commit/31b21cb0ff4a21b937c14018ac59ace734f156f0))
+
 ## [0.7.3](https://github.com/terrazul-ai/cli/compare/v0.7.2...v0.7.3) (2025-10-07)
 
 
