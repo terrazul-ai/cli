@@ -9,6 +9,7 @@ export function registerUnlinkCommand(
     .command('unlink')
     .argument('<pkg>', 'Package name to unlink from current project')
     .description('Remove a dev link for a local package')
+    .hideHelp()
     .action((pkg: string) => {
       const opts = program.opts<{ verbose?: boolean }>();
       const ctx = createCtx({ verbose: opts.verbose });

@@ -10,6 +10,7 @@ export function registerYankCommand(
     .argument('<spec>', 'Package version to yank, e.g., @pkg@1.0.0')
     .description('Yank or unyank a published package version')
     .option('--unyank', 'Unyank instead of yank')
+    .hidden()
     .action(() => {
       const opts = program.opts<{ verbose?: boolean }>();
       const ctx = createCtx({ verbose: opts.verbose });
