@@ -548,11 +548,32 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
 
   plan.mcpServers = dedupeMcpServers(plan.mcpServers).sort((a, b) => a.id.localeCompare(b.id));
 
-  const mcpOutput = plan.outputs.find(
-    (output: PlannedOutput) => output.artifactId === 'claude.mcp_servers',
-  );
-  if (mcpOutput) {
-    mcpOutput.data = buildMcpServersObject(plan.mcpServers);
+  if (plan.mcpServers.length > 0) {
+    if (!plan.detected['claude.mcp_servers']) {
+      plan.detected['claude.mcp_servers'] = 'aggregated from MCP sources';
+    }
+    let mcpOutput = plan.outputs.find(
+      (output: PlannedOutput) => output.artifactId === 'claude.mcp_servers',
+    );
+    if (!mcpOutput) {
+      addOutput({
+        id: 'claude.mcp_servers:templates/claude/mcp_servers.json.hbs',
+        artifactId: 'claude.mcp_servers',
+        relativePath: 'templates/claude/mcp_servers.json.hbs',
+        format: 'json',
+        data: {},
+        manifestPatch: {
+          tool: 'claude',
+          properties: { mcpServers: 'templates/claude/mcp_servers.json.hbs' },
+        },
+      });
+      mcpOutput = plan.outputs.find(
+        (output: PlannedOutput) => output.artifactId === 'claude.mcp_servers',
+      );
+    }
+    if (mcpOutput) {
+      mcpOutput.data = buildMcpServersObject(plan.mcpServers);
+    }
   }
 
   if (Object.keys(plan.detected).length === 0) {
