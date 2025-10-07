@@ -74,6 +74,7 @@ describe('ensureSeaBinary', () => {
 
     const fetchMock = vi.fn(() => Promise.resolve(new Response(artifactData)));
     vi.stubGlobal('fetch', fetchMock);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const { ensureSeaBinary } = await import('../../../src/runtime/sea-fetcher');
     const binaryPath: string = await ensureSeaBinary({
@@ -92,6 +93,8 @@ describe('ensureSeaBinary', () => {
     const binary = await fs.readFile(binaryPath, 'utf8');
     expect(binary).toBe('sea-binary-payload');
     expect(binaryPath).toContain(path.join(cacheDir, '0.3.1', 'darwin-arm64'));
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Downloading tz 0.3.1 for darwin-arm64...');
+    expect(consoleErrorSpy).toHaveBeenCalledWith('Download finished. Booting tz...');
   });
 
   it('throws when downloaded artifact hash mismatches the manifest', async () => {
