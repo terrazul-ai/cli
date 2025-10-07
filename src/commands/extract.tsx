@@ -88,7 +88,7 @@ export async function buildInteractiveBaseOptions(
     from: fromAbs,
     out: defaultOut,
     name,
-    version: args.pkgVersion ?? '1.0.0',
+    version: args.pkgVersion ?? '0.0.0',
     includeClaudeLocal: Boolean(args.includeClaudeLocal),
     includeClaudeUser: Boolean(args.includeClaudeUser),
     force: Boolean(args.force),
@@ -169,7 +169,7 @@ export function registerExtractCommand(
     .option('--from <path>', 'Source directory (project root or .claude)')
     .option('--out <path>', 'Output directory for the new package')
     .option('--name <name>', 'Package name, e.g., @user/ctx')
-    .option('--pkg-version <semver>', 'Package version, e.g., 1.0.0')
+    .option('--pkg-version <semver>', 'Package version, e.g., 0.0.0')
     .option('--include-claude-local', 'Include .claude/settings.local.json (sanitized)', false)
     .option('--include-claude-user', 'Include user-scoped ~/.claude.json (sanitized)', false)
     .option('--force', 'Overwrite non-empty output directory', false)

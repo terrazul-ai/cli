@@ -34,11 +34,11 @@ function createMockContext(): CLIContext {
 }
 
 describe('buildInteractiveBaseOptions', () => {
-  it('uses 1.0.0 as the default package version', async () => {
+  it('uses 0.0.0 as the default package version', async () => {
     const ctx = createMockContext();
     const options = await buildInteractiveBaseOptions({ from: '/tmp/project' }, ctx);
 
-    expect(options.version).toBe('1.0.0');
+    expect(options.version).toBe('0.0.0');
   });
 
   it('preserves an explicit pkgVersion argument', async () => {

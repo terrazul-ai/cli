@@ -226,7 +226,7 @@ export function ExtractWizard({
       return error instanceof Error ? error.message : String(error);
     }
     if (!semver.valid(options.version.trim())) {
-      return 'Version must be valid semver (e.g., 1.0.0)';
+      return 'Version must be valid semver (e.g., 0.0.0)';
     }
     return null;
   }, [options.name, options.version]);
@@ -1065,7 +1065,7 @@ export function ExtractWizard({
                   setOptions((prev: ExtractOptions) => ({ ...prev, version: value }))
                 }
               />
-              <Text dimColor>Use semantic versioning, e.g., 1.0.0.</Text>
+              <Text dimColor>Use semantic versioning, e.g., 0.0.0.</Text>
               {metadataError ? <Text color="red">⚠ {metadataError}</Text> : null}
             </Box>
           </Box>

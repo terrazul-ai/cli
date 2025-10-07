@@ -14,7 +14,7 @@ const baseOptions: ExtractOptions = {
   from: '/projects/demo',
   out: '/projects/demo/out',
   name: '@demo/pkg',
-  version: '1.0.0',
+  version: '0.0.0',
   includeClaudeLocal: false,
   includeClaudeUser: false,
   dryRun: false,
@@ -244,7 +244,7 @@ describe('ExtractWizard', () => {
     stdin.write('\t');
     await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
 
-    await expectFrameContains(lastFrame, 'Version must be valid semver (e.g., 1.0.0)');
+    await expectFrameContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
     await expectFrameContains(lastFrame, 'Enter • Continue (disabled)');
 
     stdin.write('\t');
@@ -256,7 +256,7 @@ describe('ExtractWizard', () => {
     stdin.write('1.2.3');
 
     await pause();
-    await expectFrameNotContains(lastFrame, 'Version must be valid semver (e.g., 1.0.0)');
+    await expectFrameNotContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
     await expectFrameContains(lastFrame, 'Enter • Continue');
 
     stdin.write('\r');
