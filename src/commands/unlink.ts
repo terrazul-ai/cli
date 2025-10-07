@@ -6,10 +6,9 @@ export function registerUnlinkCommand(
   createCtx: (opts: { verbose?: boolean }) => CLIContext,
 ): void {
   program
-    .command('unlink')
+    .command('unlink', { hidden: true })
     .argument('<pkg>', 'Package name to unlink from current project')
     .description('Remove a dev link for a local package')
-    .hidden()
     .action((pkg: string) => {
       const opts = program.opts<{ verbose?: boolean }>();
       const ctx = createCtx({ verbose: opts.verbose });

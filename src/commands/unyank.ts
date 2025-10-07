@@ -6,10 +6,9 @@ export function registerUnyankCommand(
   createCtx: (opts: { verbose?: boolean }) => CLIContext,
 ): void {
   program
-    .command('unyank')
+    .command('unyank', { hidden: true })
     .argument('<spec>', 'Package spec to unyank, e.g., @pkg@1.0.0')
     .description('Reverse a yank operation for a previously yanked version')
-    .hidden()
     .action((spec: string) => {
       const opts = program.opts<{ verbose?: boolean }>();
       const ctx = createCtx({ verbose: opts.verbose });
