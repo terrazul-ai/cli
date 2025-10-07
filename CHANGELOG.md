@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.3](https://github.com/terrazul-ai/cli/compare/v0.7.2...v0.7.3) (2025-10-07)
+
+
+### Bug Fixes
+
+* **extract:** include selected MCP configs in extract ([cde108f](https://github.com/terrazul-ai/cli/commit/cde108f468d802716721c195a60e29a3364831f5))
+* **extract:** include selected MCP configs in extract ([b77d188](https://github.com/terrazul-ai/cli/commit/b77d1888de8e07424fe5e901b91d1837335ed78b))
+
 ## [0.7.2](https://github.com/terrazul-ai/cli/compare/v0.7.1...v0.7.2) (2025-10-06)
 
 
