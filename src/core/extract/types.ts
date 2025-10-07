@@ -10,6 +10,7 @@ export interface ExtractOptions {
   version: string;
   includeClaudeLocal?: boolean;
   includeClaudeUser?: boolean;
+  includeCodexConfig?: boolean;
   force?: boolean;
   dryRun?: boolean;
   codexConfigPath?: string;

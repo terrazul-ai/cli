@@ -130,6 +130,7 @@ describe('analyzeExtractSources', () => {
       out: paths.out,
       name: '@you/pkg',
       version: '1.0.0',
+      includeCodexConfig: true,
       codexConfigPath: paths.codexConfig,
       projectMcpConfigPath: paths.projectMcp,
     });
@@ -171,6 +172,7 @@ describe('executeExtract', () => {
       out: paths.out,
       name: '@you/pkg',
       version: '1.0.0',
+      includeCodexConfig: true,
       codexConfigPath: paths.codexConfig,
       projectMcpConfigPath: paths.projectMcp,
     });
@@ -243,6 +245,7 @@ describe('executeExtract', () => {
         name: '@you/pkg',
         version: '1.0.0',
         force: true,
+        includeCodexConfig: true,
         codexConfigPath: paths.codexConfig,
         projectMcpConfigPath: paths.projectMcp,
       },
@@ -256,6 +259,7 @@ describe('executeExtract', () => {
       out: paths.out,
       name: '@you/pkg',
       version: '1.0.0',
+      includeCodexConfig: true,
       codexConfigPath: paths.codexConfig,
       projectMcpConfigPath: paths.projectMcp,
     });

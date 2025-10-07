@@ -106,6 +106,7 @@ describe('tz extract (interactive wizard)', () => {
         version: '1.0.0',
         includeClaudeLocal: false,
         includeClaudeUser: false,
+        includeCodexConfig: false,
         force: false,
         dryRun: false,
         codexConfigPath,

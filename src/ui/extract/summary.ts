@@ -43,6 +43,7 @@ export interface DestinationSummary {
 export interface ReviewSummary {
   sections: SummarySection[];
   destination: DestinationSummary;
+  codexConfigIncluded: boolean;
 }
 
 export interface BuildReviewSummaryParams {
@@ -141,6 +142,11 @@ export function buildReviewSummary({
     },
   ];
 
+  const codexConfigIncluded =
+    selectedArtifacts.has(CODEX_MCP_ARTIFACT_ID) &&
+    (Boolean(plan.codexConfigBase) ||
+      plan.mcpServers.some((server: { source: string }) => server.source === 'codex'));
+
   return {
     sections,
     destination: {
@@ -150,6 +156,7 @@ export function buildReviewSummary({
       dryRun: Boolean(options.dryRun),
       force: Boolean(options.force),
     },
+    codexConfigIncluded,
   };
 }
 
@@ -172,6 +179,12 @@ export function formatReviewSummaryText(summary: ReviewSummary): string {
     `  - Path: ${summary.destination.path}`,
     `  - Package: ${summary.destination.packageName}@${summary.destination.version}`,
   );
+  if (summary.codexConfigIncluded) {
+    lines.push(
+      '  - Include ~/.codex/config.toml',
+      '    Adds user-specific Codex configuration to the bundle.',
+    );
+  }
   if (summary.destination.dryRun) {
     lines.push('  - Mode: Dry run');
   }

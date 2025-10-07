@@ -38,7 +38,12 @@ const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_servers';
 
 type StepId = 'artifacts' | 'subagents' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
 
-type OptionToggleId = 'includeClaudeLocal' | 'includeClaudeUser' | 'dryRun' | 'force';
+type OptionToggleId =
+  | 'includeClaudeLocal'
+  | 'includeClaudeUser'
+  | 'includeCodexConfig'
+  | 'dryRun'
+  | 'force';
 
 interface OptionToggleConfig {
   id: OptionToggleId;
@@ -58,6 +63,12 @@ const OPTION_TOGGLE_CONFIG: OptionToggleConfig[] = [
     id: 'includeClaudeUser',
     label: 'Include Claude user settings',
     detail: 'Copies user-scoped Claude settings alongside package assets.',
+    requiresReanalysis: true,
+  },
+  {
+    id: 'includeCodexConfig',
+    label: 'Include ~/.codex/config.toml',
+    detail: 'Adds user-specific Codex configuration to the bundle.',
     requiresReanalysis: true,
   },
   {
@@ -379,7 +390,8 @@ export function ExtractWizard({
   useEffect(() => {
     if (!plan) return;
     const hasCodex = plan.mcpServers.some((server) => server.source === 'codex');
-    const shouldInclude = hasCodex || plan.codexConfigBase;
+    const codexAvailable = hasCodex || Boolean(plan.codexConfigBase);
+    const shouldInclude = Boolean(options.includeCodexConfig) && codexAvailable;
     setSelectedArtifacts((prev) => {
       if (!shouldInclude) {
         if (!prev.has(CODEX_MCP_ARTIFACT_ID)) return prev;
@@ -392,7 +404,7 @@ export function ExtractWizard({
       next.add(CODEX_MCP_ARTIFACT_ID);
       return next;
     });
-  }, [plan, plan?.mcpServers, plan?.codexConfigBase]);
+  }, [plan, options.includeCodexConfig]);
 
   useEffect(() => {
     if (!plan) return;
@@ -493,11 +505,19 @@ export function ExtractWizard({
           ? Boolean(options.includeClaudeLocal)
           : config.id === 'includeClaudeUser'
             ? Boolean(options.includeClaudeUser)
-            : config.id === 'dryRun'
-              ? Boolean(options.dryRun)
-              : Boolean(options.force),
+            : config.id === 'includeCodexConfig'
+              ? Boolean(options.includeCodexConfig)
+              : config.id === 'dryRun'
+                ? Boolean(options.dryRun)
+                : Boolean(options.force),
     }));
-  }, [options.dryRun, options.force, options.includeClaudeLocal, options.includeClaudeUser]);
+  }, [
+    options.dryRun,
+    options.force,
+    options.includeClaudeLocal,
+    options.includeClaudeUser,
+    options.includeCodexConfig,
+  ]);
 
   const goNextStep = useCallback(() => {
     const idx = stepOrder.indexOf(currentStep);
@@ -629,6 +649,14 @@ export function ExtractWizard({
         case 'includeClaudeUser': {
           setOptions((prev) => {
             const next = { ...prev, includeClaudeUser: !prev.includeClaudeUser };
+            void runAnalysis(next, true, 'Re-analyzing project…');
+            return next;
+          });
+          break;
+        }
+        case 'includeCodexConfig': {
+          setOptions((prev) => {
+            const next = { ...prev, includeCodexConfig: !prev.includeCodexConfig };
             void runAnalysis(next, true, 'Re-analyzing project…');
             return next;
           });
@@ -1167,6 +1195,12 @@ export function ExtractWizard({
                 <Text dimColor>Force overwrite enabled</Text>
               ) : null}
             </Box>
+            {reviewSummary.codexConfigIncluded ? (
+              <Box flexDirection="column">
+                <Text>○ Include ~/.codex/config.toml</Text>
+                <Text dimColor> Adds user-specific Codex configuration to the bundle.</Text>
+              </Box>
+            ) : null}
           </Box>
         );
       }

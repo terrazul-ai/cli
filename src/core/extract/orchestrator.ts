@@ -536,13 +536,18 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
 
   const codexConfigPath =
     options.codexConfigPath ?? path.join(os.homedir(), '.codex', 'config.toml');
-  if (await pathExists(codexConfigPath)) {
-    const toml = await fs.readFile(codexConfigPath, 'utf8');
-    const codexExtraction = parseCodexMcpServers(toml, projectRoot, codexConfigPath);
-    plan.mcpServers.push(...codexExtraction.servers);
-    if (codexExtraction.base) {
-      plan.codexConfigBase = codexExtraction.base;
+  const codexConfigExists = await pathExists(codexConfigPath);
+  if (options.includeCodexConfig) {
+    if (codexConfigExists) {
+      const toml = await fs.readFile(codexConfigPath, 'utf8');
+      const codexExtraction = parseCodexMcpServers(toml, projectRoot, codexConfigPath);
+      plan.mcpServers.push(...codexExtraction.servers);
+      if (codexExtraction.base) {
+        plan.codexConfigBase = codexExtraction.base;
+      }
     }
+  } else if (codexConfigExists) {
+    plan.skipped.push('codex.mcp_servers (enable include Codex config to bundle)');
   }
 
   const projectMcpPath = options.projectMcpConfigPath ?? path.join(projectRoot, '.mcp.json');

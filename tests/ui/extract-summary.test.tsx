@@ -10,6 +10,7 @@ const baseOptions: ExtractOptions = {
   version: '0.0.0',
   includeClaudeLocal: false,
   includeClaudeUser: false,
+  includeCodexConfig: true,
   dryRun: false,
   force: false,
 };
@@ -91,6 +92,7 @@ describe('buildReviewSummary', () => {
     expect(summary.destination.version).toBe('0.0.0');
     expect(summary.destination.dryRun).toBe(true);
     expect(summary.destination.force).toBe(true);
+    expect(summary.codexConfigIncluded).toBe(true);
   });
 
   it('handles empty selections gracefully', () => {
@@ -111,5 +113,6 @@ describe('buildReviewSummary', () => {
     const mcp = summary.sections[1];
     expect(mcp.totalCount).toBe(0);
     expect(mcp.emptyLabel).toBe('Plan has no MCP servers');
+    expect(summary.codexConfigIncluded).toBe(false);
   });
 });

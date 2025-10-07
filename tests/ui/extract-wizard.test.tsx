@@ -17,6 +17,7 @@ const baseOptions: ExtractOptions = {
   version: '0.0.0',
   includeClaudeLocal: false,
   includeClaudeUser: false,
+  includeCodexConfig: true,
   dryRun: false,
   force: false,
 };
@@ -212,11 +213,15 @@ describe('ExtractWizard', () => {
     await expectFrameContains(lastFrame, 'Extract • Step 5/6 — Toggle Options');
     await expectFrameContains(lastFrame, 'Space • Toggle');
     await expectFrameNotContains(lastFrame, 'L • Claude local');
+    await expectFrameContains(lastFrame, 'Include ~/.codex/config.toml');
+    await expectFrameContains(lastFrame, 'Adds user-specific Codex configuration to the bundle.');
 
     stdin.write('\r');
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 6/6 — Review & Extract');
     await expectFrameContains(lastFrame, 'Enter • Extract package');
+    await expectFrameContains(lastFrame, '○ Include ~/.codex/config.toml');
+    await expectFrameContains(lastFrame, 'Adds user-specific Codex configuration to the bundle.');
 
     stdin.write('\r');
 
