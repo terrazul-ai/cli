@@ -21,7 +21,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       'codex.Agents': '/projects/demo/AGENTS.md',
       'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
       'cursor.rules': '/projects/demo/.cursor/rules',
-      'codex.mcp_config': 'aggregated from MCP sources',
+      'codex.mcp_servers': 'aggregated from MCP sources',
       'claude.mcp_servers': 'aggregated from MCP sources',
     },
     skipped: [],
@@ -55,7 +55,7 @@ describe('buildReviewSummary', () => {
     const plan = createPlan();
     const summary = buildReviewSummary({
       plan,
-      selectedArtifacts: new Set(['codex.Agents', 'claude.Readme']),
+      selectedArtifacts: new Set(['codex.Agents', 'claude.Readme', 'codex.mcp_servers']),
       selectedMcp: new Set(['project:search']),
       options: { ...baseOptions, dryRun: true, force: true },
     });
@@ -79,9 +79,12 @@ describe('buildReviewSummary', () => {
     const mcp = summary.sections[1];
     expect(mcp.id).toBe('mcp');
     expect(mcp.title).toBe('MCP Servers');
-    expect(mcp.selectedCount).toBe(1);
+    expect(mcp.selectedCount).toBe(2);
     expect(mcp.totalCount).toBe(2);
-    expect(mcp.items.map((item) => item.primary)).toEqual(['PROJECT • search']);
+    expect(mcp.items.map((item) => item.primary)).toEqual([
+      'Codex • config.toml',
+      'PROJECT • search',
+    ]);
 
     expect(summary.destination.path).toBe('/projects/demo/out');
     expect(summary.destination.packageName).toBe('@demo/pkg');

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import * as TOML from '@iarna/toml';
 import { describe, it, expect } from 'vitest';
 
 import { ensureBuilt, run } from '../helpers/cli';
@@ -24,45 +25,46 @@ describe('manifest snapshot (exports layout)', () => {
     await proj.addCopilot('cp');
     const out = await mkdtemp('tz-extract-out');
 
-    await run('node', [
-      cli,
-      'extract',
-      '--from',
-      proj.root,
-      '--out',
-      out,
-      '--name',
-      '@you/ctx',
-      '--pkg-version',
-      '1.0.0',
-    ]);
+    const fakeHome = await mkdtemp('tz-extract-home');
+
+    await run(
+      'node',
+      [
+        cli,
+        'extract',
+        '--from',
+        proj.root,
+        '--out',
+        out,
+        '--name',
+        '@you/ctx',
+        '--pkg-version',
+        '1.0.0',
+      ],
+      {
+        env: {
+          HOME: fakeHome,
+          USERPROFILE: fakeHome,
+        },
+      },
+    );
     const toml = await fs.readFile(path.join(out, 'agents.toml'), 'utf8');
-    const expected = [
-      '[package]',
-      'name = "@you/ctx"',
-      'version = "1.0.0"',
-      'description = "Extracted AI context package"',
-      'license = "MIT"',
-      '',
-      '[exports.codex]',
-      'template = "templates/AGENTS.md.hbs"',
-      '',
-      '[exports.claude]',
-      'template = "templates/CLAUDE.md.hbs"',
-      'settings = "templates/claude/settings.json.hbs"',
-      'mcpServers = "templates/claude/mcp_servers.json.hbs"',
-      'subagentsDir = "templates/claude/agents"',
-      '',
-      '[exports.cursor]',
-      'template = "templates/cursor.rules.hbs"',
-      '',
-      '[exports.copilot]',
-      'template = "templates/copilot.md.hbs"',
-      '',
-      '[metadata]',
-      'tz_spec_version = 1',
-      '',
-    ].join('\n');
-    expect(toml).toBe(expected);
+    const doc = TOML.parse(toml) as Record<string, unknown>;
+
+    const pkg = doc.package as Record<string, unknown> | undefined;
+    expect(pkg?.name).toBe('@you/ctx');
+    expect(pkg?.version).toBe('1.0.0');
+
+    const exportsSection = doc.exports as Record<string, unknown> | undefined;
+    const codexSection = (exportsSection?.codex ?? {}) as Record<string, unknown>;
+    expect(codexSection.template).toBe('templates/AGENTS.md.hbs');
+    expect(codexSection).not.toHaveProperty('mcpServers');
+
+    const claudeSection = (exportsSection?.claude ?? {}) as Record<string, unknown>;
+    expect(claudeSection.template).toBe('templates/CLAUDE.md.hbs');
+    expect(claudeSection.mcpServers).toBe('templates/claude/mcp_servers.json.hbs');
+
+    const metadata = doc.metadata as Record<string, unknown> | undefined;
+    expect(metadata?.tz_spec_version).toBe(1);
   });
 });

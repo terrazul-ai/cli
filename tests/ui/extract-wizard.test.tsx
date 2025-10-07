@@ -28,7 +28,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       'codex.Agents': '/projects/demo/AGENTS.md',
       'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
       'cursor.rules': '/projects/demo/.cursor/rules',
-      'codex.mcp_config': 'aggregated from MCP sources',
+      'codex.mcp_servers': 'aggregated from MCP sources',
       'claude.mcp_servers': 'aggregated from MCP sources',
     },
     skipped: [],
@@ -71,9 +71,9 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         data: {},
       },
       {
-        id: 'codex.mcp_config',
-        artifactId: 'codex.mcp_config',
-        relativePath: 'templates/codex/config.toml.hbs',
+        id: 'codex.mcp_servers',
+        artifactId: 'codex.mcp_servers',
+        relativePath: 'templates/codex/mcp_servers.toml.hbs',
         format: 'toml',
         data: '',
       },
@@ -108,9 +108,9 @@ function createResult(): ExtractResult {
       detected: {
         'codex.Agents': '/projects/demo/AGENTS.md',
         'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
-        'codex.mcp_config': 'aggregated from MCP sources',
+        'codex.mcp_servers': 'aggregated from MCP sources',
       },
-      outputs: ['README.md', 'templates/AGENTS.md.hbs', 'templates/codex/config.toml.hbs'],
+      outputs: ['README.md', 'templates/AGENTS.md.hbs', 'templates/codex/mcp_servers.toml.hbs'],
       manifest: {},
       skipped: [],
     },
@@ -234,7 +234,7 @@ describe('ExtractWizard', () => {
       'codex.Agents',
       'claude.Readme',
       'cursor.rules',
-      'codex.mcp_config',
+      'codex.mcp_servers',
       'claude.mcp_servers',
     ]);
     expect(execOptions.includedMcpServers).toEqual(['codex:embeddings', 'project:search']);

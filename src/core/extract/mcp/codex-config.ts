@@ -105,14 +105,8 @@ export function parseCodexMcpServers(
   };
 }
 
-export function renderCodexConfig(base: CodexBaseConfig | null, servers: MCPServerPlan[]): string {
+export function renderCodexMcpServers(servers: MCPServerPlan[]): string {
   const doc: TOML.JsonMap = {};
-  if (base?.model) doc.model = base.model;
-  if (base?.model_reasoning_effort) doc.model_reasoning_effort = base.model_reasoning_effort;
-  if (base?.projects && Object.keys(base.projects).length > 0) {
-    doc.projects = base.projects as TOML.JsonMap;
-  }
-
   const codexServers = servers.filter((server) => server.source === 'codex');
   if (codexServers.length > 0) {
     const map: Record<string, unknown> = {};

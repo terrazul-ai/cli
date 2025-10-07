@@ -141,7 +141,7 @@ describe('analyzeExtractSources', () => {
         'claude.Readme',
         'claude.settings',
         'claude.mcp_servers',
-        'codex.mcp_config',
+        'codex.mcp_servers',
       ]),
     );
     expect(plan.manifest.claude?.template).toBe('templates/CLAUDE.md.hbs');
@@ -198,7 +198,7 @@ describe('executeExtract', () => {
     const exportsSection = (manifestDoc.exports as Record<string, unknown>) ?? {};
     const codexSection = (exportsSection.codex as Record<string, unknown>) ?? {};
     expect(codexSection.template).toBe('templates/AGENTS.md.hbs');
-    expect(codexSection.config).toBe('templates/codex/config.toml.hbs');
+    expect(codexSection.mcpServers).toBe('templates/codex/mcp_servers.toml.hbs');
     const mcpRaw = JSON.parse(
       await fs.readFile(
         path.join(paths.out, 'templates', 'claude', 'mcp_servers.json.hbs'),
@@ -217,12 +217,12 @@ describe('executeExtract', () => {
     expect(result.summary.outputs).toEqual(
       expect.arrayContaining([
         'templates/claude/mcp_servers.json.hbs',
-        'templates/codex/config.toml.hbs',
+        'templates/codex/mcp_servers.toml.hbs',
       ]),
     );
 
     const codexToml = await fs.readFile(
-      path.join(paths.out, 'templates', 'codex', 'config.toml.hbs'),
+      path.join(paths.out, 'templates', 'codex', 'mcp_servers.toml.hbs'),
       'utf8',
     );
     const codexConfig = TOML.parse(codexToml ?? '') as Record<string, unknown>;
@@ -294,7 +294,7 @@ describe('executeExtract', () => {
     expect(coder.metadata).toEqual({ keep: 'yes' });
 
     const codexToml = await fs.readFile(
-      path.join(paths.out, 'templates', 'codex', 'config.toml.hbs'),
+      path.join(paths.out, 'templates', 'codex', 'mcp_servers.toml.hbs'),
       'utf8',
     );
     const codexConfig = TOML.parse(codexToml ?? '') as Record<string, unknown>;

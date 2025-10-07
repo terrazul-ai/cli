@@ -2,7 +2,7 @@ import { type ExtractOptions, type ExtractPlan } from '../../core/extract/orches
 
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
 const CLAUDE_MCP_ARTIFACT_ID = 'claude.mcp_servers';
-const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_config';
+const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_servers';
 
 const ARTIFACT_LABELS: Record<string, string> = {
   'codex.Agents': 'Codex • AGENTS.md',
@@ -69,7 +69,10 @@ export function buildReviewSummary({
 }: BuildReviewSummaryParams): ReviewSummary {
   const artifactOrder = Object.keys(plan.detected);
   const artifactItems: SummaryItem[] = artifactOrder
-    .filter((id) => selectedArtifacts.has(id))
+    .filter(
+      (id) =>
+        selectedArtifacts.has(id) && id !== CLAUDE_MCP_ARTIFACT_ID && id !== CODEX_MCP_ARTIFACT_ID,
+    )
     .map((id) => {
       const detectedEntry = plan.detected[id];
       const detail =
@@ -95,11 +98,26 @@ export function buildReviewSummary({
       }),
     );
 
-  if (selectedArtifacts.has(CODEX_MCP_ARTIFACT_ID)) {
+  if (
+    selectedArtifacts.has(CODEX_MCP_ARTIFACT_ID) &&
+    !mcpItems.some((item) => item.id === CODEX_MCP_ARTIFACT_ID)
+  ) {
     mcpItems.unshift({
       id: CODEX_MCP_ARTIFACT_ID,
-      primary: ARTIFACT_LABELS[CODEX_MCP_ARTIFACT_ID],
+      primary: getArtifactLabel(CODEX_MCP_ARTIFACT_ID),
       secondary: 'Include ~/.codex/config.toml',
+    });
+  }
+
+  if (
+    selectedArtifacts.has(CLAUDE_MCP_ARTIFACT_ID) &&
+    selectedMcp.size === 0 &&
+    !mcpItems.some((item) => item.id === CLAUDE_MCP_ARTIFACT_ID)
+  ) {
+    mcpItems.unshift({
+      id: CLAUDE_MCP_ARTIFACT_ID,
+      primary: getArtifactLabel(CLAUDE_MCP_ARTIFACT_ID),
+      secondary: 'Include .claude/mcp_servers.json',
     });
   }
 

@@ -34,7 +34,7 @@ const SPINNER_INTERVAL = 96;
 
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
 const CLAUDE_MCP_ARTIFACT_ID = 'claude.mcp_servers';
-const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_config';
+const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_servers';
 
 type StepId = 'artifacts' | 'subagents' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
 

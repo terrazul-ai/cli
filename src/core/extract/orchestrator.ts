@@ -6,7 +6,7 @@ import { ensureDir } from '../../utils/fs.js';
 import { resolveWithin } from '../../utils/path.js';
 import { ErrorCode, TerrazulError } from '../errors.js';
 import { buildAgentsToml, type ExportMap } from './build-manifest.js';
-import { parseCodexMcpServers, renderCodexConfig } from './mcp/codex-config.js';
+import { parseCodexMcpServers, renderCodexMcpServers } from './mcp/codex-config.js';
 import { parseProjectMcpServers } from './mcp/project-config.js';
 import {
   resolveProjectRoot,
@@ -591,14 +591,14 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
     );
     if (!existing) {
       addOutput({
-        id: 'codex.mcp_servers:templates/codex/config.toml.hbs',
+        id: 'codex.mcp_servers:templates/codex/mcp_servers.toml.hbs',
         artifactId: 'codex.mcp_servers',
-        relativePath: 'templates/codex/config.toml.hbs',
+        relativePath: 'templates/codex/mcp_servers.toml.hbs',
         format: 'toml',
         data: null,
         manifestPatch: {
           tool: 'codex',
-          properties: { config: 'templates/codex/config.toml.hbs' },
+          properties: { mcpServers: 'templates/codex/mcp_servers.toml.hbs' },
         },
       });
     }
@@ -735,7 +735,7 @@ export async function executeExtract(
       if (output.artifactId === 'claude.mcp_servers') {
         content = JSON.stringify(mcpJson, null, 2);
       } else if (output.artifactId === 'codex.mcp_servers') {
-        content = renderCodexConfig(plan.codexConfigBase, selectedCodexServers);
+        content = renderCodexMcpServers(selectedCodexServers);
       } else if (output.format === 'json') {
         content = JSON.stringify(output.data ?? {}, null, 2);
       } else if (output.format === 'toml') {

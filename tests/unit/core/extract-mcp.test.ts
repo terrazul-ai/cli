@@ -1,8 +1,12 @@
 import path from 'node:path';
 
+import * as TOML from '@iarna/toml';
 import { describe, it, expect } from 'vitest';
 
-import { parseCodexMcpServers } from '../../../src/core/extract/mcp/codex-config';
+import {
+  parseCodexMcpServers,
+  renderCodexMcpServers,
+} from '../../../src/core/extract/mcp/codex-config';
 import { parseProjectMcpServers } from '../../../src/core/extract/mcp/project-config';
 
 describe('extract MCP server parsing', () => {
@@ -33,6 +37,11 @@ args = ["-y", "terrazul-mcp"]
     const remote = servers[1];
     expect(remote.definition.command).toBe('npx');
     expect(remote.definition.args).toEqual(['-y', 'terrazul-mcp']);
+
+    const codexToml = renderCodexMcpServers(servers);
+    const parsed = TOML.parse(codexToml ?? '') as Record<string, unknown>;
+    const codexServers = (parsed.mcp_servers ?? {}) as Record<string, unknown>;
+    expect(Object.keys(codexServers)).toEqual(['packager', 'tools.remote']);
   });
 
   it('normalizes project mcp json servers and skips invalid entries', () => {
