@@ -7,7 +7,7 @@ const baseOptions: ExtractOptions = {
   from: '/projects/demo',
   out: '/projects/demo/out',
   name: '@demo/pkg',
-  version: '1.0.0',
+  version: '0.0.0',
   includeClaudeLocal: false,
   includeClaudeUser: false,
   dryRun: false,
@@ -80,7 +80,7 @@ describe('buildReviewSummary', () => {
 
     expect(summary.destination.path).toBe('/projects/demo/out');
     expect(summary.destination.packageName).toBe('@demo/pkg');
-    expect(summary.destination.version).toBe('1.0.0');
+    expect(summary.destination.version).toBe('0.0.0');
     expect(summary.destination.dryRun).toBe(true);
     expect(summary.destination.force).toBe(true);
   });
