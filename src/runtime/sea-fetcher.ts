@@ -248,6 +248,7 @@ export async function ensureSeaBinary(options: EnsureSeaBinaryOptions = {}): Pro
     const downloadPath = path.join(tempDir, artifactName);
 
     try {
+      console.error(`Downloading tz ${cliVersion} for ${target.target}...`);
       await downloadWithRetries(url, downloadPath, targetEntry.size, retries);
       const digest = await hashFile(downloadPath);
       if (digest.toLowerCase() !== targetEntry.sha256.toLowerCase()) {
@@ -265,6 +266,7 @@ export async function ensureSeaBinary(options: EnsureSeaBinaryOptions = {}): Pro
       // Sign the binary on macOS after decompression to prevent Gatekeeper from blocking it
       await signBinaryOnMacOS(binaryPath, platform);
 
+      console.error('Download finished. Booting tz...');
       return binaryPath;
     } finally {
       await fs.rm(downloadPath, { force: true }).catch(() => {});
