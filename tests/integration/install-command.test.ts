@@ -210,4 +210,38 @@ version = "0.1.0"
     });
     expect(stderr).toMatch(/frozen lockfile/i);
   });
+
+  it('rejects frozen lockfile when dependencies are removed', async () => {
+    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
+    await run('node', [cli, 'init', '--name', '@e2e/install-remove'], { cwd: tmpProj, env });
+    const manifest = `
+[package]
+name = "@e2e/install-remove"
+version = "0.1.0"
+
+[dependencies]
+"@terrazul/starter" = "^1.1.0"
+`;
+    await fs.writeFile(path.join(tmpProj, 'agents.toml'), manifest, 'utf8');
+    await run('node', [cli, 'install'], { cwd: tmpProj, env });
+
+    const lockPath = path.join(tmpProj, 'agents-lock.toml');
+    const lockBefore = await fs.readFile(lockPath, 'utf8');
+
+    const removedDeps = `
+[package]
+name = "@e2e/install-remove"
+version = "0.1.0"
+`;
+    await fs.writeFile(path.join(tmpProj, 'agents.toml'), removedDeps, 'utf8');
+
+    const { stderr } = await runExpectFailure('node', [cli, 'install', '--frozen-lockfile'], {
+      cwd: tmpProj,
+      env,
+    });
+    expect(stderr).toMatch(/frozen lockfile/i);
+
+    const lockAfter = await fs.readFile(lockPath, 'utf8');
+    expect(lockAfter).toBe(lockBefore);
+  });
 });

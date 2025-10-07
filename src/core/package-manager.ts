@@ -107,20 +107,12 @@ export class PackageManager {
     const rootNames = Object.keys(dependencies);
     const existingLock = LockfileManager.read(projectDir);
 
-    if (rootNames.length === 0) {
-      const base = existingLock ?? LockfileManager.merge(null, {});
-      return {
-        lockfile: { ...base, packages: {} },
-        summary: [],
-        warnings: [],
-        resolvedPackages: new Map(),
-      };
-    }
-
     let resolved: ResolvedDependencies;
     let warnings: string[] = [];
 
-    if (options.offline) {
+    if (rootNames.length === 0) {
+      resolved = new Map();
+    } else if (options.offline) {
       if (!existingLock) {
         throw new TerrazulError(
           ErrorCode.CONFIG_INVALID,
@@ -151,6 +143,11 @@ export class PackageManager {
         if (!entry || entry.version !== info.version) {
           mismatches.push(`${name}@${info.version}`);
         }
+      }
+      const extras = Object.keys(existingLock.packages ?? {}).filter((name) => !resolved.has(name));
+      for (const name of extras) {
+        const version = existingLock.packages[name]?.version ?? 'unknown';
+        mismatches.push(`${name}@${version}`);
       }
       if (mismatches.length > 0) {
         throw new TerrazulError(
