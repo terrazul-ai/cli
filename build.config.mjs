@@ -91,8 +91,11 @@ async function build() {
 
     // Ensure the extracted bundle is treated as the main module
     const argv = process.argv;
-    if (argv[1] !== entryFile) {
-      argv.splice(1, 0, entryFile);
+    if (argv.length > 1) {
+      // Node SEA populates argv[1] with a duplicate of argv[0]; replace it with our entry file
+      argv[1] = entryFile;
+    } else {
+      argv.push(entryFile);
     }
 
     Module.runMain(entryFile);
