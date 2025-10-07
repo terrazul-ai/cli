@@ -64,15 +64,16 @@ async function build() {
     plugins: [stripInkDevtoolsPlugin],
   });
 
-  // Create a CJS wrapper for SEA that dynamically imports the ESM bundle
+  // Create a CJS wrapper for SEA that executes the bundled ESM entry via Module.runMain
   const seaWrapperCode = `#!/usr/bin/env node
-// CJS wrapper that dynamically imports the ESM bundle
-(async () => {
+// CJS wrapper that executes the bundled ESM entry via Module.runMain
+(() => {
   try {
     const { getAsset } = require('node:sea');
     const { writeFileSync, mkdirSync } = require('node:fs');
     const { tmpdir } = require('node:os');
     const { join } = require('node:path');
+    const Module = require('node:module');
 
     // Create temp directory for extracted assets
     const tempDir = join(tmpdir(), 'tz-' + Date.now());
@@ -80,16 +81,21 @@ async function build() {
 
     // Extract the ESM bundle from SEA assets
     const esmBundle = getAsset('tz.mjs', 'utf8');
-    const tempFile = join(tempDir, 'tz.mjs');
-    writeFileSync(tempFile, esmBundle);
+    const entryFile = join(tempDir, 'tz.mjs');
+    writeFileSync(entryFile, esmBundle);
 
     // Extract yoga.wasm from SEA assets
     const yogaWasm = getAsset('yoga.wasm');
     const yogaFile = join(tempDir, 'yoga.wasm');
     writeFileSync(yogaFile, Buffer.from(yogaWasm));
 
-    // Dynamically import the ESM bundle
-    await import(tempFile);
+    // Ensure the extracted bundle is treated as the main module
+    const argv = process.argv;
+    if (argv[1] !== entryFile) {
+      argv.splice(1, 0, entryFile);
+    }
+
+    Module.runMain(entryFile);
   } catch (error) {
     console.error('Failed to load Terrazul CLI:', error);
     process.exit(1);

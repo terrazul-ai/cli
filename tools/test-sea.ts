@@ -62,11 +62,15 @@ async function main() {
   if (!(await exists(seaConfigPath))) {
     // Fallback to a minimal sea.config.json if missing
     const seaConfig = {
-      main: 'dist/tz.mjs',
+      main: 'dist/sea-entry.cjs',
       output: 'dist/sea-prep.blob',
       disableExperimentalSEAWarning: true,
       useSnapshot: false,
-      useCodeCache: false,
+      useCodeCache: true,
+      assets: {
+        'tz.mjs': 'dist/tz.mjs',
+        'yoga.wasm': 'dist/yoga.wasm',
+      },
     } as const;
     await fs.writeFile(seaConfigPath, JSON.stringify(seaConfig, null, 2));
   }
