@@ -6,7 +6,7 @@ import { buildAgentsToml } from '../../../src/core/extract/build-manifest';
 describe('build-manifest (agents.toml generation)', () => {
   it('generates TOML with package, exports, and metadata', () => {
     const toml = buildAgentsToml('@user/pkg', '1.2.3', {
-      codex: { template: 'templates/AGENTS.md.hbs' },
+      codex: { template: 'templates/AGENTS.md.hbs', config: 'templates/codex/config.toml.hbs' },
       claude: {
         template: 'templates/CLAUDE.md.hbs',
         settings: 'templates/claude/settings.json.hbs',
@@ -22,7 +22,7 @@ describe('build-manifest (agents.toml generation)', () => {
       package: { name: string; version: string; description: string };
       metadata: { tz_spec_version: number };
       exports: {
-        codex: { template: string };
+        codex: { template: string; config: string };
         claude: { template: string; settings: string; mcpServers: string };
         cursor: { template: string };
         copilot: { template: string };
@@ -34,6 +34,7 @@ describe('build-manifest (agents.toml generation)', () => {
     expect(obj.package.description).toBe('Extracted AI context package');
     expect(obj.metadata.tz_spec_version).toBe(1);
     expect(obj.exports.codex.template).toBe('templates/AGENTS.md.hbs');
+    expect(obj.exports.codex.config).toBe('templates/codex/config.toml.hbs');
     expect(obj.exports.claude.template).toBe('templates/CLAUDE.md.hbs');
     expect(obj.exports.claude.settings).toBe('templates/claude/settings.json.hbs');
     expect(obj.exports.claude.mcpServers).toBe('templates/claude/mcp_servers.json.hbs');
@@ -46,7 +47,7 @@ describe('build-manifest (agents.toml generation)', () => {
 
   it('is deterministic for the same exports map', () => {
     const exportsMap = {
-      codex: { template: 'templates/AGENTS.md.hbs' },
+      codex: { template: 'templates/AGENTS.md.hbs', config: 'templates/codex/config.toml.hbs' },
       claude: { template: 'templates/CLAUDE.md.hbs' },
     } as const;
     const a = buildAgentsToml('@u/p', '0.1.0', exportsMap);

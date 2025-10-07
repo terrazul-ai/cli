@@ -6,7 +6,7 @@ import { ensureDir } from '../../utils/fs.js';
 import { resolveWithin } from '../../utils/path.js';
 import { ErrorCode, TerrazulError } from '../errors.js';
 import { buildAgentsToml, type ExportMap } from './build-manifest.js';
-import { parseCodexMcpServers } from './mcp/codex-config.js';
+import { parseCodexMcpServers, renderCodexConfig } from './mcp/codex-config.js';
 import { parseProjectMcpServers } from './mcp/project-config.js';
 import {
   resolveProjectRoot,
@@ -219,6 +219,7 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
     manifest: {},
     outputs: [],
     mcpServers: [],
+    codexConfigBase: null,
   };
 
   const addOutput = (output: PlannedOutput): void => {
@@ -537,7 +538,11 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
     options.codexConfigPath ?? path.join(os.homedir(), '.codex', 'config.toml');
   if (await pathExists(codexConfigPath)) {
     const toml = await fs.readFile(codexConfigPath, 'utf8');
-    plan.mcpServers.push(...parseCodexMcpServers(toml, projectRoot, codexConfigPath));
+    const codexExtraction = parseCodexMcpServers(toml, projectRoot, codexConfigPath);
+    plan.mcpServers.push(...codexExtraction.servers);
+    if (codexExtraction.base) {
+      plan.codexConfigBase = codexExtraction.base;
+    }
   }
 
   const projectMcpPath = options.projectMcpConfigPath ?? path.join(projectRoot, '.mcp.json');
@@ -573,6 +578,29 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
     }
     if (mcpOutput) {
       mcpOutput.data = buildMcpServersObject(plan.mcpServers);
+    }
+  }
+
+  const hasCodexServers = plan.mcpServers.some((server) => server.source === 'codex');
+  if (hasCodexServers || plan.codexConfigBase) {
+    if (!plan.detected['codex.mcp_servers']) {
+      plan.detected['codex.mcp_servers'] = 'aggregated from MCP sources';
+    }
+    const existing = plan.outputs.find(
+      (output: PlannedOutput) => output.artifactId === 'codex.mcp_servers',
+    );
+    if (!existing) {
+      addOutput({
+        id: 'codex.mcp_servers:templates/codex/config.toml.hbs',
+        artifactId: 'codex.mcp_servers',
+        relativePath: 'templates/codex/config.toml.hbs',
+        format: 'toml',
+        data: null,
+        manifestPatch: {
+          tool: 'codex',
+          properties: { config: 'templates/codex/config.toml.hbs' },
+        },
+      });
     }
   }
 
@@ -694,6 +722,7 @@ export async function executeExtract(
     includeAllMcp ? true : selectedMcpIds.has(server.id),
   );
   const mcpJson = buildMcpServersObject(selectedMcpServers);
+  const selectedCodexServers = selectedMcpServers.filter((server) => server.source === 'codex');
 
   const outputsWritten: string[] = [];
 
@@ -705,8 +734,12 @@ export async function executeExtract(
       let content: string;
       if (output.artifactId === 'claude.mcp_servers') {
         content = JSON.stringify(mcpJson, null, 2);
+      } else if (output.artifactId === 'codex.mcp_servers') {
+        content = renderCodexConfig(plan.codexConfigBase, selectedCodexServers);
       } else if (output.format === 'json') {
         content = JSON.stringify(output.data ?? {}, null, 2);
+      } else if (output.format === 'toml') {
+        content = String(output.data ?? '');
       } else {
         content = String(output.data ?? '');
       }

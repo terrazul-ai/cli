@@ -6,7 +6,7 @@ export function registerUnyankCommand(
   createCtx: (opts: { verbose?: boolean }) => CLIContext,
 ): void {
   program
-    .command('unyank', { hidden: true })
+    .command('unyank')
     .argument('<spec>', 'Package spec to unyank, e.g., @pkg@1.0.0')
     .description('Reverse a yank operation for a previously yanked version')
     .action((spec: string) => {

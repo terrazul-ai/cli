@@ -33,6 +33,8 @@ const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', 
 const SPINNER_INTERVAL = 96;
 
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
+const CLAUDE_MCP_ARTIFACT_ID = 'claude.mcp_servers';
+const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_config';
 
 type StepId = 'artifacts' | 'subagents' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
 
@@ -265,7 +267,7 @@ export function ExtractWizard({
       return new Set(available);
     });
     const visibleArtifacts = Object.keys(nextPlan.detected).filter(
-      (id) => id !== CLAUDE_SUBAGENT_ARTIFACT_ID,
+      (id) => id !== CLAUDE_SUBAGENT_ARTIFACT_ID && id !== CLAUDE_MCP_ARTIFACT_ID,
     );
     setArtifactCursor((prev) => {
       const maxIndex = Math.max(visibleArtifacts.length - 1, 0);
@@ -361,6 +363,40 @@ export function ExtractWizard({
   useEffect(() => {
     if (!plan) return;
     setSelectedArtifacts((prev) => {
+      if (plan.mcpServers.length === 0) {
+        if (!prev.has(CLAUDE_MCP_ARTIFACT_ID)) return prev;
+        const next = new Set(prev);
+        next.delete(CLAUDE_MCP_ARTIFACT_ID);
+        return next;
+      }
+      if (prev.has(CLAUDE_MCP_ARTIFACT_ID)) return prev;
+      const next = new Set(prev);
+      next.add(CLAUDE_MCP_ARTIFACT_ID);
+      return next;
+    });
+  }, [plan, plan?.mcpServers?.length]);
+
+  useEffect(() => {
+    if (!plan) return;
+    const hasCodex = plan.mcpServers.some((server) => server.source === 'codex');
+    const shouldInclude = hasCodex || plan.codexConfigBase;
+    setSelectedArtifacts((prev) => {
+      if (!shouldInclude) {
+        if (!prev.has(CODEX_MCP_ARTIFACT_ID)) return prev;
+        const next = new Set(prev);
+        next.delete(CODEX_MCP_ARTIFACT_ID);
+        return next;
+      }
+      if (prev.has(CODEX_MCP_ARTIFACT_ID)) return prev;
+      const next = new Set(prev);
+      next.add(CODEX_MCP_ARTIFACT_ID);
+      return next;
+    });
+  }, [plan, plan?.mcpServers, plan?.codexConfigBase]);
+
+  useEffect(() => {
+    if (!plan) return;
+    setSelectedArtifacts((prev) => {
       const has = prev.has(CLAUDE_SUBAGENT_ARTIFACT_ID);
       if (selectedSubagents.size > 0) {
         if (has) return prev;
@@ -378,7 +414,12 @@ export function ExtractWizard({
   const artifactItems: SelectableListItem[] = useMemo(() => {
     if (!plan) return [];
     return Object.keys(plan.detected)
-      .filter((id) => id !== CLAUDE_SUBAGENT_ARTIFACT_ID)
+      .filter(
+        (id) =>
+          id !== CLAUDE_SUBAGENT_ARTIFACT_ID &&
+          id !== CLAUDE_MCP_ARTIFACT_ID &&
+          id !== CODEX_MCP_ARTIFACT_ID,
+      )
       .map((id) => ({
         id,
         label: getArtifactLabel(id),

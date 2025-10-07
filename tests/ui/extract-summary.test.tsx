@@ -21,6 +21,8 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       'codex.Agents': '/projects/demo/AGENTS.md',
       'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
       'cursor.rules': '/projects/demo/.cursor/rules',
+      'codex.mcp_config': 'aggregated from MCP sources',
+      'claude.mcp_servers': 'aggregated from MCP sources',
     },
     skipped: [],
     manifest: {},
@@ -32,6 +34,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         source: 'codex',
         origin: '~/.codex/config.toml',
         definition: { command: 'run-embeddings', args: [], env: {} },
+        config: { command: 'run-embeddings' },
       },
       {
         id: 'project:search',
@@ -39,8 +42,10 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         source: 'project',
         origin: '/projects/demo/.mcp.json',
         definition: { command: './scripts/search.sh', args: [], env: {} },
+        config: { command: './scripts/search.sh' },
       },
     ],
+    codexConfigBase: { model: 'gpt-5-codex' },
     ...overrides,
   };
 }
@@ -61,14 +66,14 @@ describe('buildReviewSummary', () => {
     expect(artifacts.id).toBe('artifacts');
     expect(artifacts.title).toBe('Artifacts');
     expect(artifacts.selectedCount).toBe(2);
-    expect(artifacts.totalCount).toBe(3);
+    expect(artifacts.totalCount).toBe(5);
     expect(artifacts.items.map((item) => item.primary)).toEqual([
       'Codex • AGENTS.md',
       'Claude • CLAUDE.md',
     ]);
     expect(artifacts.items.map((item) => item.secondary)).toEqual([
-      'codex.Agents',
-      'claude.Readme',
+      '/projects/demo/AGENTS.md',
+      '/projects/demo/.claude/CLAUDE.md',
     ]);
 
     const mcp = summary.sections[1];

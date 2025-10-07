@@ -28,6 +28,8 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       'codex.Agents': '/projects/demo/AGENTS.md',
       'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
       'cursor.rules': '/projects/demo/.cursor/rules',
+      'codex.mcp_config': 'aggregated from MCP sources',
+      'claude.mcp_servers': 'aggregated from MCP sources',
     },
     skipped: [],
     manifest: {},
@@ -61,6 +63,20 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         format: 'text',
         data: 'cursor',
       },
+      {
+        id: 'claude.mcp_servers',
+        artifactId: 'claude.mcp_servers',
+        relativePath: 'templates/claude/mcp_servers.json.hbs',
+        format: 'json',
+        data: {},
+      },
+      {
+        id: 'codex.mcp_config',
+        artifactId: 'codex.mcp_config',
+        relativePath: 'templates/codex/config.toml.hbs',
+        format: 'toml',
+        data: '',
+      },
     ],
     mcpServers: [
       {
@@ -80,6 +96,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         config: { command: './scripts/search.sh' },
       },
     ],
+    codexConfigBase: { model: 'gpt-5-codex' },
     ...overrides,
   };
 }
@@ -91,8 +108,9 @@ function createResult(): ExtractResult {
       detected: {
         'codex.Agents': '/projects/demo/AGENTS.md',
         'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
+        'codex.mcp_config': 'aggregated from MCP sources',
       },
-      outputs: ['README.md', 'templates/AGENTS.md.hbs'],
+      outputs: ['README.md', 'templates/AGENTS.md.hbs', 'templates/codex/config.toml.hbs'],
       manifest: {},
       skipped: [],
     },
@@ -211,10 +229,13 @@ describe('ExtractWizard', () => {
 
     const [executedPlan, execOptions] = execute.mock.calls[0];
     expect(executedPlan).toBe(plan);
+    expect(execOptions.includedArtifacts).toHaveLength(5);
     expect(execOptions.includedArtifacts).toEqual([
       'codex.Agents',
       'claude.Readme',
       'cursor.rules',
+      'codex.mcp_config',
+      'claude.mcp_servers',
     ]);
     expect(execOptions.includedMcpServers).toEqual(['codex:embeddings', 'project:search']);
 

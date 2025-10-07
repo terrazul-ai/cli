@@ -5,7 +5,7 @@ import { buildAgentsToml } from '../../../src/core/extract/build-manifest';
 describe('build-manifest snapshot', () => {
   it('produces a canonical agents.toml layout', () => {
     const toml = buildAgentsToml('@snap/demo', '0.0.1', {
-      codex: { template: 'templates/AGENTS.md.hbs' },
+      codex: { template: 'templates/AGENTS.md.hbs', config: 'templates/codex/config.toml.hbs' },
       claude: {
         template: 'templates/CLAUDE.md.hbs',
         settings: 'templates/claude/settings.json.hbs',
@@ -25,6 +25,7 @@ describe('build-manifest snapshot', () => {
       '',
       '[exports.codex]',
       'template = "templates/AGENTS.md.hbs"',
+      'config = "templates/codex/config.toml.hbs"',
       '',
       '[exports.claude]',
       'template = "templates/CLAUDE.md.hbs"',

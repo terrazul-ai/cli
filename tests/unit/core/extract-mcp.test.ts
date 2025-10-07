@@ -10,6 +10,7 @@ describe('extract MCP server parsing', () => {
 
   it('normalizes codex config servers with sanitized paths and env', () => {
     const toml = `
+model = "gpt-5-codex"
 [mcp_servers.packager]
 command = "${path.join(projectRoot, 'bin', 'packager')}"
 args = ["--config", "${path.join(projectRoot, 'configs', 'dev.json')}"]
@@ -20,7 +21,9 @@ command = "npx"
 args = ["-y", "terrazul-mcp"]
 `;
 
-    const servers = parseCodexMcpServers(toml, projectRoot);
+    const extraction = parseCodexMcpServers(toml, projectRoot);
+    expect(extraction.base?.model).toBe('gpt-5-codex');
+    const servers = extraction.servers;
     expect(servers).toHaveLength(2);
     expect(servers.map((s) => s.id)).toEqual(['codex:packager', 'codex:tools.remote']);
     const packager = servers[0];

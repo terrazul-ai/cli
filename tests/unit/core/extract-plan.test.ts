@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import * as TOML from '@iarna/toml';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
@@ -75,6 +76,10 @@ async function setupProject(): Promise<TempPaths> {
   await fs.writeFile(
     codexConfig,
     `
+model = "gpt-5-codex"
+model_reasoning_effort = "high"
+[projects."${project}"]
+trust_level = "trusted"
 [mcp_servers.embeddings]
 command = "${path.join(project, 'bin', 'embeddings')}"
 args = ["--model", "${path.join(project, 'models', 'tiny')}"
@@ -136,6 +141,7 @@ describe('analyzeExtractSources', () => {
         'claude.Readme',
         'claude.settings',
         'claude.mcp_servers',
+        'codex.mcp_config',
       ]),
     );
     expect(plan.manifest.claude?.template).toBe('templates/CLAUDE.md.hbs');
@@ -151,6 +157,10 @@ describe('analyzeExtractSources', () => {
     expect(plan.mcpServers.map((s) => s.id)).toEqual(
       expect.arrayContaining(['claude:coder', 'codex:embeddings', 'project:search']),
     );
+    expect(plan.codexConfigBase).not.toBeNull();
+    expect(plan.codexConfigBase?.model).toBe('gpt-5-codex');
+    const projectKeys = Object.keys(plan.codexConfigBase?.projects ?? {});
+    expect(projectKeys.every((key) => !key.includes(paths.project))).toBe(true);
   });
 });
 
@@ -184,6 +194,11 @@ describe('executeExtract', () => {
 
     const manifest = await fs.readFile(path.join(paths.out, 'agents.toml'), 'utf8');
     expect(manifest).toMatch(/name = "@you\/pkg"/);
+    const manifestDoc = TOML.parse(manifest) as Record<string, unknown>;
+    const exportsSection = (manifestDoc.exports as Record<string, unknown>) ?? {};
+    const codexSection = (exportsSection.codex as Record<string, unknown>) ?? {};
+    expect(codexSection.template).toBe('templates/AGENTS.md.hbs');
+    expect(codexSection.config).toBe('templates/codex/config.toml.hbs');
     const mcpRaw = JSON.parse(
       await fs.readFile(
         path.join(paths.out, 'templates', 'claude', 'mcp_servers.json.hbs'),
@@ -199,7 +214,26 @@ describe('executeExtract', () => {
         : {};
     expect(coder.transport).toEqual({ type: 'stdio' });
     expect(coder.metadata).toEqual({ keep: 'yes' });
-    expect(result.summary.outputs).toContain('templates/claude/mcp_servers.json.hbs');
+    expect(result.summary.outputs).toEqual(
+      expect.arrayContaining([
+        'templates/claude/mcp_servers.json.hbs',
+        'templates/codex/config.toml.hbs',
+      ]),
+    );
+
+    const codexToml = await fs.readFile(
+      path.join(paths.out, 'templates', 'codex', 'config.toml.hbs'),
+      'utf8',
+    );
+    const codexConfig = TOML.parse(codexToml ?? '') as Record<string, unknown>;
+    expect(codexConfig).toHaveProperty('mcp_servers');
+    const codexServers = codexConfig.mcp_servers as Record<string, unknown>;
+    expect(Object.keys(codexServers)).toEqual(['embeddings']);
+    const embeddings =
+      codexServers.embeddings && typeof codexServers.embeddings === 'object'
+        ? (codexServers.embeddings as Record<string, unknown>)
+        : {};
+    expect(JSON.stringify(embeddings)).not.toContain(paths.project);
 
     // Legacy performExtract should still succeed and produce same manifest when everything included
     const legacy = await performExtract(
@@ -209,6 +243,8 @@ describe('executeExtract', () => {
         name: '@you/pkg',
         version: '1.0.0',
         force: true,
+        codexConfigPath: paths.codexConfig,
+        projectMcpConfigPath: paths.projectMcp,
       },
       logger,
     );
@@ -256,5 +292,12 @@ describe('executeExtract', () => {
         : {};
     expect(coder.transport).toEqual({ type: 'stdio' });
     expect(coder.metadata).toEqual({ keep: 'yes' });
+
+    const codexToml = await fs.readFile(
+      path.join(paths.out, 'templates', 'codex', 'config.toml.hbs'),
+      'utf8',
+    );
+    const codexConfig = TOML.parse(codexToml ?? '') as Record<string, unknown>;
+    expect(codexConfig.mcp_servers ?? {}).toEqual({});
   });
 });
