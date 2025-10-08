@@ -57,12 +57,7 @@ describe('buildReviewSummary', () => {
     const plan = createPlan();
     const summary = buildReviewSummary({
       plan,
-      selectedArtifacts: new Set([
-        'codex.Agents',
-        'claude.Readme',
-        'codex.mcp_servers',
-        'codex.config',
-      ]),
+      selectedArtifacts: new Set(['codex.Agents', 'claude.Readme']),
       selectedMcp: new Set(['project:search']),
       options: { ...baseOptions, dryRun: true, force: true },
     });

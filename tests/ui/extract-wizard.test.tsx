@@ -220,8 +220,30 @@ describe('ExtractWizard', () => {
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
 
+    stdin.write('\t');
+    await pause();
+    for (const _ of '0.0.0') {
+      stdin.write('\u007f');
+      await pause(10);
+    }
+    stdin.write('invalid');
+    await pause();
+    await expectFrameContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
+    await expectFrameContains(lastFrame, 'Enter • Continue (disabled)');
+
     stdin.write('\r');
     await pause();
+    await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
+
+    for (const _ of 'invalid') {
+      stdin.write('\u007f');
+      await pause(10);
+    }
+    stdin.write('1.2.3');
+    await pause();
+    await expectFrameNotContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
+    await expectFrameContains(lastFrame, 'Enter • Continue');
+
     stdin.write('\r');
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 5/6 — Toggle Options');
@@ -263,49 +285,6 @@ describe('ExtractWizard', () => {
     expect(execOptions.includedMcpServers).toEqual(['codex:embeddings', 'project:search']);
 
     await expectFrameContains(lastFrame, 'Extraction complete');
-  });
-
-  it('blocks metadata advance until valid inputs and surfaces inline warnings', async () => {
-    const plan = createPlan();
-    const analyze = vi.fn(async () => plan);
-    const execute = vi.fn(async (_plan: ExtractPlan, _options: ExecuteOptions) => createResult());
-
-    const { stdin, lastFrame } = render(
-      <ExtractWizard
-        baseOptions={{ ...baseOptions, version: 'invalid' }}
-        initialPlan={plan}
-        analyze={analyze}
-        execute={execute}
-        logger={noopLogger}
-      />,
-    );
-
-    await expectFrameContains(lastFrame, 'Extract • Step 1/6 — Select Artifacts');
-    stdin.write('\t');
-    await expectFrameContains(lastFrame, 'Extract • Step 2/6 — Select MCP Servers');
-    stdin.write('\t');
-    await expectFrameContains(lastFrame, 'Extract • Step 3/6 — Choose Output Directory');
-    stdin.write('\t');
-    await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
-
-    await expectFrameContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
-    await expectFrameContains(lastFrame, 'Enter • Continue (disabled)');
-
-    stdin.write('\t');
-    await pause();
-    for (const _ of 'invalid') {
-      stdin.write('\u007f');
-      await pause(10);
-    }
-    stdin.write('1.2.3');
-
-    await pause();
-    await expectFrameNotContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
-    await expectFrameContains(lastFrame, 'Enter • Continue');
-
-    stdin.write('\r');
-    await pause();
-    await expectFrameContains(lastFrame, 'Extract • Step 5/6 — Toggle Options');
   });
 
   it('shows status bar during analysis and toggles the log drawer', async () => {

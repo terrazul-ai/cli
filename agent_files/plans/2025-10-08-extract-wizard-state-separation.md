@@ -160,8 +160,8 @@ export function computeIncludedArtifacts(
 
 #### Automated Verification:
 
-- [ ] New domain helper unit tests validate derived artifact rules.
-- [ ] UI tests assert `computeIncludedArtifacts` outcomes by inspecting `execute` call arguments.
+- [x] New domain helper unit tests validate derived artifact rules.
+- [x] UI tests assert `computeIncludedArtifacts` outcomes by inspecting `execute` call arguments.
 
 #### Manual Verification:
 
@@ -232,7 +232,7 @@ Adjust review summary helpers and all related tests to align with user-visible s
 
 #### Automated Verification:
 
-- [ ] Updated tests pass, showing derived artifacts appear in execution options even though state holds only visible IDs.
+- [x] Updated tests pass, showing derived artifacts appear in execution options even though state holds only visible IDs.
 
 #### Manual Verification:
 

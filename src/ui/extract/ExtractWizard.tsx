@@ -1,21 +1,14 @@
-import path from 'node:path';
-
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import semver from 'semver';
 
 import {
   type ExecuteOptions,
   type ExtractOptions,
   type ExtractPlan,
   type ExtractResult,
-  getPlanSubagentIds,
-  getSubagentIdFromSourcePath,
-  getSubagentIdFromTemplatePath,
   type LoggerLike,
 } from '../../core/extract/orchestrator.js';
-import { parseSafePackageName } from '../../utils/path.js';
 import {
   type KeyHint,
   type LogEntry,
@@ -25,110 +18,20 @@ import {
   type StatusMessage,
   WizardFrame,
 } from './components.js';
-import { buildReviewSummary, getArtifactLabel, type ReviewSummary } from './summary.js';
+import { OPTION_TOGGLE_CONFIG, STEP_CONFIG, type OptionToggleId } from './extract-wizard-config.js';
+import { useExtractWizardState } from './extract-wizard-state.js';
+import {
+  buildActionHints,
+  buildWizardViewModel,
+  computeIncludedArtifacts,
+  type OptionListItem,
+  type WizardViewModel,
+} from './extract-wizard-viewmodel.js';
 
 const TASK_NAME = 'Extract';
 
 const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 const SPINNER_INTERVAL = 96;
-
-const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
-const CLAUDE_MCP_ARTIFACT_ID = 'claude.mcp_servers';
-const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_servers';
-const CODEX_CONFIG_ARTIFACT_ID = 'codex.config';
-
-type StepId = 'artifacts' | 'subagents' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
-
-type OptionToggleId =
-  | 'includeClaudeLocal'
-  | 'includeClaudeUser'
-  | 'includeCodexConfig'
-  | 'dryRun'
-  | 'force';
-
-interface OptionToggleConfig {
-  id: OptionToggleId;
-  label: string;
-  detail: string;
-  requiresReanalysis?: boolean;
-}
-
-const OPTION_TOGGLE_CONFIG: OptionToggleConfig[] = [
-  {
-    id: 'includeClaudeLocal',
-    label: 'Include .claude/settings.local.json',
-    detail: 'Adds user-specific Claude configuration to the bundle.',
-    requiresReanalysis: true,
-  },
-  {
-    id: 'includeClaudeUser',
-    label: 'Include Claude user settings',
-    detail: 'Copies user-scoped Claude settings alongside package assets.',
-    requiresReanalysis: true,
-  },
-  {
-    id: 'includeCodexConfig',
-    label: 'Include ~/.codex/config.toml',
-    detail: 'Adds user-specific Codex configuration to the bundle.',
-    requiresReanalysis: true,
-  },
-  {
-    id: 'dryRun',
-    label: 'Dry run',
-    detail: 'Preview actions without writing to disk.',
-  },
-  {
-    id: 'force',
-    label: 'Force overwrite',
-    detail: 'Overwrite non-empty directories in the destination.',
-  },
-];
-
-type Status = 'idle' | 'analyzing' | 'executing' | 'completed' | 'error';
-
-interface StepConfig {
-  title: string;
-  instruction: string;
-  primaryLabel: string;
-}
-
-const STEP_CONFIG: Record<StepId, StepConfig> = {
-  artifacts: {
-    title: 'Select Artifacts',
-    instruction: 'Choose which detected artifacts to include. Use ↑/↓ to move, Space to toggle.',
-    primaryLabel: 'Continue',
-  },
-  subagents: {
-    title: 'Select Claude Agent Files',
-    instruction: 'Toggle Claude agent files from .claude/agents to include in the package.',
-    primaryLabel: 'Continue',
-  },
-  mcp: {
-    title: 'Select MCP Servers',
-    instruction: 'Choose MCP servers to bundle with this extract.',
-    primaryLabel: 'Continue',
-  },
-  output: {
-    title: 'Choose Output Directory',
-    instruction: 'Confirm or update the destination directory for the extracted package.',
-    primaryLabel: 'Continue',
-  },
-  metadata: {
-    title: 'Confirm Package Metadata',
-    instruction: 'Review and update the package name and version before continuing.',
-    primaryLabel: 'Continue',
-  },
-  options: {
-    title: 'Toggle Options',
-    instruction: 'Enable optional behaviors for this run. Use ↑/↓ to move, Space to toggle.',
-    primaryLabel: 'Continue',
-  },
-  preview: {
-    title: 'Review & Extract',
-    instruction: 'Double-check selections before extracting the package.',
-    primaryLabel: 'Extract package',
-  },
-};
 
 export interface ExtractWizardProps {
   baseOptions: ExtractOptions;
@@ -160,14 +63,6 @@ function useSpinner(active: boolean): string {
   return frame;
 }
 
-function computeStepOrder(plan: ExtractPlan | null): StepId[] {
-  const order: StepId[] = ['artifacts'];
-  if (plan && getPlanSubagentIds(plan).length > 0) order.push('subagents');
-  if (plan && plan.mcpServers.length > 0) order.push('mcp');
-  order.push('output', 'metadata', 'options', 'preview');
-  return order;
-}
-
 export function ExtractWizard({
   baseOptions,
   analyze,
@@ -178,42 +73,26 @@ export function ExtractWizard({
   onCancel,
 }: ExtractWizardProps): React.ReactElement {
   const { exit } = useApp();
-  const [plan, setPlan] = useState<ExtractPlan | null>(null);
-  const [options, setOptions] = useState<ExtractOptions>({ ...baseOptions });
-  const [currentStep, setCurrentStep] = useState<StepId>('artifacts');
-  const [status, setStatus] = useState<Status>(initialPlan ? 'idle' : 'analyzing');
-  const [statusNote, setStatusNote] = useState<string | null>(
-    initialPlan ? null : 'Analyzing project…',
-  );
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [result, setResult] = useState<ExtractResult | null>(null);
+  const { state, actions } = useExtractWizardState({ baseOptions, initialPlan });
+
+  const spinnerFrame = useSpinner(state.status === 'analyzing' || state.status === 'executing');
+
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [logsVisible, setLogsVisible] = useState(false);
 
-  const [artifactCursor, setArtifactCursor] = useState(0);
-  const [selectedArtifacts, setSelectedArtifacts] = useState<Set<string>>(new Set());
-  const [subagentCursor, setSubagentCursor] = useState(0);
-  const [selectedSubagents, setSelectedSubagents] = useState<Set<string>>(new Set());
-  const [mcpCursor, setMcpCursor] = useState(0);
-  const [selectedMcp, setSelectedMcp] = useState<Set<string>>(new Set());
-  const [optionsCursor, setOptionsCursor] = useState(0);
-
-  const [metadataFocus, setMetadataFocus] = useState<0 | 1>(0);
-  const [metadataError, setMetadataError] = useState<string | null>(null);
-
-  const spinnerFrame = useSpinner(status === 'analyzing' || status === 'executing');
-
   const analysisTokenRef = useRef(0);
   const initializedRef = useRef(false);
-  const lastArtifactIdsRef = useRef<Set<string>>(new Set());
-  const lastSubagentIdsRef = useRef<Set<string>>(new Set());
-  const lastMcpIdsRef = useRef<Set<string>>(new Set());
   const ctrlCRef = useRef<{
     timestamp: number;
     prevMessage: string | null;
     timeout?: ReturnType<typeof setTimeout>;
   } | null>(null);
   const lastExecOptionsRef = useRef<ExecuteOptions | null>(null);
+  const tabPendingRef = useRef(false);
+
+  const primaryDisabledRef = useRef(false);
+  const attemptForwardRef = useRef<() => void>(() => {});
+  const handleExecuteRef = useRef<() => Promise<void> | void>();
 
   const pushLog = useCallback(
     (level: LogEntry['level'], message: string) => {
@@ -231,531 +110,202 @@ export function ExtractWizard({
     [logger],
   );
 
-  const stepOrder = useMemo(() => computeStepOrder(plan), [plan]);
-
-  const validateMetadata = useCallback((): string | null => {
-    try {
-      parseSafePackageName(options.name.trim());
-    } catch (error) {
-      return error instanceof Error ? error.message : String(error);
-    }
-    if (!semver.valid(options.version.trim())) {
-      return 'Version must be valid semver (e.g., 0.0.0)';
-    }
-    return null;
-  }, [options.name, options.version]);
-
-  useEffect(() => {
-    setMetadataError(validateMetadata());
-  }, [validateMetadata]);
-
-  const previousStepRef = useRef<StepId>(currentStep);
-  useEffect(() => {
-    if (previousStepRef.current !== currentStep) {
-      previousStepRef.current = currentStep;
-    }
-  }, [currentStep]);
-
-  useEffect(() => {
-    if (stepOrder.length === 0) return;
-    if (!stepOrder.includes(currentStep)) {
-      setCurrentStep(stepOrder[0]);
-    }
-  }, [stepOrder, currentStep]);
-
-  const applyPlan = useCallback((nextPlan: ExtractPlan, preferExistingSelections: boolean) => {
-    setPlan(nextPlan);
-    setSelectedArtifacts((prev) => {
-      const available = Object.keys(nextPlan.detected);
-      if (available.length === 0) return new Set();
-      if (preferExistingSelections && prev.size > 0) {
-        const prevDetected = lastArtifactIdsRef.current;
-        const next = new Set<string>();
-        for (const id of available) {
-          if (prev.has(id) || !prevDetected.has(id)) next.add(id);
-        }
-        if (next.size > 0) return next;
-      }
-      return new Set(available);
-    });
-    const visibleArtifacts = Object.keys(nextPlan.detected).filter(
-      (id) => id !== CLAUDE_SUBAGENT_ARTIFACT_ID && id !== CLAUDE_MCP_ARTIFACT_ID,
-    );
-    setArtifactCursor((prev) => {
-      const maxIndex = Math.max(visibleArtifacts.length - 1, 0);
-      return Math.min(prev, maxIndex);
-    });
-    const availableSubagents = getPlanSubagentIds(nextPlan);
-    setSelectedSubagents((prev) => {
-      if (availableSubagents.length === 0) return new Set();
-      if (preferExistingSelections && prev.size > 0) {
-        const prevDetected = lastSubagentIdsRef.current;
-        const next = new Set<string>();
-        for (const id of availableSubagents) {
-          if (prev.has(id) || !prevDetected.has(id)) next.add(id);
-        }
-        if (next.size > 0) return next;
-      }
-      return new Set(availableSubagents);
-    });
-    setSubagentCursor((prev) => {
-      const maxIndex = Math.max(availableSubagents.length - 1, 0);
-      return Math.min(prev, maxIndex);
-    });
-    setSelectedMcp((prev) => {
-      const available = nextPlan.mcpServers.map((s: { id: string }) => s.id);
-      if (available.length === 0) return new Set();
-      if (preferExistingSelections && prev.size > 0) {
-        const prevMcp = lastMcpIdsRef.current;
-        const next = new Set<string>();
-        for (const id of available) {
-          if (prev.has(id) || !prevMcp.has(id)) next.add(id);
-        }
-        if (next.size > 0) return next;
-      }
-      return new Set(available);
-    });
-    setMcpCursor((prev) => {
-      const maxIndex = Math.max(nextPlan.mcpServers.length - 1, 0);
-      return Math.min(prev, maxIndex);
-    });
-    lastArtifactIdsRef.current = new Set(Object.keys(nextPlan.detected));
-    lastSubagentIdsRef.current = new Set(availableSubagents);
-    lastMcpIdsRef.current = new Set(nextPlan.mcpServers.map((s) => s.id));
-  }, []);
-
   const runAnalysis = useCallback(
     async (nextOptions: ExtractOptions, preferExistingSelections: boolean, reason?: string) => {
       const token = ++analysisTokenRef.current;
-      setStatus('analyzing');
-      setStatusNote(reason ?? 'Analyzing project…');
-      setErrorMessage(null);
+      actions.setStatus('analyzing', reason ?? 'Analyzing project…');
+      actions.setError(null);
       pushLog('info', reason ?? 'Analyzing extract plan');
       try {
         const nextPlan = await analyze(nextOptions);
         if (analysisTokenRef.current !== token) return;
-        applyPlan(nextPlan, preferExistingSelections);
-        setStatus('idle');
-        setStatusNote(null);
+        actions.applyPlan(nextPlan, preferExistingSelections);
+        actions.setStatus('idle', null);
       } catch (error) {
         if (analysisTokenRef.current !== token) return;
         const message = error instanceof Error ? error.message : String(error);
-        setStatus('error');
-        setErrorMessage(message);
+        actions.setStatus('error', null);
+        actions.setError(message);
         pushLog('error', message);
         if (logger.isVerbose && logger.isVerbose()) {
           if (error instanceof Error) logger.error(error.stack ?? message);
         }
       }
     },
-    [analyze, applyPlan, pushLog, logger],
+    [actions, analyze, logger, pushLog],
   );
 
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-    if (initialPlan) {
-      applyPlan(initialPlan, false);
-      setStatus('idle');
-      setStatusNote(null);
-      return;
+    if (!initialPlan) {
+      void runAnalysis({ ...state.options }, false, 'Analyzing project…');
     }
-    void runAnalysis({ ...baseOptions }, false, 'Analyzing project…');
-  }, [initialPlan, baseOptions, applyPlan, runAnalysis]);
+  }, [initialPlan, runAnalysis, state.options]);
 
-  useEffect(() => {
-    if (status === 'completed' && result) {
-      pushLog('info', 'Extraction complete');
-      const execOptions = lastExecOptionsRef.current;
-      if (execOptions) onComplete?.(result, execOptions);
-      setTimeout(() => exit(), 30);
-    }
-  }, [status, result, pushLog, onComplete, exit]);
-
-  useEffect(() => {
-    if (!plan) return;
-    setSelectedArtifacts((prev) => {
-      if (plan.mcpServers.length === 0) {
-        if (!prev.has(CLAUDE_MCP_ARTIFACT_ID)) return prev;
-        const next = new Set(prev);
-        next.delete(CLAUDE_MCP_ARTIFACT_ID);
-        return next;
-      }
-      if (prev.has(CLAUDE_MCP_ARTIFACT_ID)) return prev;
-      const next = new Set(prev);
-      next.add(CLAUDE_MCP_ARTIFACT_ID);
-      return next;
-    });
-  }, [plan, plan?.mcpServers?.length]);
-
-  useEffect(() => {
-    if (!plan) return;
-    const hasCodex = plan.mcpServers.some((server) => server.source === 'codex');
-    const codexAvailable = hasCodex || Boolean(plan.codexConfigBase);
-    const shouldInclude = Boolean(options.includeCodexConfig) && codexAvailable;
-    const targetIds = [CODEX_MCP_ARTIFACT_ID, CODEX_CONFIG_ARTIFACT_ID];
-    setSelectedArtifacts((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const id of targetIds) {
-        const detected = plan.detected[id];
-        const shouldHave = shouldInclude && Boolean(detected);
-        if (shouldHave && !next.has(id)) {
-          next.add(id);
-          changed = true;
-        } else if (!shouldHave && next.has(id)) {
-          next.delete(id);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [plan, options.includeCodexConfig]);
-
-  useEffect(() => {
-    if (!plan) return;
-    setSelectedArtifacts((prev) => {
-      const has = prev.has(CLAUDE_SUBAGENT_ARTIFACT_ID);
-      if (selectedSubagents.size > 0) {
-        if (has) return prev;
-        const next = new Set(prev);
-        next.add(CLAUDE_SUBAGENT_ARTIFACT_ID);
-        return next;
-      }
-      if (!has) return prev;
-      const next = new Set(prev);
-      next.delete(CLAUDE_SUBAGENT_ARTIFACT_ID);
-      return next;
-    });
-  }, [plan, selectedSubagents]);
-
-  const artifactItems: SelectableListItem[] = useMemo(() => {
-    if (!plan) return [];
-    return Object.keys(plan.detected)
-      .filter(
-        (id) =>
-          id !== CLAUDE_SUBAGENT_ARTIFACT_ID &&
-          id !== CLAUDE_MCP_ARTIFACT_ID &&
-          id !== CODEX_MCP_ARTIFACT_ID &&
-          id !== CODEX_CONFIG_ARTIFACT_ID,
-      )
-      .map((id) => ({
-        id,
-        label: getArtifactLabel(id),
-        detail: Array.isArray(plan.detected[id])
-          ? plan.detected[id].join(', ')
-          : (plan.detected[id] ?? undefined),
-        selected: selectedArtifacts.has(id),
-      }));
-  }, [plan, selectedArtifacts]);
-
-  const hiddenArtifactIds = useMemo(
-    () =>
-      new Set([
-        CLAUDE_SUBAGENT_ARTIFACT_ID,
-        CLAUDE_MCP_ARTIFACT_ID,
-        CODEX_MCP_ARTIFACT_ID,
-        CODEX_CONFIG_ARTIFACT_ID,
-      ]),
+  useEffect(
+    () => () => {
+      if (ctrlCRef.current?.timeout) clearTimeout(ctrlCRef.current.timeout);
+    },
     [],
   );
 
-  const visibleArtifactCount = useMemo(() => {
-    let count = 0;
-    for (const id of selectedArtifacts) {
-      if (!hiddenArtifactIds.has(id)) count++;
-    }
-    return count;
-  }, [selectedArtifacts, hiddenArtifactIds]);
-
-  const subagentItems: SelectableListItem[] = useMemo(() => {
-    if (!plan) return [];
-    const detailMap = new Map<string, string>();
-    const detected = plan.detected[CLAUDE_SUBAGENT_ARTIFACT_ID];
-    if (Array.isArray(detected)) {
-      for (const abs of detected) {
-        const id = getSubagentIdFromSourcePath(abs);
-        const rel = path.relative(plan.projectRoot, abs).split(path.sep).join('/');
-        detailMap.set(id, rel);
-      }
-    }
-    const outputs = plan.outputs.filter(
-      (output) => output.artifactId === CLAUDE_SUBAGENT_ARTIFACT_ID,
-    );
-    if (outputs.length > 0) {
-      const items: SelectableListItem[] = [];
-      for (const output of outputs) {
-        const id = getSubagentIdFromTemplatePath(output.relativePath);
-        if (!id) continue;
-        items.push({
-          id,
-          label: id,
-          detail: detailMap.get(id),
-          selected: selectedSubagents.has(id),
-        });
-      }
-      return items;
-    }
-    return Array.from(detailMap.entries()).map(([id, rel]) => ({
-      id,
-      label: id,
-      detail: rel,
-      selected: selectedSubagents.has(id),
-    }));
-  }, [plan, selectedSubagents]);
-
-  const mcpItems: SelectableListItem[] = useMemo(() => {
-    if (!plan) return [];
-    return plan.mcpServers.map(
-      (server: {
-        id: string;
-        source: string;
-        name: string;
-        definition: { command: string; args: string[] };
-      }) => ({
-        id: server.id,
-        label: `${server.source.toUpperCase()} • ${server.name}`,
-        detail: `${server.definition.command} ${server.definition.args.join(' ')}`.trim(),
-        selected: selectedMcp.has(server.id),
-      }),
-    );
-  }, [plan, selectedMcp]);
-
-  const optionItems: (SelectableListItem & { id: OptionToggleId })[] = useMemo(() => {
-    return OPTION_TOGGLE_CONFIG.map((config) => ({
-      id: config.id,
-      label: config.label,
-      detail: config.detail,
-      selected:
-        config.id === 'includeClaudeLocal'
-          ? Boolean(options.includeClaudeLocal)
-          : config.id === 'includeClaudeUser'
-            ? Boolean(options.includeClaudeUser)
-            : config.id === 'includeCodexConfig'
-              ? Boolean(options.includeCodexConfig)
-              : config.id === 'dryRun'
-                ? Boolean(options.dryRun)
-                : Boolean(options.force),
-    }));
-  }, [
-    options.dryRun,
-    options.force,
-    options.includeClaudeLocal,
-    options.includeClaudeUser,
-    options.includeCodexConfig,
-  ]);
-
-  const goNextStep = useCallback(() => {
-    const idx = stepOrder.indexOf(currentStep);
-    if (idx === -1) {
-      setCurrentStep(stepOrder[0]);
-      return;
-    }
-    const nextIdx = Math.min(idx + 1, stepOrder.length - 1);
-    setCurrentStep(stepOrder[nextIdx]);
-  }, [currentStep, stepOrder]);
-
   useEffect(() => {
-    setOptionsCursor((prev) => Math.min(prev, Math.max(optionItems.length - 1, 0)));
-  }, [optionItems.length]);
+    if (state.status === 'completed' && state.result) {
+      pushLog('info', 'Extraction complete');
+      const execOptions = lastExecOptionsRef.current;
+      if (execOptions) onComplete?.(state.result, execOptions);
+      setTimeout(() => exit(), 30);
+    }
+  }, [state.status, state.result, pushLog, onComplete, exit]);
 
-  const goPrevStep = useCallback(() => {
-    const idx = stepOrder.indexOf(currentStep);
-    if (idx === -1) {
-      setCurrentStep(stepOrder[0]);
-      return;
-    }
-    const prevIdx = Math.max(idx - 1, 0);
-    setCurrentStep(stepOrder[prevIdx]);
-  }, [currentStep, stepOrder]);
+  const view: WizardViewModel = useMemo(() => buildWizardViewModel(state), [state]);
 
-  const attemptForward = useCallback(() => {
-    if (status === 'executing' || status === 'analyzing') return;
-    if (currentStep === 'metadata') {
-      if (metadataFocus === 0) {
-        setMetadataFocus(1);
-        return;
-      }
-      if (metadataError) return;
+  const statusMessage: StatusMessage | null = useMemo(() => {
+    if (state.status === 'analyzing' || state.status === 'executing') {
+      return {
+        kind: 'busy',
+        text:
+          state.statusNote ?? (state.status === 'analyzing' ? 'Analyzing project…' : 'Extracting…'),
+        spinner: spinnerFrame,
+      };
     }
-    if (currentStep === 'artifacts' && visibleArtifactCount === 0) return;
-    if (currentStep === 'preview') {
-      if (visibleArtifactCount === 0 || metadataError) return;
-      void (async () => {
-        await handleExecute();
-      })();
-      return;
-    }
-    lastTabStepRef.current = currentStep;
-    goNextStep();
-  }, [currentStep, goNextStep, metadataFocus, metadataError, selectedArtifacts.size, status]);
+    return null;
+  }, [spinnerFrame, state.status, state.statusNote]);
 
-  const attemptBackward = useCallback(() => {
-    if (currentStep === 'metadata' && metadataFocus === 1) {
-      setMetadataFocus(0);
-      return;
-    }
-    lastTabStepRef.current = currentStep;
-    goPrevStep();
-  }, [currentStep, goPrevStep, metadataFocus]);
+  const actionHints: KeyHint[] = useMemo(
+    () => buildActionHints({ state, view, logsVisible }),
+    [state, view, logsVisible],
+  );
+
+  const plan = state.plan;
+  const stepConfig = STEP_CONFIG[state.step];
+  const stepIndex = view.stepIndex;
+  const stepCount = view.stepCount;
+  const reviewSummary = view.reviewSummary;
+  const metadataError = view.metadataError;
+  const actionWarning = view.actionWarning;
+
+  primaryDisabledRef.current = view.primaryDisabled;
 
   const handleExecute = useCallback(async () => {
-    if (!plan) return;
-    if (visibleArtifactCount === 0) return;
-    if (metadataError) {
-      setCurrentStep('metadata');
+    if (!state.plan) return;
+    if (view.visibleArtifactCount === 0) return;
+    if (view.metadataError) {
+      actions.setStep('metadata');
+      actions.setMetadataFocus(0);
       return;
     }
-    setStatus('executing');
-    setStatusNote('Extracting…');
-    setErrorMessage(null);
+    actions.setStatus('executing', 'Extracting…');
+    actions.setError(null);
     pushLog('info', 'Starting extraction');
     const execOptions: ExecuteOptions = {
-      ...options,
-      includedArtifacts: Array.from(selectedArtifacts),
-      includedMcpServers: Array.from(selectedMcp),
-      includedSubagentFiles: Array.from(selectedSubagents),
+      ...state.options,
+      includedArtifacts: computeIncludedArtifacts(state.plan, state.selections, state.options),
+      includedMcpServers: Array.from(state.selections.mcpServers),
+      includedSubagentFiles: Array.from(state.selections.subagents),
     };
     lastExecOptionsRef.current = execOptions;
     try {
-      const execResult = await execute(plan, execOptions);
-      setResult(execResult);
-      setStatus('completed');
-      setStatusNote(null);
+      const execResult = await execute(state.plan, execOptions);
+      actions.setResult(execResult);
+      actions.setStatus('completed', null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      setStatus('error');
-      setErrorMessage(message);
+      actions.setStatus('error', null);
+      actions.setError(message);
       pushLog('error', message);
       if (logger.isVerbose && logger.isVerbose()) {
         if (error instanceof Error) logger.error(error.stack ?? message);
       }
     }
   }, [
-    plan,
-    selectedArtifacts,
-    selectedMcp,
-    selectedSubagents,
-    options,
-    metadataError,
+    actions,
     execute,
-    pushLog,
     logger,
+    pushLog,
+    state.options,
+    state.plan,
+    state.selections,
+    view.metadataError,
+    view.visibleArtifactCount,
   ]);
 
-  const toggleArtifact = useCallback((id: string) => {
-    setSelectedArtifacts((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  handleExecuteRef.current = handleExecute;
 
-  const toggleMcp = useCallback((id: string) => {
-    setSelectedMcp((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  const attemptForward = useCallback(() => {
+    if (state.status === 'executing' || state.status === 'analyzing') return;
+    if (state.step === 'metadata') {
+      if (state.metadataFocus === 0) {
+        actions.setMetadataFocus(1);
+        return;
+      }
+      if (view.metadataError) return;
+    }
+    if (state.step === 'artifacts' && view.visibleArtifactCount === 0) return;
+    if (state.step === 'preview') {
+      if (view.primaryDisabled) return;
+      void handleExecuteRef.current?.();
+      return;
+    }
+    actions.nextStep();
+  }, [
+    actions,
+    state.metadataFocus,
+    state.status,
+    state.step,
+    view.metadataError,
+    view.primaryDisabled,
+    view.visibleArtifactCount,
+  ]);
 
-  const toggleOption = useCallback(
+  attemptForwardRef.current = attemptForward;
+
+  const attemptBackward = useCallback(() => {
+    if (state.step === 'metadata' && state.metadataFocus === 1) {
+      actions.setMetadataFocus(0);
+      return;
+    }
+    actions.prevStep();
+  }, [actions, state.metadataFocus, state.step]);
+
+  const artifactItems = view.artifactItems;
+  const subagentItems = view.subagentItems;
+  const mcpItems = view.mcpItems;
+  const optionItems: OptionListItem[] = view.optionItems;
+
+  const {
+    artifacts: artifactCursor,
+    subagents: subagentCursor,
+    mcp: mcpCursor,
+    options: optionsCursor,
+  } = state.cursors;
+
+  const toggleArtifact = useCallback((id: string) => actions.toggleArtifact(id), [actions]);
+  const selectAllArtifacts = useCallback(() => actions.selectAllArtifacts(), [actions]);
+  const clearArtifacts = useCallback(() => actions.clearArtifacts(), [actions]);
+
+  const toggleSubagent = useCallback((id: string) => actions.toggleSubagent(id), [actions]);
+  const selectAllSubagents = useCallback(() => actions.selectAllSubagents(), [actions]);
+  const clearSubagents = useCallback(() => actions.clearSubagents(), [actions]);
+
+  const toggleMcp = useCallback((id: string) => actions.toggleMcpServer(id), [actions]);
+  const selectAllMcp = useCallback(() => actions.selectAllMcpServers(), [actions]);
+  const clearMcp = useCallback(() => actions.clearMcpServers(), [actions]);
+
+  const handleOptionToggle = useCallback(
     (id: OptionToggleId) => {
-      switch (id) {
-        case 'includeClaudeLocal': {
-          setOptions((prev) => {
-            const next = { ...prev, includeClaudeLocal: !prev.includeClaudeLocal };
-            void runAnalysis(next, true, 'Re-analyzing project…');
-            return next;
-          });
-          break;
-        }
-        case 'includeClaudeUser': {
-          setOptions((prev) => {
-            const next = { ...prev, includeClaudeUser: !prev.includeClaudeUser };
-            void runAnalysis(next, true, 'Re-analyzing project…');
-            return next;
-          });
-          break;
-        }
-        case 'includeCodexConfig': {
-          setOptions((prev) => {
-            const next = { ...prev, includeCodexConfig: !prev.includeCodexConfig };
-            void runAnalysis(next, true, 'Re-analyzing project…');
-            return next;
-          });
-          break;
-        }
-        case 'dryRun': {
-          setOptions((prev) => ({ ...prev, dryRun: !prev.dryRun }));
-          break;
-        }
-        case 'force': {
-          setOptions((prev) => ({ ...prev, force: !prev.force }));
-          break;
-        }
-        default:
-          break;
+      const config = OPTION_TOGGLE_CONFIG.find((entry) => entry.id === id);
+      const toggledValue = !Boolean(state.options[id as keyof ExtractOptions]);
+      const changes = { [id]: toggledValue } as Partial<ExtractOptions>;
+      const nextOptions = { ...state.options, ...changes };
+      actions.updateOptions(changes);
+      if (config?.requiresReanalysis) {
+        void runAnalysis(nextOptions, true, 'Re-analyzing project…');
       }
     },
-    [runAnalysis],
+    [actions, runAnalysis, state.options],
   );
-
-  const selectAllArtifacts = useCallback(() => {
-    if (!plan) return;
-    setSelectedArtifacts(new Set(Object.keys(plan.detected)));
-    const available = getPlanSubagentIds(plan);
-    if (available.length > 0) {
-      setSelectedSubagents(new Set(available));
-    }
-  }, [plan]);
-
-  const clearArtifacts = useCallback(() => {
-    setSelectedArtifacts(new Set());
-    setSelectedSubagents(new Set());
-  }, []);
-
-  const toggleSubagent = useCallback((id: string) => {
-    setSelectedSubagents((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
-
-  const selectAllSubagents = useCallback(() => {
-    if (!plan) return;
-    setSelectedSubagents(new Set(getPlanSubagentIds(plan)));
-  }, [plan]);
-
-  const clearSubagents = useCallback(() => {
-    setSelectedSubagents(new Set());
-  }, []);
-
-  const selectAllMcp = useCallback(() => {
-    if (!plan) return;
-    setSelectedMcp(new Set(plan.mcpServers.map((s: { id: string }) => s.id)));
-  }, [plan]);
-
-  const clearMcp = useCallback(() => {
-    setSelectedMcp(new Set());
-  }, []);
-
-  const lastTabStepRef = useRef<StepId | null>(null);
-  const tabPendingRef = useRef(false);
-
-  const reviewSummary: ReviewSummary | null = useMemo(() => {
-    if (!plan) return null;
-    return buildReviewSummary({
-      plan,
-      selectedArtifacts,
-      selectedMcp,
-      options,
-    });
-  }, [plan, selectedArtifacts, selectedMcp, options]);
 
   useInput((input, key) => {
     const lower = input.toLowerCase();
@@ -772,21 +322,21 @@ export function ExtractWizard({
       if (ctrlCRef.current?.timeout) clearTimeout(ctrlCRef.current.timeout);
       const timeout = setTimeout(() => {
         if (ctrlCRef.current && Date.now() - ctrlCRef.current.timestamp >= 1500) {
-          setStatusNote(ctrlCRef.current.prevMessage ?? null);
+          actions.setStatusNote(ctrlCRef.current.prevMessage ?? null);
           ctrlCRef.current = null;
         }
       }, 1500);
       ctrlCRef.current = {
         timestamp: now,
-        prevMessage: statusNote,
+        prevMessage: state.statusNote,
         timeout,
       };
-      setStatusNote('Press Ctrl+C again to exit');
+      actions.setStatusNote('Press Ctrl+C again to exit');
       pushLog('warn', 'Press Ctrl+C again to exit');
       return;
     }
 
-    if (status === 'executing' || status === 'analyzing') {
+    if (state.status === 'executing' || state.status === 'analyzing') {
       if (key.escape) {
         onCancel?.();
         exit();
@@ -796,7 +346,7 @@ export function ExtractWizard({
 
     if (key.return) {
       const disabled = primaryDisabledRef.current;
-      if (currentStep === 'preview') {
+      if (state.step === 'preview') {
         if (!disabled) void handleExecuteRef.current?.();
         return;
       }
@@ -806,10 +356,10 @@ export function ExtractWizard({
 
     if (key.tab) {
       const isShiftTab = key.shift ?? false;
-      const isMetadataFocusAdvance =
-        !isShiftTab && currentStep === 'metadata' && metadataFocus === 0;
-      if (isMetadataFocusAdvance) {
-        setMetadataFocus(1);
+      const isMetadataAdvance =
+        !isShiftTab && state.step === 'metadata' && state.metadataFocus === 0;
+      if (isMetadataAdvance) {
+        actions.setMetadataFocus(1);
         return;
       }
       if (tabPendingRef.current) return;
@@ -827,14 +377,14 @@ export function ExtractWizard({
       return;
     }
 
-    switch (currentStep) {
+    switch (state.step) {
       case 'artifacts': {
         if (key.upArrow) {
-          setArtifactCursor((prev) => Math.max(prev - 1, 0));
+          actions.setCursor('artifacts', artifactCursor - 1);
           return;
         }
         if (key.downArrow) {
-          setArtifactCursor((prev) => Math.min(prev + 1, Math.max(artifactItems.length - 1, 0)));
+          actions.setCursor('artifacts', artifactCursor + 1);
           return;
         }
         if (input === ' ') {
@@ -854,11 +404,11 @@ export function ExtractWizard({
       }
       case 'subagents': {
         if (key.upArrow) {
-          setSubagentCursor((prev) => Math.max(prev - 1, 0));
+          actions.setCursor('subagents', subagentCursor - 1);
           return;
         }
         if (key.downArrow) {
-          setSubagentCursor((prev) => Math.min(prev + 1, Math.max(subagentItems.length - 1, 0)));
+          actions.setCursor('subagents', subagentCursor + 1);
           return;
         }
         if (input === ' ') {
@@ -878,11 +428,11 @@ export function ExtractWizard({
       }
       case 'mcp': {
         if (key.upArrow) {
-          setMcpCursor((prev) => Math.max(prev - 1, 0));
+          actions.setCursor('mcp', mcpCursor - 1);
           return;
         }
         if (key.downArrow) {
-          setMcpCursor((prev) => Math.min(prev + 1, Math.max(mcpItems.length - 1, 0)));
+          actions.setCursor('mcp', mcpCursor + 1);
           return;
         }
         if (input === ' ') {
@@ -902,28 +452,22 @@ export function ExtractWizard({
       }
       case 'metadata': {
         if (key.upArrow || key.downArrow) {
-          setMetadataFocus((prev) => (prev === 0 ? 1 : 0));
+          actions.setMetadataFocus(state.metadataFocus === 0 ? 1 : 0);
         }
         break;
       }
       case 'options': {
         if (key.upArrow) {
-          setOptionsCursor((prev) => Math.max(prev - 1, 0));
+          actions.setCursor('options', optionsCursor - 1);
           return;
         }
         if (key.downArrow) {
-          setOptionsCursor((prev) => Math.min(prev + 1, Math.max(optionItems.length - 1, 0)));
+          actions.setCursor('options', optionsCursor + 1);
           return;
         }
         if (input === ' ') {
           const active = optionItems[optionsCursor];
-          if (active) toggleOption(active.id);
-          return;
-        }
-        break;
-      }
-      case 'preview': {
-        if (key.return) {
+          if (active) handleOptionToggle(active.id);
           return;
         }
         break;
@@ -933,135 +477,25 @@ export function ExtractWizard({
     }
   });
 
-  useEffect(
-    () => () => {
-      if (ctrlCRef.current?.timeout) clearTimeout(ctrlCRef.current.timeout);
-    },
-    [],
-  );
-
-  const primaryDisabled = useMemo(() => {
-    if (status === 'executing' || status === 'analyzing') return true;
-    if (currentStep === 'artifacts') return visibleArtifactCount === 0;
-    if (currentStep === 'metadata') return Boolean(metadataError);
-    if (currentStep === 'preview') return visibleArtifactCount === 0 || Boolean(metadataError);
-    return false;
-  }, [currentStep, metadataError, visibleArtifactCount, status]);
-
-  const primaryDisabledRef = useRef(primaryDisabled);
-  useEffect(() => {
-    primaryDisabledRef.current = primaryDisabled;
-  }, [primaryDisabled]);
-
-  const attemptForwardRef = useRef(attemptForward);
-  useEffect(() => {
-    attemptForwardRef.current = attemptForward;
-  }, [attemptForward]);
-
-  const handleExecuteRef = useRef(handleExecute);
-  useEffect(() => {
-    handleExecuteRef.current = handleExecute;
-  }, [handleExecute]);
-
-  const actionWarning = useMemo(() => {
-    if (currentStep === 'artifacts' && visibleArtifactCount === 0)
-      return 'Select at least one artifact to continue';
-    if (currentStep === 'metadata' && metadataError) return metadataError;
-    if (currentStep === 'preview' && visibleArtifactCount === 0)
-      return 'Select at least one artifact before extracting';
-    return null;
-  }, [currentStep, metadataError, visibleArtifactCount]);
-
-  const stepIndex = Math.max(stepOrder.indexOf(currentStep), 0);
-  const stepCount = stepOrder.length || 1;
-  const stepConfig = STEP_CONFIG[currentStep];
-
-  const statusMessage: StatusMessage | null =
-    status === 'analyzing' || status === 'executing'
-      ? {
-          kind: 'busy',
-          text: statusNote ?? (status === 'analyzing' ? 'Analyzing project…' : 'Extracting…'),
-          spinner: spinnerFrame,
-        }
-      : null;
-
-  const actionHints: KeyHint[] = useMemo(() => {
-    const hints: KeyHint[] = [];
-    const primaryLabel = stepConfig.primaryLabel;
-    hints.push({
-      key: 'Enter',
-      label: primaryLabel,
-      emphasis: 'primary',
-      disabled: primaryDisabled,
-    });
-    if (stepIndex > 0) {
-      hints.push({ key: 'Shift+Tab', label: 'Back' });
-    }
-    if (currentStep === 'artifacts' || currentStep === 'mcp' || currentStep === 'options') {
-      const total =
-        currentStep === 'artifacts'
-          ? artifactItems.length
-          : currentStep === 'mcp'
-            ? mcpItems.length
-            : optionItems.length;
-      const selected =
-        currentStep === 'artifacts'
-          ? selectedArtifacts.size
-          : currentStep === 'mcp'
-            ? selectedMcp.size
-            : optionItems.filter((item) => item.selected).length;
-      hints.push({ key: 'Space', label: 'Toggle', disabled: total === 0 });
-      if (currentStep !== 'options') {
-        hints.push({ key: 'A', label: 'Select all', disabled: total === 0 });
-        hints.push({ key: 'N', label: 'Select none', disabled: selected === 0 });
-      }
-    }
-    if (currentStep === 'metadata') {
-      hints.push({ key: 'Tab', label: 'Next field' });
-    }
-    if (currentStep === 'preview') {
-      hints.push({ key: 'C', label: 'Copy summary', hidden: !reviewSummary });
-    }
-    hints.push({ key: 'V', label: logsVisible ? 'Hide logs' : 'Show logs' });
-    hints.push({ key: '?', label: 'Help' });
-    return hints;
-  }, [
-    artifactItems.length,
-    currentStep,
-    logsVisible,
-    metadataError,
-    primaryDisabled,
-    selectedArtifacts.size,
-    selectedSubagents.size,
-    selectedMcp.size,
-    optionItems,
-    optionItems.length,
-    stepConfig.primaryLabel,
-    stepIndex,
-    mcpItems.length,
-    subagentItems.length,
-    reviewSummary,
-  ]);
-
-  if (status === 'completed' && result) {
+  if (state.status === 'completed' && state.result) {
     return (
       <Box flexDirection="column" gap={1}>
         <Text color="green" bold>
           Extraction complete
         </Text>
-        <Text>Outputs written: {result.summary.outputs.length}</Text>
+        <Text>Outputs written: {state.result.summary.outputs.length}</Text>
         <Text dimColor>Press any key to exit.</Text>
       </Box>
     );
   }
 
-  if (status === 'error' && errorMessage) {
+  if (state.status === 'error' && state.errorMessage) {
     return (
       <Box flexDirection="column" gap={1}>
         <Text color="red" bold>
           Extraction failed
         </Text>
-        <Text>{errorMessage}</Text>
+        <Text>{state.errorMessage}</Text>
         <Text dimColor>Press Esc to exit.</Text>
       </Box>
     );
@@ -1081,7 +515,7 @@ export function ExtractWizard({
   }
 
   const renderBody = (): React.ReactElement => {
-    switch (currentStep) {
+    switch (state.step) {
       case 'artifacts':
         return (
           <Box flexDirection="column" gap={1}>
@@ -1091,7 +525,7 @@ export function ExtractWizard({
               emptyMessage="No artifacts detected"
             />
             <Text dimColor>
-              {visibleArtifactCount}/{artifactItems.length} selected
+              {view.visibleArtifactCount}/{view.artifactTotalCount} selected
             </Text>
           </Box>
         );
@@ -1104,7 +538,7 @@ export function ExtractWizard({
               emptyMessage="No Claude agent files detected"
             />
             <Text dimColor>
-              {selectedSubagents.size}/{subagentItems.length} selected
+              {view.selectedSubagentCount}/{view.subagentTotalCount} selected
             </Text>
           </Box>
         );
@@ -1117,7 +551,7 @@ export function ExtractWizard({
               emptyMessage="No MCP servers detected"
             />
             <Text dimColor>
-              {selectedMcp.size}/{plan.mcpServers.length} selected
+              {view.selectedMcpCount}/{view.mcpTotalCount} selected
             </Text>
           </Box>
         );
@@ -1126,8 +560,8 @@ export function ExtractWizard({
           <Box flexDirection="column" gap={1}>
             <Text>Package directory:</Text>
             <TextInput
-              value={options.out}
-              onChange={(value) => setOptions((prev: ExtractOptions) => ({ ...prev, out: value }))}
+              value={state.options.out}
+              onChange={(value) => actions.updateOptions({ out: value })}
               highlightPastedText
             />
             <Text dimColor>
@@ -1141,73 +575,57 @@ export function ExtractWizard({
             <Box flexDirection="column">
               <Text>Package name:</Text>
               <TextInput
-                value={options.name}
-                focus={metadataFocus === 0}
-                onChange={(value) =>
-                  setOptions((prev: ExtractOptions) => ({ ...prev, name: value }))
-                }
+                value={state.options.name}
+                focus={state.metadataFocus === 0}
+                onChange={(value) => actions.updateOptions({ name: value })}
               />
               <Text dimColor>Must be a valid scoped or unscoped package name.</Text>
             </Box>
             <Box flexDirection="column">
               <Text>Version (semver):</Text>
               <TextInput
-                value={options.version}
-                focus={metadataFocus === 1}
-                onChange={(value) =>
-                  setOptions((prev: ExtractOptions) => ({ ...prev, version: value }))
-                }
+                value={state.options.version}
+                focus={state.metadataFocus === 1}
+                onChange={(value) => actions.updateOptions({ version: value })}
               />
               <Text dimColor>Use semantic versioning, e.g., 0.0.0.</Text>
               {metadataError ? <Text color="red">⚠ {metadataError}</Text> : null}
             </Box>
           </Box>
         );
-      case 'options': {
+      case 'options':
         return (
           <SelectableList
-            items={optionItems}
+            items={optionItems as SelectableListItem[]}
             activeIndex={optionsCursor}
             emptyMessage="No options available"
           />
         );
-      }
       case 'preview':
-      default: {
+      default:
         if (!reviewSummary) {
           return <Text dimColor>No selections available.</Text>;
         }
         return (
           <Box flexDirection="column" gap={1}>
-            {reviewSummary.sections.map(
-              (section: {
-                id: string;
-                title: string;
-                selectedCount: number;
-                totalCount: number;
-                items: Array<{ id: string; primary: string; secondary?: string }>;
-                emptyLabel?: string;
-              }) => (
-                <Box key={section.id} flexDirection="column">
-                  <Text bold>
-                    {section.title} • {section.selectedCount}/
-                    {section.totalCount || section.selectedCount} selected
-                  </Text>
-                  {section.items.length > 0 ? (
-                    section.items.map(
-                      (item: { id: string; primary: string; secondary?: string }) => (
-                        <Text key={item.id}>
-                          ✓ {item.primary}
-                          {item.secondary ? ` (${item.secondary})` : ''}
-                        </Text>
-                      ),
-                    )
-                  ) : (
-                    <Text dimColor>{section.emptyLabel}</Text>
-                  )}
-                </Box>
-              ),
-            )}
+            {reviewSummary.sections.map((section) => (
+              <Box key={section.id} flexDirection="column">
+                <Text bold>
+                  {section.title} • {section.selectedCount}/
+                  {section.totalCount || section.selectedCount} selected
+                </Text>
+                {section.items.length > 0 ? (
+                  section.items.map((item) => (
+                    <Text key={item.id}>
+                      ✓ {item.primary}
+                      {item.secondary ? ` (${item.secondary})` : ''}
+                    </Text>
+                  ))
+                ) : (
+                  <Text dimColor>{section.emptyLabel}</Text>
+                )}
+              </Box>
+            ))}
             <Box flexDirection="column">
               <Text bold>Destination</Text>
               <Text>{reviewSummary.destination.path}</Text>
@@ -1227,7 +645,6 @@ export function ExtractWizard({
             ) : null}
           </Box>
         );
-      }
     }
   };
 

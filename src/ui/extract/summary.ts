@@ -102,18 +102,6 @@ export function buildReviewSummary({
       }),
     );
 
-  if (
-    selectedArtifacts.has(CLAUDE_MCP_ARTIFACT_ID) &&
-    selectedMcp.size === 0 &&
-    !mcpItems.some((item) => item.id === CLAUDE_MCP_ARTIFACT_ID)
-  ) {
-    mcpItems.unshift({
-      id: CLAUDE_MCP_ARTIFACT_ID,
-      primary: getArtifactLabel(CLAUDE_MCP_ARTIFACT_ID),
-      secondary: 'Include .claude/mcp_servers.json',
-    });
-  }
-
   const sections: SummarySection[] = [
     {
       id: 'artifacts',
