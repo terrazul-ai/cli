@@ -1,1 +1,1 @@
-agent_files/plan.AGENTS.md
+agent_files/implement.AGENTS.md
