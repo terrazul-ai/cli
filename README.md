@@ -45,6 +45,7 @@ npm i -g @terrazul/cli
 
 - `tz init`: Bootstrap manifests, `.gitignore`, and optional Claude scaffolding.
 - `tz add <pkg@range>`: Resolve, verify, and extract packages; updates profiles and lockfile.
+- `tz install`: Install every dependency declared in `agents.toml`, refresh the lockfile, and render templates.
 - `tz update [pkg]`: Plan or apply upgrades to the latest compatible non-yanked versions.
 - `tz uninstall <pkg>`: Remove packages, clean symlinks, prune profiles, and refresh docs.
 - `tz run -- [args...]`: Launch integrations (e.g., Claude Code) with generated MCP configs and optional profiles.

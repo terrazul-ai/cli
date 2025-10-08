@@ -2,6 +2,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import * as TOML from '@iarna/toml';
+
+import { readManifest, type ProjectManifest } from './manifest.js';
+import { ErrorCode, TerrazulError } from '../core/errors.js';
 import {
   DEFAULT_ENVIRONMENTS,
   UserConfigSchema,
@@ -151,4 +155,67 @@ export function expandEnvVars(
     out[k] = v.startsWith('env:') ? process.env[v.slice(4)] : v;
   }
   return out;
+}
+
+export interface ProjectConfigData {
+  manifest: ProjectManifest;
+  dependencies: Record<string, string>;
+}
+
+function assertDependencyTable(value: unknown): void {
+  if (value === undefined) return;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new TerrazulError(
+      ErrorCode.CONFIG_INVALID,
+      'Invalid [dependencies] table in agents.toml',
+    );
+  }
+  for (const [dep, range] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof dep !== 'string' || dep.trim().length === 0) {
+      throw new TerrazulError(ErrorCode.CONFIG_INVALID, 'Dependency names must be strings');
+    }
+    if (typeof range !== 'string' || range.trim().length === 0) {
+      throw new TerrazulError(
+        ErrorCode.CONFIG_INVALID,
+        `Dependency '${dep}' must declare a version range string`,
+      );
+    }
+  }
+}
+
+export async function loadProjectConfig(projectRoot: string): Promise<ProjectConfigData> {
+  const manifestPath = path.join(projectRoot, 'agents.toml');
+  let raw: string;
+  try {
+    raw = await fs.readFile(manifestPath, 'utf8');
+  } catch {
+    throw new TerrazulError(
+      ErrorCode.CONFIG_NOT_FOUND,
+      'agents.toml not found. Run `tz init` to create one.',
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = TOML.parse(raw);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Invalid agents.toml';
+    throw new TerrazulError(ErrorCode.CONFIG_INVALID, msg, { cause: error });
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new TerrazulError(ErrorCode.CONFIG_INVALID, 'agents.toml must be a table');
+  }
+
+  assertDependencyTable((parsed as Record<string, unknown>)['dependencies']);
+
+  const manifest = await readManifest(projectRoot);
+  if (!manifest) {
+    throw new TerrazulError(ErrorCode.CONFIG_INVALID, 'Failed to parse agents.toml');
+  }
+
+  return {
+    manifest,
+    dependencies: manifest.dependencies ?? {},
+  };
 }
