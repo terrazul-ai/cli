@@ -80,12 +80,9 @@ describe('buildReviewSummary', () => {
     const mcp = summary.sections[1];
     expect(mcp.id).toBe('mcp');
     expect(mcp.title).toBe('MCP Servers');
-    expect(mcp.selectedCount).toBe(2);
+    expect(mcp.selectedCount).toBe(1);
     expect(mcp.totalCount).toBe(2);
-    expect(mcp.items.map((item) => item.primary)).toEqual([
-      'Codex • config.toml',
-      'PROJECT • search',
-    ]);
+    expect(mcp.items.map((item) => item.primary)).toEqual(['PROJECT • search']);
 
     expect(summary.destination.path).toBe('/projects/demo/out');
     expect(summary.destination.packageName).toBe('@demo/pkg');
@@ -102,7 +99,7 @@ describe('buildReviewSummary', () => {
       plan,
       selectedArtifacts: new Set(),
       selectedMcp: new Set(),
-      options: baseOptions,
+      options: { ...baseOptions, includeCodexConfig: false },
     });
 
     const artifacts = summary.sections[0];

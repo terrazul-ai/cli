@@ -200,7 +200,7 @@ describe('executeExtract', () => {
     const exportsSection = (manifestDoc.exports as Record<string, unknown>) ?? {};
     const codexSection = (exportsSection.codex as Record<string, unknown>) ?? {};
     expect(codexSection.template).toBe('templates/AGENTS.md.hbs');
-    expect(codexSection.mcpServers).toBe('templates/codex/mcp_servers.toml.hbs');
+    expect(codexSection.mcpServers).toBe('templates/codex/agents.toml.hbs');
     const mcpRaw = JSON.parse(
       await fs.readFile(
         path.join(paths.out, 'templates', 'claude', 'mcp_servers.json.hbs'),
@@ -219,12 +219,12 @@ describe('executeExtract', () => {
     expect(result.summary.outputs).toEqual(
       expect.arrayContaining([
         'templates/claude/mcp_servers.json.hbs',
-        'templates/codex/mcp_servers.toml.hbs',
+        'templates/codex/agents.toml.hbs',
       ]),
     );
 
     const codexToml = await fs.readFile(
-      path.join(paths.out, 'templates', 'codex', 'mcp_servers.toml.hbs'),
+      path.join(paths.out, 'templates', 'codex', 'agents.toml.hbs'),
       'utf8',
     );
     const codexConfig = TOML.parse(codexToml ?? '') as Record<string, unknown>;
@@ -297,11 +297,64 @@ describe('executeExtract', () => {
     expect(coder.transport).toEqual({ type: 'stdio' });
     expect(coder.metadata).toEqual({ keep: 'yes' });
 
+    await expect(
+      fs.stat(path.join(paths.out, 'templates', 'codex', 'agents.toml.hbs')),
+    ).rejects.toThrow(/ENOENT/);
+  });
+
+  it('writes Codex MCP template even when config include is disabled', async () => {
+    const plan = await analyzeExtractSources({
+      from: paths.project,
+      out: paths.out,
+      name: '@you/pkg',
+      version: '1.0.0',
+      includeCodexConfig: false,
+      codexConfigPath: paths.codexConfig,
+      projectMcpConfigPath: paths.projectMcp,
+    });
+
+    const includedArtifacts = Object.keys(plan.detected);
+    const includedMcpServers = plan.mcpServers
+      .filter((server) => server.source === 'codex')
+      .map((server) => server.id);
+    const logger = createLogger();
+
+    await executeExtract(
+      plan,
+      {
+        from: paths.project,
+        out: paths.out,
+        name: '@you/pkg',
+        version: '1.0.0',
+        includedArtifacts,
+        includedMcpServers,
+        force: true,
+      },
+      logger,
+    );
+
     const codexToml = await fs.readFile(
-      path.join(paths.out, 'templates', 'codex', 'mcp_servers.toml.hbs'),
+      path.join(paths.out, 'templates', 'codex', 'agents.toml.hbs'),
       'utf8',
     );
     const codexConfig = TOML.parse(codexToml ?? '') as Record<string, unknown>;
-    expect(codexConfig.mcp_servers ?? {}).toEqual({});
+    const codexServers = codexConfig.mcp_servers as Record<string, unknown>;
+    expect(Object.keys(codexServers)).toEqual(['embeddings']);
+  });
+
+  it('still surfaces Codex MCP servers when includeCodexConfig is false', async () => {
+    const plan = await analyzeExtractSources({
+      from: paths.project,
+      out: paths.out,
+      name: '@you/pkg',
+      version: '1.0.0',
+      includeCodexConfig: false,
+      codexConfigPath: paths.codexConfig,
+      projectMcpConfigPath: paths.projectMcp,
+    });
+
+    expect(plan.mcpServers.map((server) => server.id)).toContain('codex:embeddings');
+    expect(plan.codexConfigBase).toBeNull();
+    expect(plan.skipped).toContain('codex.mcp_servers (enable include Codex config to bundle)');
   });
 });

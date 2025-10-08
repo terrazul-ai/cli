@@ -8,7 +8,7 @@ describe('build-manifest (agents.toml generation)', () => {
     const toml = buildAgentsToml('@user/pkg', '1.2.3', {
       codex: {
         template: 'templates/AGENTS.md.hbs',
-        mcpServers: 'templates/codex/mcp_servers.toml.hbs',
+        mcpServers: 'templates/codex/agents.toml.hbs',
       },
       claude: {
         template: 'templates/CLAUDE.md.hbs',
@@ -37,7 +37,7 @@ describe('build-manifest (agents.toml generation)', () => {
     expect(obj.package.description).toBe('Extracted AI context package');
     expect(obj.metadata.tz_spec_version).toBe(1);
     expect(obj.exports.codex.template).toBe('templates/AGENTS.md.hbs');
-    expect(obj.exports.codex.mcpServers).toBe('templates/codex/mcp_servers.toml.hbs');
+    expect(obj.exports.codex.mcpServers).toBe('templates/codex/agents.toml.hbs');
     expect(obj.exports.claude.template).toBe('templates/CLAUDE.md.hbs');
     expect(obj.exports.claude.settings).toBe('templates/claude/settings.json.hbs');
     expect(obj.exports.claude.mcpServers).toBe('templates/claude/mcp_servers.json.hbs');
@@ -52,7 +52,7 @@ describe('build-manifest (agents.toml generation)', () => {
     const exportsMap = {
       codex: {
         template: 'templates/AGENTS.md.hbs',
-        mcpServers: 'templates/codex/mcp_servers.toml.hbs',
+        mcpServers: 'templates/codex/agents.toml.hbs',
       },
       claude: { template: 'templates/CLAUDE.md.hbs' },
     } as const;

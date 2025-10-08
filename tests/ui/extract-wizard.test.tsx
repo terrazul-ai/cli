@@ -74,7 +74,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       {
         id: 'codex.mcp_servers',
         artifactId: 'codex.mcp_servers',
-        relativePath: 'templates/codex/mcp_servers.toml.hbs',
+        relativePath: 'templates/codex/agents.toml.hbs',
         format: 'toml',
         data: '',
       },
@@ -111,7 +111,7 @@ function createResult(): ExtractResult {
         'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
         'codex.mcp_servers': 'aggregated from MCP sources',
       },
-      outputs: ['README.md', 'templates/AGENTS.md.hbs', 'templates/codex/mcp_servers.toml.hbs'],
+      outputs: ['README.md', 'templates/AGENTS.md.hbs', 'templates/codex/agents.toml.hbs'],
       manifest: {},
       skipped: [],
     },
@@ -222,6 +222,7 @@ describe('ExtractWizard', () => {
     await expectFrameContains(lastFrame, 'Enter • Extract package');
     await expectFrameContains(lastFrame, '○ Include ~/.codex/config.toml');
     await expectFrameContains(lastFrame, 'Adds user-specific Codex configuration to the bundle.');
+    await expectFrameNotContains(lastFrame, '✓ Codex • config.toml');
 
     stdin.write('\r');
 

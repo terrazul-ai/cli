@@ -100,17 +100,6 @@ export function buildReviewSummary({
     );
 
   if (
-    selectedArtifacts.has(CODEX_MCP_ARTIFACT_ID) &&
-    !mcpItems.some((item) => item.id === CODEX_MCP_ARTIFACT_ID)
-  ) {
-    mcpItems.unshift({
-      id: CODEX_MCP_ARTIFACT_ID,
-      primary: getArtifactLabel(CODEX_MCP_ARTIFACT_ID),
-      secondary: 'Include ~/.codex/config.toml',
-    });
-  }
-
-  if (
     selectedArtifacts.has(CLAUDE_MCP_ARTIFACT_ID) &&
     selectedMcp.size === 0 &&
     !mcpItems.some((item) => item.id === CLAUDE_MCP_ARTIFACT_ID)
@@ -143,7 +132,7 @@ export function buildReviewSummary({
   ];
 
   const codexConfigIncluded =
-    selectedArtifacts.has(CODEX_MCP_ARTIFACT_ID) &&
+    Boolean(options.includeCodexConfig) &&
     (Boolean(plan.codexConfigBase) ||
       plan.mcpServers.some((server: { source: string }) => server.source === 'codex'));
 

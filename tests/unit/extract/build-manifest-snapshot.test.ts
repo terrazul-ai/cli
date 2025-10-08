@@ -7,7 +7,7 @@ describe('build-manifest snapshot', () => {
     const toml = buildAgentsToml('@snap/demo', '0.0.1', {
       codex: {
         template: 'templates/AGENTS.md.hbs',
-        mcpServers: 'templates/codex/mcp_servers.toml.hbs',
+        mcpServers: 'templates/codex/agents.toml.hbs',
       },
       claude: {
         template: 'templates/CLAUDE.md.hbs',
@@ -28,7 +28,7 @@ describe('build-manifest snapshot', () => {
       '',
       '[exports.codex]',
       'template = "templates/AGENTS.md.hbs"',
-      'mcpServers = "templates/codex/mcp_servers.toml.hbs"',
+      'mcpServers = "templates/codex/agents.toml.hbs"',
       '',
       '[exports.claude]',
       'template = "templates/CLAUDE.md.hbs"',

@@ -124,3 +124,33 @@ export function renderCodexMcpServers(servers: MCPServerPlan[]): string {
   const serialized = TOML.stringify(doc ?? {});
   return serialized.endsWith('\n') ? serialized : `${serialized}\n`;
 }
+
+export function renderCodexConfig(base: CodexBaseConfig | null, servers: MCPServerPlan[]): string {
+  const doc: TOML.JsonMap = {};
+  if (base?.model) {
+    doc.model = base.model;
+  }
+  if (base?.model_reasoning_effort) {
+    doc.model_reasoning_effort = base.model_reasoning_effort;
+  }
+  if (base?.projects && Object.keys(base.projects).length > 0) {
+    doc.projects = structuredClone(base.projects) as TOML.JsonMap;
+  }
+
+  const codexServers = servers.filter((server) => server.source === 'codex');
+  if (codexServers.length > 0) {
+    const map: Record<string, unknown> = {};
+    for (const server of codexServers) {
+      const def = server.config ?? {
+        command: server.definition.command,
+        ...(server.definition.args.length > 0 ? { args: server.definition.args } : {}),
+        ...(Object.keys(server.definition.env).length > 0 ? { env: server.definition.env } : {}),
+      };
+      map[server.name] = structuredClone(def);
+    }
+    doc.mcp_servers = map as TOML.JsonMap;
+  }
+
+  const serialized = TOML.stringify(doc ?? {});
+  return serialized.endsWith('\n') ? serialized : `${serialized}\n`;
+}
