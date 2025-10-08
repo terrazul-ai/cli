@@ -10,6 +10,7 @@ const baseOptions: ExtractOptions = {
   version: '0.0.0',
   includeClaudeLocal: false,
   includeClaudeUser: false,
+  includeCodexConfig: true,
   dryRun: false,
   force: false,
 };
@@ -21,6 +22,9 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       'codex.Agents': '/projects/demo/AGENTS.md',
       'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
       'cursor.rules': '/projects/demo/.cursor/rules',
+      'codex.config': '~/.codex/config.toml',
+      'codex.mcp_servers': 'aggregated from MCP sources',
+      'claude.mcp_servers': 'aggregated from MCP sources',
     },
     skipped: [],
     manifest: {},
@@ -32,6 +36,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         source: 'codex',
         origin: '~/.codex/config.toml',
         definition: { command: 'run-embeddings', args: [], env: {} },
+        config: { command: 'run-embeddings' },
       },
       {
         id: 'project:search',
@@ -39,8 +44,10 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         source: 'project',
         origin: '/projects/demo/.mcp.json',
         definition: { command: './scripts/search.sh', args: [], env: {} },
+        config: { command: './scripts/search.sh' },
       },
     ],
+    codexConfigBase: { model: 'gpt-5-codex' },
     ...overrides,
   };
 }
@@ -67,8 +74,8 @@ describe('buildReviewSummary', () => {
       'Claude • CLAUDE.md',
     ]);
     expect(artifacts.items.map((item) => item.secondary)).toEqual([
-      'codex.Agents',
-      'claude.Readme',
+      '/projects/demo/AGENTS.md',
+      '/projects/demo/.claude/CLAUDE.md',
     ]);
 
     const mcp = summary.sections[1];
@@ -83,6 +90,7 @@ describe('buildReviewSummary', () => {
     expect(summary.destination.version).toBe('0.0.0');
     expect(summary.destination.dryRun).toBe(true);
     expect(summary.destination.force).toBe(true);
+    expect(summary.codexConfigIncluded).toBe(true);
   });
 
   it('handles empty selections gracefully', () => {
@@ -92,7 +100,7 @@ describe('buildReviewSummary', () => {
       plan,
       selectedArtifacts: new Set(),
       selectedMcp: new Set(),
-      options: baseOptions,
+      options: { ...baseOptions, includeCodexConfig: false },
     });
 
     const artifacts = summary.sections[0];
@@ -103,5 +111,6 @@ describe('buildReviewSummary', () => {
     const mcp = summary.sections[1];
     expect(mcp.totalCount).toBe(0);
     expect(mcp.emptyLabel).toBe('Plan has no MCP servers');
+    expect(summary.codexConfigIncluded).toBe(false);
   });
 });

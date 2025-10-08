@@ -1,9 +1,3 @@
----
-name: implement
-description: Use this agent to implement a plan returned by the plan agent
-model: sonnet
----
-
 # Implement Terrazul CLI Plans
 
 You are tasked with implementing approved technical plans for the Terrazul CLI repository. This is a Node.js + TypeScript command-line tool that manages AI agent configuration packages (non-executable content like markdown/JSON).

@@ -15,18 +15,28 @@ describe('tz extract misc scenarios', () => {
     const cli = await ensureBuilt();
     const proj = await mkdtemp('tz-extract-proj');
     const out = await mkdtemp('tz-extract-out');
-    const res = await runReject('node', [
-      cli,
-      'extract',
-      '--from',
-      proj,
-      '--out',
-      out,
-      '--name',
-      '@you/ctx',
-      '--pkg-version',
-      '1.0.0',
-    ]);
+    const fakeHome = await mkdtemp('tz-extract-home');
+    const res = await runReject(
+      'node',
+      [
+        cli,
+        'extract',
+        '--from',
+        proj,
+        '--out',
+        out,
+        '--name',
+        '@you/ctx',
+        '--pkg-version',
+        '1.0.0',
+      ],
+      {
+        env: {
+          HOME: fakeHome,
+          USERPROFILE: fakeHome,
+        },
+      },
+    );
     expect(res.stderr + res.stdout).toMatch(/No recognized inputs/);
   });
 

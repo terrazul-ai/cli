@@ -17,6 +17,7 @@ const baseOptions: ExtractOptions = {
   version: '0.0.0',
   includeClaudeLocal: false,
   includeClaudeUser: false,
+  includeCodexConfig: true,
   dryRun: false,
   force: false,
 };
@@ -28,6 +29,9 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       'codex.Agents': '/projects/demo/AGENTS.md',
       'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
       'cursor.rules': '/projects/demo/.cursor/rules',
+      'codex.config': '~/.codex/config.toml',
+      'codex.mcp_servers': 'aggregated from MCP sources',
+      'claude.mcp_servers': 'aggregated from MCP sources',
     },
     skipped: [],
     manifest: {},
@@ -61,6 +65,27 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         format: 'text',
         data: 'cursor',
       },
+      {
+        id: 'claude.mcp_servers',
+        artifactId: 'claude.mcp_servers',
+        relativePath: 'templates/claude/mcp_servers.json.hbs',
+        format: 'json',
+        data: {},
+      },
+      {
+        id: 'codex.mcp_servers',
+        artifactId: 'codex.mcp_servers',
+        relativePath: 'templates/codex/agents.toml.hbs',
+        format: 'toml',
+        data: '',
+      },
+      {
+        id: 'codex.config',
+        artifactId: 'codex.config',
+        relativePath: 'templates/codex/config.toml',
+        format: 'toml',
+        data: '',
+      },
     ],
     mcpServers: [
       {
@@ -80,6 +105,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
         config: { command: './scripts/search.sh' },
       },
     ],
+    codexConfigBase: { model: 'gpt-5-codex' },
     ...overrides,
   };
 }
@@ -91,8 +117,15 @@ function createResult(): ExtractResult {
       detected: {
         'codex.Agents': '/projects/demo/AGENTS.md',
         'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
+        'codex.config': '~/.codex/config.toml',
+        'codex.mcp_servers': 'aggregated from MCP sources',
       },
-      outputs: ['README.md', 'templates/AGENTS.md.hbs'],
+      outputs: [
+        'README.md',
+        'templates/AGENTS.md.hbs',
+        'templates/codex/agents.toml.hbs',
+        'templates/codex/config.toml',
+      ],
       manifest: {},
       skipped: [],
     },
@@ -187,18 +220,45 @@ describe('ExtractWizard', () => {
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
 
+    stdin.write('\t');
+    await pause();
+    for (const _ of '0.0.0') {
+      stdin.write('\u007f');
+      await pause(10);
+    }
+    stdin.write('invalid');
+    await pause();
+    await expectFrameContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
+    await expectFrameContains(lastFrame, 'Enter • Continue (disabled)');
+
     stdin.write('\r');
     await pause();
+    await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
+
+    for (const _ of 'invalid') {
+      stdin.write('\u007f');
+      await pause(10);
+    }
+    stdin.write('1.2.3');
+    await pause();
+    await expectFrameNotContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
+    await expectFrameContains(lastFrame, 'Enter • Continue');
+
     stdin.write('\r');
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 5/6 — Toggle Options');
     await expectFrameContains(lastFrame, 'Space • Toggle');
     await expectFrameNotContains(lastFrame, 'L • Claude local');
+    await expectFrameContains(lastFrame, 'Include ~/.codex/config.toml');
+    await expectFrameContains(lastFrame, 'Adds user-specific Codex configuration to the bundle.');
 
     stdin.write('\r');
     await pause();
     await expectFrameContains(lastFrame, 'Extract • Step 6/6 — Review & Extract');
     await expectFrameContains(lastFrame, 'Enter • Extract package');
+    await expectFrameContains(lastFrame, '○ Include ~/.codex/config.toml');
+    await expectFrameContains(lastFrame, 'Adds user-specific Codex configuration to the bundle.');
+    await expectFrameNotContains(lastFrame, '✓ Codex • config.toml');
 
     stdin.write('\r');
 
@@ -211,57 +271,20 @@ describe('ExtractWizard', () => {
 
     const [executedPlan, execOptions] = execute.mock.calls[0];
     expect(executedPlan).toBe(plan);
-    expect(execOptions.includedArtifacts).toEqual([
-      'codex.Agents',
-      'claude.Readme',
-      'cursor.rules',
-    ]);
+    expect(execOptions.includedArtifacts).toHaveLength(6);
+    expect(new Set(execOptions.includedArtifacts)).toEqual(
+      new Set([
+        'codex.Agents',
+        'claude.Readme',
+        'cursor.rules',
+        'codex.mcp_servers',
+        'codex.config',
+        'claude.mcp_servers',
+      ]),
+    );
     expect(execOptions.includedMcpServers).toEqual(['codex:embeddings', 'project:search']);
 
     await expectFrameContains(lastFrame, 'Extraction complete');
-  });
-
-  it('blocks metadata advance until valid inputs and surfaces inline warnings', async () => {
-    const plan = createPlan();
-    const analyze = vi.fn(async () => plan);
-    const execute = vi.fn(async (_plan: ExtractPlan, _options: ExecuteOptions) => createResult());
-
-    const { stdin, lastFrame } = render(
-      <ExtractWizard
-        baseOptions={{ ...baseOptions, version: 'invalid' }}
-        initialPlan={plan}
-        analyze={analyze}
-        execute={execute}
-        logger={noopLogger}
-      />,
-    );
-
-    await expectFrameContains(lastFrame, 'Extract • Step 1/6 — Select Artifacts');
-    stdin.write('\t');
-    await expectFrameContains(lastFrame, 'Extract • Step 2/6 — Select MCP Servers');
-    stdin.write('\t');
-    await expectFrameContains(lastFrame, 'Extract • Step 3/6 — Choose Output Directory');
-    stdin.write('\t');
-    await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
-
-    await expectFrameContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
-    await expectFrameContains(lastFrame, 'Enter • Continue (disabled)');
-
-    stdin.write('\t');
-    await pause();
-    for (const _ of 'invalid') {
-      stdin.write('\u007f');
-      await pause(10);
-    }
-    stdin.write('1.2.3');
-
-    await pause();
-    await expectFrameNotContains(lastFrame, 'Version must be valid semver (e.g., 0.0.0)');
-    await expectFrameContains(lastFrame, 'Enter • Continue');
-
-    stdin.write('\r');
-    await pause();
-    await expectFrameContains(lastFrame, 'Extract • Step 5/6 — Toggle Options');
   });
 
   it('shows status bar during analysis and toggles the log drawer', async () => {

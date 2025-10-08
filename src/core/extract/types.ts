@@ -10,6 +10,7 @@ export interface ExtractOptions {
   version: string;
   includeClaudeLocal?: boolean;
   includeClaudeUser?: boolean;
+  includeCodexConfig?: boolean;
   force?: boolean;
   dryRun?: boolean;
   codexConfigPath?: string;
@@ -31,7 +32,7 @@ export interface ManifestPatch {
   properties: Record<string, string>;
 }
 
-export type PlannedOutputFormat = 'text' | 'json';
+export type PlannedOutputFormat = 'text' | 'json' | 'toml';
 
 export interface PlannedOutput {
   id: string;
@@ -41,6 +42,12 @@ export interface PlannedOutput {
   data: unknown;
   manifestPatch?: ManifestPatch;
   alwaysInclude?: boolean;
+}
+
+export interface CodexBaseConfig {
+  model?: string;
+  model_reasoning_effort?: string;
+  projects?: Record<string, Record<string, unknown>>;
 }
 
 export interface MCPServerPlan {
@@ -63,6 +70,7 @@ export interface ExtractPlan {
   manifest: ExportMap;
   outputs: PlannedOutput[];
   mcpServers: MCPServerPlan[];
+  codexConfigBase: CodexBaseConfig | null;
 }
 
 export interface ExecuteOptions extends ExtractOptions {

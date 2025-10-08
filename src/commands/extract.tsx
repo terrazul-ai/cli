@@ -44,6 +44,7 @@ interface ExtractArgs {
   pkgVersion?: string;
   includeClaudeLocal?: boolean;
   includeClaudeUser?: boolean;
+  includeCodexConfig?: boolean;
   force?: boolean;
   dryRun?: boolean;
   interactive?: boolean;
@@ -91,6 +92,7 @@ export async function buildInteractiveBaseOptions(
     version: args.pkgVersion ?? '0.0.0',
     includeClaudeLocal: Boolean(args.includeClaudeLocal),
     includeClaudeUser: Boolean(args.includeClaudeUser),
+    includeCodexConfig: Boolean(args.includeCodexConfig),
     force: Boolean(args.force),
     dryRun: Boolean(args.dryRun),
   };
@@ -172,6 +174,7 @@ export function registerExtractCommand(
     .option('--pkg-version <semver>', 'Package version, e.g., 0.0.0')
     .option('--include-claude-local', 'Include .claude/settings.local.json (sanitized)', false)
     .option('--include-claude-user', 'Include user-scoped ~/.claude.json (sanitized)', false)
+    .option('--include-codex-config', 'Include ~/.codex/config.toml (sanitized)', false)
     .option('--force', 'Overwrite non-empty output directory', false)
     .option('--dry-run', 'Print plan without writing files', false)
     .option('--no-interactive', 'Disable interactive wizard')
@@ -221,6 +224,7 @@ export function registerExtractCommand(
           version: String(r.pkgVersion),
           includeClaudeLocal: Boolean(r.includeClaudeLocal),
           includeClaudeUser: Boolean(r.includeClaudeUser),
+          includeCodexConfig: Boolean(r.includeCodexConfig),
           force: Boolean(r.force),
           dryRun: Boolean(r.dryRun),
         };

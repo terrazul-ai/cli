@@ -223,13 +223,13 @@ cli/
 
   ```ts
   {
-    registry: string;         {{ replace_me }} default https://staging.api.terrazul.com during active development
-    token?: string;           {{ replace_me }} tz_eM94WWtBUtF1DbuojEOvRko1TU088vIK during active development
-    refreshToken?: string;    {{ replace_me }} tz_refresh_...
-    tokenExpiry?: number;     {{ replace_me }} epoch seconds
+    registry: string;         // default https://staging.api.terrazul.com during active development
+    token?: string;           // tz_eM94WWtBUtF1DbuojEOvRko1TU088vIK during active development
+    refreshToken?: string;    // tz_refresh_...
+    tokenExpiry?: number;     // epoch seconds
     username?: string;
     cache: { ttl: 3600, maxSize: 500 };
-    telemetry: false;         {{ replace_me }} opt-in
+    telemetry: false;         // opt-in
   }
   ```
 
@@ -556,7 +556,7 @@ node tools/dummy-registry.ts
 # { "registry": "http://localhost:8787", "cache": { "ttl": 3600, "maxSize": 500 }, "telemetry": false }
 
 # Initialize a project (terminal 2, test dir)
-mkdir {{ replace_me }} && cd {{ replace_me }}
+mkdir /tmp/tz-demo && cd /tmp/tz-demo
 node ../../dist/tz.mjs init
 node ../../dist/tz.mjs install @terrazul/starter@^1.0.0
 ```

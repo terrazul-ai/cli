@@ -1,13 +1,20 @@
 import { type ExtractOptions, type ExtractPlan } from '../../core/extract/orchestrator.js';
 
+const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
+const CLAUDE_MCP_ARTIFACT_ID = 'claude.mcp_servers';
+const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_servers';
+const CODEX_CONFIG_ARTIFACT_ID = 'codex.config';
+
 const ARTIFACT_LABELS: Record<string, string> = {
   'codex.Agents': 'Codex • AGENTS.md',
   'claude.Readme': 'Claude • CLAUDE.md',
   'claude.settings': 'Claude • settings.json',
   'claude.settings.local': 'Claude • settings.local.json',
   'claude.user.settings': 'Claude • user settings',
-  'claude.mcp_servers': 'Claude • mcp_servers.json',
-  'claude.subagents': 'Claude • agents directory',
+  [CLAUDE_MCP_ARTIFACT_ID]: 'Claude • mcp_servers.json',
+  [CODEX_MCP_ARTIFACT_ID]: 'Codex • config.toml',
+  [CODEX_CONFIG_ARTIFACT_ID]: 'Codex • config.toml',
+  [CLAUDE_SUBAGENT_ARTIFACT_ID]: 'Claude • agents directory',
   'cursor.rules': 'Cursor • rules',
   copilot: 'GitHub Copilot • instructions',
 };
@@ -38,6 +45,7 @@ export interface DestinationSummary {
 export interface ReviewSummary {
   sections: SummarySection[];
   destination: DestinationSummary;
+  codexConfigIncluded: boolean;
 }
 
 export interface BuildReviewSummaryParams {
@@ -63,13 +71,26 @@ export function buildReviewSummary({
   options,
 }: BuildReviewSummaryParams): ReviewSummary {
   const artifactOrder = Object.keys(plan.detected);
-  const artifactItems: SummaryItem[] = artifactOrder
+  const visibleArtifactIds = artifactOrder.filter(
+    (id) =>
+      id !== CLAUDE_MCP_ARTIFACT_ID &&
+      id !== CODEX_MCP_ARTIFACT_ID &&
+      id !== CODEX_CONFIG_ARTIFACT_ID,
+  );
+
+  const artifactItems: SummaryItem[] = visibleArtifactIds
     .filter((id) => selectedArtifacts.has(id))
-    .map((id) => ({
-      id,
-      primary: getArtifactLabel(id),
-      secondary: id,
-    }));
+    .map((id) => {
+      const detectedEntry = plan.detected[id];
+      const detail = Array.isArray(detectedEntry)
+        ? detectedEntry.join(', ')
+        : (detectedEntry as string | undefined);
+      return {
+        id,
+        primary: getArtifactLabel(id),
+        secondary: detail ?? undefined,
+      };
+    });
 
   const mcpItems: SummaryItem[] = plan.mcpServers
     .filter((server: { id: string }) => selectedMcp.has(server.id))
@@ -86,9 +107,10 @@ export function buildReviewSummary({
       id: 'artifacts',
       title: 'Artifacts',
       selectedCount: artifactItems.length,
-      totalCount: artifactOrder.length,
+      totalCount: visibleArtifactIds.length,
       items: artifactItems,
-      emptyLabel: artifactOrder.length === 0 ? 'No artifacts detected' : 'No artifacts selected',
+      emptyLabel:
+        visibleArtifactIds.length === 0 ? 'No artifacts detected' : 'No artifacts selected',
     },
     {
       id: 'mcp',
@@ -101,6 +123,11 @@ export function buildReviewSummary({
     },
   ];
 
+  const codexConfigIncluded =
+    Boolean(options.includeCodexConfig) &&
+    (Boolean(plan.codexConfigBase) ||
+      plan.mcpServers.some((server: { source: string }) => server.source === 'codex'));
+
   return {
     sections,
     destination: {
@@ -110,6 +137,7 @@ export function buildReviewSummary({
       dryRun: Boolean(options.dryRun),
       force: Boolean(options.force),
     },
+    codexConfigIncluded,
   };
 }
 
@@ -132,6 +160,12 @@ export function formatReviewSummaryText(summary: ReviewSummary): string {
     `  - Path: ${summary.destination.path}`,
     `  - Package: ${summary.destination.packageName}@${summary.destination.version}`,
   );
+  if (summary.codexConfigIncluded) {
+    lines.push(
+      '  - Include ~/.codex/config.toml',
+      '    Adds user-specific Codex configuration to the bundle.',
+    );
+  }
   if (summary.destination.dryRun) {
     lines.push('  - Mode: Dry run');
   }

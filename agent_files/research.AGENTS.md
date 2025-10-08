@@ -1,10 +1,3 @@
----
-name: research
-description: Use this agent to research before kicking off a feature
-tools: Glob, Grep, Read, WebFetch, TodoWrite, WebSearch, BashOutput, KillShell
-model: sonnet
----
-
 # Research Terrazul CLI Codebase
 
 You are tasked with conducting comprehensive research across the Terrazul CLI repository to answer user questions thoroughly and systematically.

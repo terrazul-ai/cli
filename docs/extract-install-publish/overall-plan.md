@@ -40,6 +40,9 @@ What we output (package structure)
 ├─ CLAUDE.md.hbs # if CLAUDE.md found
 ├─ cursor.rules.hbs # if .cursor/rules found (concat if dir)
 ├─ copilot.md.hbs # if copilot file found
+├─ codex/
+│ ├─ agents.toml.hbs # if Codex MCP servers detected
+│ └─ config.toml # if Include ~/.codex/config.toml enabled
 └─ claude/
 ├─ settings.json.hbs # from .claude/settings.json (sanitized)
 ├─ settings.local.json.hbs # only with --include-claude-local (sanitized)
@@ -61,6 +64,8 @@ license = "MIT"
 # present only if file exists in templates/
 
 codex.template = "templates/AGENTS.md.hbs"
+codex.mcpServers = "templates/codex/agents.toml.hbs"
+codex.config = "templates/codex/config.toml"
 claude.template = "templates/CLAUDE.md.hbs"
 claude.settings = "templates/claude/settings.json.hbs"
 claude.subagentsDir = "templates/claude/agents"

@@ -33,6 +33,9 @@ Example project before extracting
 └─ .github/
 └─ copilot-instructions.md # GitHub Copilot (optional)
 
+User-level Codex config (optional):
+~/.codex/config.toml
+
 Command
 
 cd ~/code/my-app
@@ -49,7 +52,7 @@ Flags you might add:
 • Omit `--no-interactive` to fall back to the wizard even in scripts (e.g., when running locally with TTY attached)
 
 What tz extract does step‑by‑step 1. Detects known artifacts in --from:
-• Codex: AGENTS.md (root or .codex/AGENTS.md)
+• Codex: AGENTS.md (root or .codex/AGENTS.md), ~/.codex/config.toml `[mcp_servers]`
 • Claude: CLAUDE.md, .claude/settings.json, .claude/mcp\*servers.json, .claude/agents/\*\*/\_
 • Cursor: .cursor/rules (file or directory—directory concatenates only _.txt and _.mdc deterministically)
 • Copilot: .github/copilot-instructions.md 2. Sanitizes & templatizes sensitive values:
@@ -74,6 +77,9 @@ What tz extract does step‑by‑step 1. Detects known artifacts in --from:
 ├─ CLAUDE.md.hbs # if CLAUDE.md existed
 ├─ cursor.rules.hbs # if Cursor rules existed
 ├─ copilot.md.hbs # if Copilot existed
+├─ codex/
+│ ├─ agents.toml.hbs # if Codex MCP servers detected
+│ └─ config.toml # if Include ~/.codex/config.toml enabled
 └─ claude/
 ├─ settings.json.hbs # from .claude/settings.json (sanitized)
 ├─ mcp_servers.json.hbs # sanitized
@@ -90,6 +96,8 @@ license = "MIT"
 
 [exports]
 codex.template = "templates/AGENTS.md.hbs"
+codex.mcpServers = "templates/codex/agents.toml.hbs"
+codex.config = "templates/codex/config.toml"
 claude.template = "templates/CLAUDE.md.hbs"
 claude.settings = "templates/claude/settings.json.hbs"
 claude.subagentsDir = "templates/claude/agents"
