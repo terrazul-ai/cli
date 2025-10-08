@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.0](https://github.com/terrazul-ai/cli/compare/v0.7.4...v0.8.0) (2025-10-08)
+
+
+### Features
+
+* **commands:** add install command ([#28](https://github.com/terrazul-ai/cli/issues/28)) ([0406f56](https://github.com/terrazul-ai/cli/commit/0406f564d6ae53d6a041d45805083550e7ef0121))
+* **mcp:** extract mcp from codex ([#27](https://github.com/terrazul-ai/cli/issues/27)) ([279e393](https://github.com/terrazul-ai/cli/commit/279e3935db95b6c3b3186f9cb55541bf1460d5a2))
+
+
+### Bug Fixes
+
+* **commands:** default extract package version to 0.0.0 ([#25](https://github.com/terrazul-ai/cli/issues/25)) ([edb4e5a](https://github.com/terrazul-ai/cli/commit/edb4e5adf6177e053fd0486b1385e444e8e85d05))
+
 ## [0.7.4](https://github.com/terrazul-ai/cli/compare/v0.7.3...v0.7.4) (2025-10-07)
 
 
