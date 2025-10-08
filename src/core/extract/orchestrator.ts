@@ -6,7 +6,11 @@ import { ensureDir } from '../../utils/fs.js';
 import { resolveWithin } from '../../utils/path.js';
 import { ErrorCode, TerrazulError } from '../errors.js';
 import { buildAgentsToml, type ExportMap } from './build-manifest.js';
-import { parseCodexMcpServers, renderCodexMcpServers } from './mcp/codex-config.js';
+import {
+  parseCodexMcpServers,
+  renderCodexConfig,
+  renderCodexMcpServers,
+} from './mcp/codex-config.js';
 import { parseProjectMcpServers } from './mcp/project-config.js';
 import {
   resolveProjectRoot,
@@ -38,6 +42,7 @@ export type {
 } from './types.js';
 
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
+const CODEX_CONFIG_ARTIFACT_ID = 'codex.config';
 const CLAUDE_TEMPLATE_PREFIX = 'templates/claude/agents/';
 const TEMPLATE_SUFFIX = '.hbs';
 
@@ -541,10 +546,30 @@ export async function analyzeExtractSources(options: ExtractOptions): Promise<Ex
     const toml = await fs.readFile(codexConfigPath, 'utf8');
     const codexExtraction = parseCodexMcpServers(toml, projectRoot, codexConfigPath);
     plan.mcpServers.push(...codexExtraction.servers);
-    if (options.includeCodexConfig && codexExtraction.base) {
+    if (codexExtraction.base) {
       plan.codexConfigBase = codexExtraction.base;
     }
-    if (!options.includeCodexConfig) {
+    if (options.includeCodexConfig) {
+      if (!plan.detected[CODEX_CONFIG_ARTIFACT_ID]) {
+        plan.detected[CODEX_CONFIG_ARTIFACT_ID] = codexConfigPath;
+      }
+      const existingConfig = plan.outputs.find(
+        (output: PlannedOutput) => output.artifactId === CODEX_CONFIG_ARTIFACT_ID,
+      );
+      if (!existingConfig) {
+        addOutput({
+          id: `${CODEX_CONFIG_ARTIFACT_ID}:templates/codex/config.toml`,
+          artifactId: CODEX_CONFIG_ARTIFACT_ID,
+          relativePath: 'templates/codex/config.toml',
+          format: 'toml',
+          data: null,
+          manifestPatch: {
+            tool: 'codex',
+            properties: { config: 'templates/codex/config.toml' },
+          },
+        });
+      }
+    } else {
       plan.skipped.push('codex.mcp_servers (enable include Codex config to bundle)');
     }
   }
@@ -740,16 +765,31 @@ export async function executeExtract(
       const dest = safeJoinWithin(outAbs, ...output.relativePath.split('/'));
       ensureDir(path.dirname(dest));
       let content: string;
-      if (output.artifactId === 'claude.mcp_servers') {
-        content = JSON.stringify(mcpJson, null, 2);
-      } else if (output.artifactId === 'codex.mcp_servers') {
-        content = renderCodexMcpServers(selectedCodexServers);
-      } else if (output.format === 'json') {
-        content = JSON.stringify(output.data ?? {}, null, 2);
-      } else if (output.format === 'toml') {
-        content = String(output.data ?? '');
-      } else {
-        content = String(output.data ?? '');
+      switch (output.artifactId) {
+        case 'claude.mcp_servers': {
+          content = JSON.stringify(mcpJson, null, 2);
+
+          break;
+        }
+        case CODEX_CONFIG_ARTIFACT_ID: {
+          content = renderCodexConfig(plan.codexConfigBase, selectedCodexServers);
+
+          break;
+        }
+        case 'codex.mcp_servers': {
+          content = renderCodexMcpServers(selectedCodexServers);
+
+          break;
+        }
+        default: {
+          if (output.format === 'json') {
+            content = JSON.stringify(output.data ?? {}, null, 2);
+          } else if (output.format === 'toml') {
+            content = String(output.data ?? '');
+          } else {
+            content = String(output.data ?? '');
+          }
+        }
       }
       await fs.writeFile(dest, content, 'utf8');
       try {

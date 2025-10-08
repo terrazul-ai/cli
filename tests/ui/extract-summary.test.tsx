@@ -22,6 +22,7 @@ function createPlan(overrides: Partial<ExtractPlan> = {}): ExtractPlan {
       'codex.Agents': '/projects/demo/AGENTS.md',
       'claude.Readme': '/projects/demo/.claude/CLAUDE.md',
       'cursor.rules': '/projects/demo/.cursor/rules',
+      'codex.config': '~/.codex/config.toml',
       'codex.mcp_servers': 'aggregated from MCP sources',
       'claude.mcp_servers': 'aggregated from MCP sources',
     },
@@ -56,7 +57,12 @@ describe('buildReviewSummary', () => {
     const plan = createPlan();
     const summary = buildReviewSummary({
       plan,
-      selectedArtifacts: new Set(['codex.Agents', 'claude.Readme', 'codex.mcp_servers']),
+      selectedArtifacts: new Set([
+        'codex.Agents',
+        'claude.Readme',
+        'codex.mcp_servers',
+        'codex.config',
+      ]),
       selectedMcp: new Set(['project:search']),
       options: { ...baseOptions, dryRun: true, force: true },
     });
@@ -67,7 +73,7 @@ describe('buildReviewSummary', () => {
     expect(artifacts.id).toBe('artifacts');
     expect(artifacts.title).toBe('Artifacts');
     expect(artifacts.selectedCount).toBe(2);
-    expect(artifacts.totalCount).toBe(5);
+    expect(artifacts.totalCount).toBe(3);
     expect(artifacts.items.map((item) => item.primary)).toEqual([
       'Codex • AGENTS.md',
       'Claude • CLAUDE.md',

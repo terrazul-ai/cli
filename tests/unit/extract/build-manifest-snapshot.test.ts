@@ -8,6 +8,7 @@ describe('build-manifest snapshot', () => {
       codex: {
         template: 'templates/AGENTS.md.hbs',
         mcpServers: 'templates/codex/agents.toml.hbs',
+        config: 'templates/codex/config.toml',
       },
       claude: {
         template: 'templates/CLAUDE.md.hbs',
@@ -29,6 +30,7 @@ describe('build-manifest snapshot', () => {
       '[exports.codex]',
       'template = "templates/AGENTS.md.hbs"',
       'mcpServers = "templates/codex/agents.toml.hbs"',
+      'config = "templates/codex/config.toml"',
       '',
       '[exports.claude]',
       'template = "templates/CLAUDE.md.hbs"',

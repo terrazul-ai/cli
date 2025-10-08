@@ -78,7 +78,8 @@ What tz extract does step‑by‑step 1. Detects known artifacts in --from:
 ├─ cursor.rules.hbs # if Cursor rules existed
 ├─ copilot.md.hbs # if Copilot existed
 ├─ codex/
-│ └─ agents.toml.hbs # if Codex MCP servers detected
+│ ├─ agents.toml.hbs # if Codex MCP servers detected
+│ └─ config.toml # if Include ~/.codex/config.toml enabled
 └─ claude/
 ├─ settings.json.hbs # from .claude/settings.json (sanitized)
 ├─ mcp_servers.json.hbs # sanitized
@@ -96,6 +97,7 @@ license = "MIT"
 [exports]
 codex.template = "templates/AGENTS.md.hbs"
 codex.mcpServers = "templates/codex/agents.toml.hbs"
+codex.config = "templates/codex/config.toml"
 claude.template = "templates/CLAUDE.md.hbs"
 claude.settings = "templates/claude/settings.json.hbs"
 claude.subagentsDir = "templates/claude/agents"

@@ -201,6 +201,7 @@ describe('executeExtract', () => {
     const codexSection = (exportsSection.codex as Record<string, unknown>) ?? {};
     expect(codexSection.template).toBe('templates/AGENTS.md.hbs');
     expect(codexSection.mcpServers).toBe('templates/codex/agents.toml.hbs');
+    expect(codexSection.config).toBe('templates/codex/config.toml');
     const mcpRaw = JSON.parse(
       await fs.readFile(
         path.join(paths.out, 'templates', 'claude', 'mcp_servers.json.hbs'),
@@ -220,6 +221,7 @@ describe('executeExtract', () => {
       expect.arrayContaining([
         'templates/claude/mcp_servers.json.hbs',
         'templates/codex/agents.toml.hbs',
+        'templates/codex/config.toml',
       ]),
     );
 
@@ -236,6 +238,15 @@ describe('executeExtract', () => {
         ? (codexServers.embeddings as Record<string, unknown>)
         : {};
     expect(JSON.stringify(embeddings)).not.toContain(paths.project);
+
+    const codexFullConfig = await fs.readFile(
+      path.join(paths.out, 'templates', 'codex', 'config.toml'),
+      'utf8',
+    );
+    const codexFullDoc = TOML.parse(codexFullConfig ?? '') as Record<string, unknown>;
+    expect(codexFullDoc.model).toBe('gpt-5-codex');
+    const codexFullServers = (codexFullDoc.mcp_servers as Record<string, unknown>) ?? {};
+    expect(Object.keys(codexFullServers)).toEqual(['embeddings']);
 
     // Legacy performExtract should still succeed and produce same manifest when everything included
     const legacy = await performExtract(
@@ -300,6 +311,14 @@ describe('executeExtract', () => {
     await expect(
       fs.stat(path.join(paths.out, 'templates', 'codex', 'agents.toml.hbs')),
     ).rejects.toThrow(/ENOENT/);
+
+    const codexFullConfig = await fs.readFile(
+      path.join(paths.out, 'templates', 'codex', 'config.toml'),
+      'utf8',
+    );
+    const codexFullDoc = TOML.parse(codexFullConfig ?? '') as Record<string, unknown>;
+    const codexFullServers = (codexFullDoc.mcp_servers as Record<string, unknown>) ?? {};
+    expect(Object.keys(codexFullServers)).toEqual([]);
   });
 
   it('writes Codex MCP template even when config include is disabled', async () => {
@@ -354,7 +373,7 @@ describe('executeExtract', () => {
     });
 
     expect(plan.mcpServers.map((server) => server.id)).toContain('codex:embeddings');
-    expect(plan.codexConfigBase).toBeNull();
+    expect(plan.codexConfigBase).not.toBeNull();
     expect(plan.skipped).toContain('codex.mcp_servers (enable include Codex config to bundle)');
   });
 });

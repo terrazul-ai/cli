@@ -3,6 +3,7 @@ import { type ExtractOptions, type ExtractPlan } from '../../core/extract/orches
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
 const CLAUDE_MCP_ARTIFACT_ID = 'claude.mcp_servers';
 const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_servers';
+const CODEX_CONFIG_ARTIFACT_ID = 'codex.config';
 
 const ARTIFACT_LABELS: Record<string, string> = {
   'codex.Agents': 'Codex • AGENTS.md',
@@ -12,6 +13,7 @@ const ARTIFACT_LABELS: Record<string, string> = {
   'claude.user.settings': 'Claude • user settings',
   [CLAUDE_MCP_ARTIFACT_ID]: 'Claude • mcp_servers.json',
   [CODEX_MCP_ARTIFACT_ID]: 'Codex • config.toml',
+  [CODEX_CONFIG_ARTIFACT_ID]: 'Codex • config.toml',
   [CLAUDE_SUBAGENT_ARTIFACT_ID]: 'Claude • agents directory',
   'cursor.rules': 'Cursor • rules',
   copilot: 'GitHub Copilot • instructions',
@@ -69,19 +71,20 @@ export function buildReviewSummary({
   options,
 }: BuildReviewSummaryParams): ReviewSummary {
   const artifactOrder = Object.keys(plan.detected);
-  const artifactItems: SummaryItem[] = artifactOrder
-    .filter(
-      (id) =>
-        selectedArtifacts.has(id) && id !== CLAUDE_MCP_ARTIFACT_ID && id !== CODEX_MCP_ARTIFACT_ID,
-    )
+  const visibleArtifactIds = artifactOrder.filter(
+    (id) =>
+      id !== CLAUDE_MCP_ARTIFACT_ID &&
+      id !== CODEX_MCP_ARTIFACT_ID &&
+      id !== CODEX_CONFIG_ARTIFACT_ID,
+  );
+
+  const artifactItems: SummaryItem[] = visibleArtifactIds
+    .filter((id) => selectedArtifacts.has(id))
     .map((id) => {
       const detectedEntry = plan.detected[id];
-      const detail =
-        id === CLAUDE_MCP_ARTIFACT_ID || id === CODEX_MCP_ARTIFACT_ID
-          ? undefined
-          : Array.isArray(detectedEntry)
-            ? detectedEntry.join(', ')
-            : (detectedEntry as string | undefined);
+      const detail = Array.isArray(detectedEntry)
+        ? detectedEntry.join(', ')
+        : (detectedEntry as string | undefined);
       return {
         id,
         primary: getArtifactLabel(id),
@@ -116,9 +119,10 @@ export function buildReviewSummary({
       id: 'artifacts',
       title: 'Artifacts',
       selectedCount: artifactItems.length,
-      totalCount: artifactOrder.length,
+      totalCount: visibleArtifactIds.length,
       items: artifactItems,
-      emptyLabel: artifactOrder.length === 0 ? 'No artifacts detected' : 'No artifacts selected',
+      emptyLabel:
+        visibleArtifactIds.length === 0 ? 'No artifacts detected' : 'No artifacts selected',
     },
     {
       id: 'mcp',

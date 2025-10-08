@@ -35,6 +35,7 @@ const SPINNER_INTERVAL = 96;
 const CLAUDE_SUBAGENT_ARTIFACT_ID = 'claude.subagents';
 const CLAUDE_MCP_ARTIFACT_ID = 'claude.mcp_servers';
 const CODEX_MCP_ARTIFACT_ID = 'codex.mcp_servers';
+const CODEX_CONFIG_ARTIFACT_ID = 'codex.config';
 
 type StepId = 'artifacts' | 'subagents' | 'mcp' | 'output' | 'metadata' | 'options' | 'preview';
 
@@ -392,17 +393,22 @@ export function ExtractWizard({
     const hasCodex = plan.mcpServers.some((server) => server.source === 'codex');
     const codexAvailable = hasCodex || Boolean(plan.codexConfigBase);
     const shouldInclude = Boolean(options.includeCodexConfig) && codexAvailable;
+    const targetIds = [CODEX_MCP_ARTIFACT_ID, CODEX_CONFIG_ARTIFACT_ID];
     setSelectedArtifacts((prev) => {
-      if (!shouldInclude) {
-        if (!prev.has(CODEX_MCP_ARTIFACT_ID)) return prev;
-        const next = new Set(prev);
-        next.delete(CODEX_MCP_ARTIFACT_ID);
-        return next;
-      }
-      if (prev.has(CODEX_MCP_ARTIFACT_ID)) return prev;
+      let changed = false;
       const next = new Set(prev);
-      next.add(CODEX_MCP_ARTIFACT_ID);
-      return next;
+      for (const id of targetIds) {
+        const detected = plan.detected[id];
+        const shouldHave = shouldInclude && Boolean(detected);
+        if (shouldHave && !next.has(id)) {
+          next.add(id);
+          changed = true;
+        } else if (!shouldHave && next.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
   }, [plan, options.includeCodexConfig]);
 
@@ -430,7 +436,8 @@ export function ExtractWizard({
         (id) =>
           id !== CLAUDE_SUBAGENT_ARTIFACT_ID &&
           id !== CLAUDE_MCP_ARTIFACT_ID &&
-          id !== CODEX_MCP_ARTIFACT_ID,
+          id !== CODEX_MCP_ARTIFACT_ID &&
+          id !== CODEX_CONFIG_ARTIFACT_ID,
       )
       .map((id) => ({
         id,
@@ -441,6 +448,25 @@ export function ExtractWizard({
         selected: selectedArtifacts.has(id),
       }));
   }, [plan, selectedArtifacts]);
+
+  const hiddenArtifactIds = useMemo(
+    () =>
+      new Set([
+        CLAUDE_SUBAGENT_ARTIFACT_ID,
+        CLAUDE_MCP_ARTIFACT_ID,
+        CODEX_MCP_ARTIFACT_ID,
+        CODEX_CONFIG_ARTIFACT_ID,
+      ]),
+    [],
+  );
+
+  const visibleArtifactCount = useMemo(() => {
+    let count = 0;
+    for (const id of selectedArtifacts) {
+      if (!hiddenArtifactIds.has(id)) count++;
+    }
+    return count;
+  }, [selectedArtifacts, hiddenArtifactIds]);
 
   const subagentItems: SelectableListItem[] = useMemo(() => {
     if (!plan) return [];
@@ -552,9 +578,9 @@ export function ExtractWizard({
       }
       if (metadataError) return;
     }
-    if (currentStep === 'artifacts' && selectedArtifacts.size === 0) return;
+    if (currentStep === 'artifacts' && visibleArtifactCount === 0) return;
     if (currentStep === 'preview') {
-      if (selectedArtifacts.size === 0 || metadataError) return;
+      if (visibleArtifactCount === 0 || metadataError) return;
       void (async () => {
         await handleExecute();
       })();
@@ -575,7 +601,7 @@ export function ExtractWizard({
 
   const handleExecute = useCallback(async () => {
     if (!plan) return;
-    if (selectedArtifacts.size === 0) return;
+    if (visibleArtifactCount === 0) return;
     if (metadataError) {
       setCurrentStep('metadata');
       return;
@@ -916,11 +942,11 @@ export function ExtractWizard({
 
   const primaryDisabled = useMemo(() => {
     if (status === 'executing' || status === 'analyzing') return true;
-    if (currentStep === 'artifacts') return selectedArtifacts.size === 0;
+    if (currentStep === 'artifacts') return visibleArtifactCount === 0;
     if (currentStep === 'metadata') return Boolean(metadataError);
-    if (currentStep === 'preview') return selectedArtifacts.size === 0 || Boolean(metadataError);
+    if (currentStep === 'preview') return visibleArtifactCount === 0 || Boolean(metadataError);
     return false;
-  }, [currentStep, metadataError, selectedArtifacts.size, status]);
+  }, [currentStep, metadataError, visibleArtifactCount, status]);
 
   const primaryDisabledRef = useRef(primaryDisabled);
   useEffect(() => {
@@ -938,13 +964,13 @@ export function ExtractWizard({
   }, [handleExecute]);
 
   const actionWarning = useMemo(() => {
-    if (currentStep === 'artifacts' && selectedArtifacts.size === 0)
+    if (currentStep === 'artifacts' && visibleArtifactCount === 0)
       return 'Select at least one artifact to continue';
     if (currentStep === 'metadata' && metadataError) return metadataError;
-    if (currentStep === 'preview' && selectedArtifacts.size === 0)
+    if (currentStep === 'preview' && visibleArtifactCount === 0)
       return 'Select at least one artifact before extracting';
     return null;
-  }, [currentStep, metadataError, selectedArtifacts.size]);
+  }, [currentStep, metadataError, visibleArtifactCount]);
 
   const stepIndex = Math.max(stepOrder.indexOf(currentStep), 0);
   const stepCount = stepOrder.length || 1;
@@ -1065,9 +1091,7 @@ export function ExtractWizard({
               emptyMessage="No artifacts detected"
             />
             <Text dimColor>
-              {selectedArtifacts.size -
-                (selectedArtifacts.has(CLAUDE_SUBAGENT_ARTIFACT_ID) ? 1 : 0)}
-              /{artifactItems.length} selected
+              {visibleArtifactCount}/{artifactItems.length} selected
             </Text>
           </Box>
         );
