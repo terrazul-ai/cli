@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { DIRECTORY_DEFAULT_FILENAMES, safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
+import { interpolate } from '../utils/handlebars-runtime.js';
 import { defaultToolSpec, invokeTool, parseToolOutput, stripAnsi } from '../utils/tool-runner.js';
 
 import type { ToolSpec, ToolType } from '../types/context.js';
@@ -47,10 +48,12 @@ export async function executeSnippets(
       }
       continue;
     }
-    const result = await runAskAgent(snippet, options, cache, promptCache).catch((error) => ({
-      value: null,
-      error: toSnippetError(error),
-    }));
+    const result = await runAskAgent(snippet, options, cache, promptCache, context).catch(
+      (error) => ({
+        value: null,
+        error: toSnippetError(error),
+      }),
+    );
     context.snippets[snippet.id] = result;
     if (!result.error && snippet.varName) {
       context.vars[snippet.varName] = result.value;
@@ -81,10 +84,17 @@ async function runAskAgent(
   options: ExecuteSnippetsOptions,
   cache: Map<CacheKey, CacheEntry>,
   promptCache: Map<string, string>,
+  context: SnippetExecutionContext,
 ): Promise<SnippetValue> {
-  const resolvedPrompt = await resolvePrompt(snippet, options.packageDir, promptCache);
-  options.report?.({ type: 'askAgent:start', snippet, prompt: resolvedPrompt });
-  const finalPrompt = enforceSingleTurnDirective(resolvedPrompt);
+  const basePrompt = await resolvePrompt(snippet, options.packageDir, promptCache);
+  options.report?.({ type: 'askAgent:start', snippet, prompt: basePrompt });
+
+  const interpolatedPrompt =
+    snippet.prompt.kind === 'text'
+      ? interpolate(basePrompt, buildPromptContext(context))
+      : basePrompt;
+
+  const finalPrompt = enforceSingleTurnDirective(interpolatedPrompt);
   const toolSpec = resolveToolSpec(snippet, options);
   const safeMode = snippet.options.safeMode ?? options.toolSafeMode ?? true;
   const timeoutMs = snippet.options.timeoutMs;
@@ -109,7 +119,7 @@ async function runAskAgent(
     options.report?.({
       type: 'askAgent:error',
       snippet,
-      prompt: resolvedPrompt,
+      prompt: basePrompt,
       error: snippetError,
     });
     throw error;
@@ -134,7 +144,8 @@ async function runAskAgent(
     }
     value = parsed;
   } else {
-    value = cleaned.trim();
+    const preferred = extractPreferredResult(parsed);
+    value = preferred === undefined ? cleaned.trim() : preferred;
   }
 
   if (snippet.options.schema && !snippet.options.json) {
@@ -149,7 +160,7 @@ async function runAskAgent(
 
   const result: SnippetValue = { value };
   cache.set(cacheKey, { value: result });
-  options.report?.({ type: 'askAgent:end', snippet, prompt: resolvedPrompt, value });
+  options.report?.({ type: 'askAgent:end', snippet, prompt: basePrompt, value });
   return result;
 }
 
@@ -300,4 +311,34 @@ function toTerrazul(error: unknown): TerrazulError {
 
 export function defaultDestinationFilename(tool: ToolType): string {
   return DIRECTORY_DEFAULT_FILENAMES[tool] ?? 'output.md';
+}
+
+function buildPromptContext(context: SnippetExecutionContext): {
+  vars: Record<string, unknown>;
+  snippets: Record<string, unknown>;
+} {
+  const vars = { ...context.vars };
+  const snippets: Record<string, unknown> = {};
+  for (const [id, entry] of Object.entries(context.snippets)) {
+    if (!entry || entry.error) {
+      snippets[id] = undefined;
+      continue;
+    }
+    snippets[id] = entry.value;
+  }
+  return { vars, snippets };
+}
+
+function extractPreferredResult(parsed: unknown): unknown {
+  if (!parsed || typeof parsed !== 'object') {
+    return undefined;
+  }
+  const record = parsed as Record<string, unknown>;
+  if (record.result !== undefined) {
+    return record.result;
+  }
+  if (record.result_parsed !== undefined) {
+    return record.result_parsed;
+  }
+  return undefined;
 }

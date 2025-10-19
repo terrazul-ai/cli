@@ -83,4 +83,16 @@ describe('snippet preprocessor', () => {
     expect(result.template).not.toContain('var summary');
     expect(result.renderContext.vars.summary).toEqual({ result: 'ok' });
   });
+
+  it('interpolates askAgent prompts with vars and snippets context', async () => {
+    promptMock.mockResolvedValueOnce({ value: 'Echo' });
+    const tpl = `
+      {{ var answer = askUser('Your name?') }}
+      {{ askAgent('Use {{ vars.answer }} and {{ snippets.snippet_0 }} in prompt', { json: true }) }}
+    `;
+    await preprocessTemplate(tpl, baseOptions);
+    const call = invokeToolMock.mock.calls[0]?.[0];
+    expect(call?.prompt).toContain('Echo');
+    expect(call?.prompt).toContain('Use Echo and Echo in prompt');
+  });
 });

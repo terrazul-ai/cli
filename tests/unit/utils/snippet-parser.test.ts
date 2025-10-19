@@ -23,6 +23,13 @@ describe('snippet parser', () => {
     });
   });
 
+  it('handles whitespace control tildes around snippets', () => {
+    const tpl = "{{~ askUser('Trimmed?') ~}}";
+    const [snippet] = parseSnippets(tpl);
+    expect(snippet.type).toBe('askUser');
+    expect(snippet.question).toBe('Trimmed?');
+  });
+
   it('parses askAgent inline prompt with options', () => {
     const tpl =
       "{{ askAgent('Summarize this repo', { json: true, tool: 'claude', safeMode: false, timeoutMs: 120000 }) }}";

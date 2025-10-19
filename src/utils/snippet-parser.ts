@@ -49,7 +49,7 @@ export function parseSnippets(template: string): ParsedSnippet[] {
 
     const raw = template.slice(start, innerEnd + 2);
     const expressionRaw = template.slice(innerStart, innerEnd);
-    const expression = expressionRaw.trim();
+    const expression = stripWhitespaceControl(expressionRaw).trim();
 
     if (expression.length === 0) {
       cursor = innerEnd + 2;
@@ -526,4 +526,21 @@ function isLikelyFilePath(value: string): boolean {
   if (value.includes('/') || value.includes('\\')) return true;
   if (/\.(txt|md|prompt|json|hbs|yaml|yml)$/i.test(value)) return true;
   return false;
+}
+
+function stripWhitespaceControl(raw: string): string {
+  let start = 0;
+  let end = raw.length;
+
+  while (start < end && isWhitespaceControl(raw.charAt(start))) {
+    start += 1;
+  }
+  while (end > start && isWhitespaceControl(raw.charAt(end - 1))) {
+    end -= 1;
+  }
+  return raw.slice(start, end);
+}
+
+function isWhitespaceControl(char: string): boolean {
+  return char === '~' || char === '-';
 }

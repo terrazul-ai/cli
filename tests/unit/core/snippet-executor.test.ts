@@ -217,4 +217,63 @@ describe('snippet executor', () => {
     const context = await executeSnippets(snippets, makeOptions());
     expect(context.snippets.snippet_0.error?.message).toMatch(/requires json: true/);
   });
+
+  it('interpolates askAgent prompts with current vars and snippets', async () => {
+    promptMock.mockResolvedValueOnce({ value: 'Delta' });
+    invokeToolMock
+      .mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'First result',
+        stderr: '',
+      })
+      .mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Second',
+        stderr: '',
+      });
+
+    const snippets = parseSnippets(`
+      {{ var answer = askUser('Name?') }}
+      {{ var analysis = askAgent('Initial prompt') }}
+      {{ askAgent('Follow up with {{ vars.answer }} and {{ snippets.snippet_1 }}') }}
+    `);
+    await executeSnippets(snippets, makeOptions());
+    expect(invokeToolMock).toHaveBeenCalledTimes(2);
+    const secondCall = invokeToolMock.mock.calls[1]?.[0];
+    expect(secondCall?.prompt).toContain('Delta');
+    expect(secondCall?.prompt).toContain('First result');
+  });
+
+  it('prefers parsed result payload when json option is false', async () => {
+    invokeToolMock.mockResolvedValueOnce({
+      command: 'claude',
+      args: [],
+      stdout: JSON.stringify({
+        type: 'result',
+        result: 'Plain summary',
+        duration_ms: 100,
+      }),
+      stderr: '',
+    });
+    const snippets = parseSnippets("{{ askAgent('Prompt without json flag') }}");
+    const context = await executeSnippets(snippets, makeOptions());
+    expect(context.snippets.snippet_0.value).toBe('Plain summary');
+  });
+
+  it('falls back to result_parsed when available', async () => {
+    invokeToolMock.mockResolvedValueOnce({
+      command: 'claude',
+      args: [],
+      stdout: JSON.stringify({
+        type: 'result',
+        result_parsed: { summary: 'Structured' },
+      }),
+      stderr: '',
+    });
+    const snippets = parseSnippets("{{ askAgent('Prompt again') }}");
+    const context = await executeSnippets(snippets, makeOptions());
+    expect(context.snippets.snippet_0.value).toEqual({ summary: 'Structured' });
+  });
 });
