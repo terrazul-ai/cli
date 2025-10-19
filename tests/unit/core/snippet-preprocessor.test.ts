@@ -90,6 +90,18 @@ describe('snippet preprocessor', () => {
     expect(result.template).toBe(expected);
   });
 
+  it('trims whitespace for var snippets with tilde controls', async () => {
+    const tpl = "{{~ var summary = askAgent('Prompt') ~}}\nHeading";
+    const result = await preprocessTemplate(tpl, baseOptions);
+    expect(result.template).toBe('Heading');
+  });
+
+  it('trims whitespace for var snippets with dash controls', async () => {
+    const tpl = "Intro\n{{- var summary = askAgent('Prompt') -}}\nBody";
+    const result = await preprocessTemplate(tpl, baseOptions);
+    expect(result.template).toBe('IntroBody');
+  });
+
   it('replaces var assignment with vars lookup', async () => {
     const tpl =
       "{{ var summary = askAgent('Prompt', { json: true }) }}Later: {{ vars.summary.result }}";

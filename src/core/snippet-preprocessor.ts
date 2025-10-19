@@ -13,6 +13,8 @@ interface Replacement {
   start: number;
   end: number;
   text: string;
+  trimLeft?: '~' | '-';
+  trimRight?: '~' | '-';
 }
 
 export async function preprocessTemplate(
@@ -46,10 +48,13 @@ export async function preprocessTemplate(
 function buildReplacements(parsed: ParsedSnippet[]): Replacement[] {
   return parsed.map((snippet) => {
     if (snippet.varName) {
+      const controls = extractWhitespaceControl(snippet.raw);
       return {
         start: snippet.startIndex,
         end: snippet.endIndex,
         text: '',
+        trimLeft: controls.open || undefined,
+        trimRight: controls.close || undefined,
       };
     }
     const controls = extractWhitespaceControl(snippet.raw);
@@ -67,7 +72,22 @@ function applyReplacements(template: string, replacements: Replacement[]): strin
   let result = template;
   const ordered = [...replacements].sort((a, b) => b.start - a.start);
   for (const replacement of ordered) {
-    result = result.slice(0, replacement.start) + replacement.text + result.slice(replacement.end);
+    let { start, end } = replacement;
+    if (replacement.trimRight) {
+      let cursor = end;
+      while (cursor < result.length && isWhitespaceChar(result[cursor])) {
+        cursor += 1;
+      }
+      end = cursor;
+    }
+    if (replacement.trimLeft) {
+      let cursor = start - 1;
+      while (cursor >= 0 && isWhitespaceChar(result[cursor])) {
+        cursor -= 1;
+      }
+      start = cursor + 1;
+    }
+    result = result.slice(0, start) + replacement.text + result.slice(end);
   }
   return result;
 }
@@ -123,4 +143,8 @@ function countTrailing(input: string, target: string): number {
 
 function isControlChar(char: string | undefined): char is '~' | '-' {
   return char === '~' || char === '-';
+}
+
+function isWhitespaceChar(char: string | undefined): boolean {
+  return char !== undefined && /\s/.test(char);
 }
