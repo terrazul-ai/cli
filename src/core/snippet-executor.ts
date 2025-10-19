@@ -89,10 +89,8 @@ async function runAskAgent(
   const basePrompt = await resolvePrompt(snippet, options.packageDir, promptCache);
   options.report?.({ type: 'askAgent:start', snippet, prompt: basePrompt });
 
-  const interpolatedPrompt =
-    snippet.prompt.kind === 'text'
-      ? interpolate(basePrompt, buildPromptContext(context))
-      : basePrompt;
+  const promptContext = buildPromptContext(context);
+  const interpolatedPrompt = interpolate(basePrompt, promptContext);
 
   const finalPrompt = enforceSingleTurnDirective(interpolatedPrompt);
   const toolSpec = resolveToolSpec(snippet, options);

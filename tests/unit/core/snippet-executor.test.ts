@@ -246,6 +246,43 @@ describe('snippet executor', () => {
     expect(secondCall?.prompt).toContain('First result');
   });
 
+  it('interpolates file-based askAgent prompts with current context', async () => {
+    promptMock.mockResolvedValueOnce({ value: 'Echo' });
+    invokeToolMock
+      .mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Primary answer',
+        stderr: '',
+      })
+      .mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Follow up',
+        stderr: '',
+      });
+
+    const promptPath = path.join(packageDir, 'prompts', 'follow-up.txt');
+    await fs.mkdir(path.dirname(promptPath), { recursive: true });
+    await fs.writeFile(
+      promptPath,
+      'Respond using {{ vars.answer }} and {{ snippets.snippet_1 }}',
+      'utf8',
+    );
+
+    const snippets = parseSnippets(`
+      {{ var answer = askUser('Name?') }}
+      {{ var analysis = askAgent('Initial prompt') }}
+      {{ askAgent('prompts/follow-up.txt') }}
+    `);
+    await executeSnippets(snippets, makeOptions());
+
+    expect(invokeToolMock).toHaveBeenCalledTimes(2);
+    const followUpCall = invokeToolMock.mock.calls[1]?.[0];
+    expect(followUpCall?.prompt).toContain('Echo');
+    expect(followUpCall?.prompt).toContain('Primary answer');
+  });
+
   it('prefers parsed result payload when json option is false', async () => {
     invokeToolMock.mockResolvedValueOnce({
       command: 'claude',
