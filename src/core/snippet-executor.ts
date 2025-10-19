@@ -36,6 +36,8 @@ export async function executeSnippets(
   const cache = new Map<CacheKey, CacheEntry>();
   const promptCache = new Map<string, string>();
 
+  // Dry runs (e.g. tz apply --dry-run) still execute snippets so previews remain accurate, so
+  // we purposefully do not short-circuit on options.dryRun here.
   for (const snippet of snippets) {
     if (snippet.type === 'askUser') {
       const result = await runAskUser(snippet, options).catch((error) => ({
