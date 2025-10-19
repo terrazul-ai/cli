@@ -9,7 +9,7 @@ import type { ToolType } from '../types/context.js';
 export const DIRECTORY_DEFAULT_FILENAMES: Record<ToolType, string> = {
   claude: 'CLAUDE.md',
   codex: 'AGENTS.md',
-  cursor: 'rules.md',
+  cursor: 'rules.mdc',
   copilot: 'instructions.md',
 };
 
