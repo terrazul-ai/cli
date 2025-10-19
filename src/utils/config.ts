@@ -21,14 +21,14 @@ const CONFIG_FILENAME = 'config.json';
 const DEFAULT_COMMANDS: Record<ToolType, string> = {
   claude: 'claude',
   codex: 'codex',
-  cursor: 'cursor',
+  cursor: 'cursor-agent',
   copilot: 'copilot',
 };
 
 const DEFAULT_PROFILE_TOOLS: ToolSpec[] = [
   { type: 'claude', command: 'claude', model: 'default' },
   { type: 'codex', command: 'codex', args: ['exec'] },
-  { type: 'cursor', command: 'cursor' },
+  { type: 'cursor', command: 'cursor-agent' },
   { type: 'copilot', command: 'copilot' },
 ];
 

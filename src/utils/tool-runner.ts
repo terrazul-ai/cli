@@ -255,7 +255,7 @@ export function defaultToolSpec(tool: ToolType): ToolSpec {
       return { type: 'claude', command: 'claude', model: 'default' };
     }
     case 'cursor': {
-      return { type: 'cursor', command: 'cursor' };
+      return { type: 'cursor', command: 'cursor-agent' };
     }
     case 'copilot': {
       return { type: 'copilot', command: 'copilot' };
