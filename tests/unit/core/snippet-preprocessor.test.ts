@@ -79,13 +79,15 @@ describe('snippet preprocessor', () => {
   it('preserves whitespace control markers when replacing inline snippets', async () => {
     const tpl = "Line A\n{{~ askAgent('Prompt') ~}}\nLine C";
     const result = await preprocessTemplate(tpl, baseOptions);
-    expect(result.template).toContain('{{{~ snippets.snippet_0.value ~}}}');
+    const expected = 'Line A\n{{{~ snippets.snippet_0.value ~}}}\nLine C';
+    expect(result.template).toBe(expected);
   });
 
   it('supports dash whitespace control markers when replacing inline snippets', async () => {
     const tpl = "Alpha\n{{- askAgent('Prompt') -}}\nOmega";
     const result = await preprocessTemplate(tpl, baseOptions);
-    expect(result.template).toContain('{{{- snippets.snippet_0.value -}}}');
+    const expected = 'Alpha\n{{{- snippets.snippet_0.value -}}}\nOmega';
+    expect(result.template).toBe(expected);
   });
 
   it('replaces var assignment with vars lookup', async () => {
