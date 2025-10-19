@@ -1,0 +1,303 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+import inquirer from 'inquirer';
+import { z } from 'zod';
+
+import { DIRECTORY_DEFAULT_FILENAMES, safeResolveWithin } from './destinations.js';
+import { ErrorCode, TerrazulError } from './errors.js';
+import { defaultToolSpec, invokeTool, parseToolOutput, stripAnsi } from '../utils/tool-runner.js';
+
+import type { ToolSpec, ToolType } from '../types/context.js';
+import type {
+  ExecuteSnippetsOptions,
+  ParsedSnippet,
+  ParsedAskAgentSnippet,
+  ParsedAskUserSnippet,
+  SchemaReference,
+  SnippetExecutionContext,
+  SnippetValue,
+} from '../types/snippet.js';
+import type { QuestionCollection } from 'inquirer';
+
+interface CacheEntry {
+  value: SnippetValue;
+}
+
+type CacheKey = string;
+
+export async function executeSnippets(
+  snippets: ParsedSnippet[],
+  options: ExecuteSnippetsOptions,
+): Promise<SnippetExecutionContext> {
+  const context: SnippetExecutionContext = { snippets: {}, vars: {} };
+  const cache = new Map<CacheKey, CacheEntry>();
+  const promptCache = new Map<string, string>();
+
+  for (const snippet of snippets) {
+    if (snippet.type === 'askUser') {
+      const result = await runAskUser(snippet, options).catch((error) => ({
+        value: null,
+        error: toSnippetError(error),
+      }));
+      context.snippets[snippet.id] = result;
+      if (!result.error && snippet.varName) {
+        context.vars[snippet.varName] = result.value;
+      }
+      continue;
+    }
+    const result = await runAskAgent(snippet, options, cache, promptCache).catch((error) => ({
+      value: null,
+      error: toSnippetError(error),
+    }));
+    context.snippets[snippet.id] = result;
+    if (!result.error && snippet.varName) {
+      context.vars[snippet.varName] = result.value;
+    }
+  }
+
+  return context;
+}
+
+async function runAskUser(
+  snippet: ParsedAskUserSnippet,
+  options: ExecuteSnippetsOptions,
+): Promise<SnippetValue> {
+  const promptConfig: QuestionCollection<{ value: string }> = {
+    type: 'input',
+    name: 'value',
+    message: snippet.question,
+    default: snippet.options.default,
+  };
+  options.report?.({ type: 'askUser:start', snippet });
+  const answers = await inquirer.prompt<{ value: string }>([promptConfig]);
+  options.report?.({ type: 'askUser:end', snippet, answer: answers.value });
+  return { value: answers.value };
+}
+
+async function runAskAgent(
+  snippet: ParsedAskAgentSnippet,
+  options: ExecuteSnippetsOptions,
+  cache: Map<CacheKey, CacheEntry>,
+  promptCache: Map<string, string>,
+): Promise<SnippetValue> {
+  const resolvedPrompt = await resolvePrompt(snippet, options.packageDir, promptCache);
+  options.report?.({ type: 'askAgent:start', snippet, prompt: resolvedPrompt });
+  const finalPrompt = enforceSingleTurnDirective(resolvedPrompt);
+  const toolSpec = resolveToolSpec(snippet, options);
+  const safeMode = snippet.options.safeMode ?? options.toolSafeMode ?? true;
+  const timeoutMs = snippet.options.timeoutMs;
+  const cacheKey = buildCacheKey(toolSpec, snippet, finalPrompt, safeMode, timeoutMs);
+
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    return cached.value;
+  }
+
+  let execution;
+  try {
+    execution = await invokeTool({
+      tool: toolSpec,
+      prompt: finalPrompt,
+      cwd: options.projectDir,
+      safeMode,
+      timeoutMs,
+    });
+  } catch (error) {
+    const snippetError = toSnippetError(error);
+    options.report?.({
+      type: 'askAgent:error',
+      snippet,
+      prompt: resolvedPrompt,
+      error: snippetError,
+    });
+    throw error;
+  }
+
+  const cleaned = stripAnsi(execution.stdout);
+  const parseMode = snippet.options.json ? 'json' : 'auto_json';
+  let parsed: unknown;
+  try {
+    parsed = parseToolOutput(cleaned, parseMode);
+  } catch (error) {
+    throw toTerrazul(error);
+  }
+
+  let value: unknown;
+  if (snippet.options.json) {
+    if (parsed === undefined) {
+      throw new TerrazulError(
+        ErrorCode.TOOL_OUTPUT_PARSE_ERROR,
+        'askAgent expected JSON but none was returned',
+      );
+    }
+    value = parsed;
+  } else {
+    value = cleaned.trim();
+  }
+
+  if (snippet.options.schema && !snippet.options.json) {
+    throw new TerrazulError(
+      ErrorCode.INVALID_ARGUMENT,
+      'askAgent schema option requires json: true',
+    );
+  }
+  if (snippet.options.schema) {
+    value = await validateWithSchema(value, snippet.options.schema, options);
+  }
+
+  const result: SnippetValue = { value };
+  cache.set(cacheKey, { value: result });
+  options.report?.({ type: 'askAgent:end', snippet, prompt: resolvedPrompt, value });
+  return result;
+}
+
+async function resolvePrompt(
+  snippet: ParsedAskAgentSnippet,
+  packageDir: string,
+  promptCache: Map<string, string>,
+): Promise<string> {
+  if (snippet.prompt.kind === 'text') {
+    return snippet.prompt.value;
+  }
+  const cacheKey = path.join(packageDir, snippet.prompt.value);
+  const cached = promptCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const target = safeResolveWithin(packageDir, snippet.prompt.value);
+  let contents: string;
+  try {
+    contents = await fs.readFile(target, 'utf8');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new TerrazulError(
+      ErrorCode.FILE_NOT_FOUND,
+      `askAgent prompt file not found: ${snippet.prompt.value} (${message})`,
+    );
+  }
+  promptCache.set(cacheKey, contents);
+  return contents;
+}
+
+function resolveToolSpec(
+  snippet: ParsedAskAgentSnippet,
+  options: ExecuteSnippetsOptions,
+): ToolSpec {
+  const requested = snippet.options.tool ?? options.currentTool.type;
+  const candidates: ToolSpec[] = [];
+  candidates.push(options.currentTool, ...options.availableTools);
+  const match = candidates.find((spec) => spec.type === requested);
+  if (match) {
+    return cloneToolSpec(match);
+  }
+  return defaultToolSpec(requested);
+}
+
+function cloneToolSpec(spec: ToolSpec): ToolSpec {
+  const clone: ToolSpec = { ...spec };
+  if (spec.args) clone.args = [...spec.args];
+  if (spec.env) clone.env = { ...spec.env };
+  return clone;
+}
+
+function buildCacheKey(
+  tool: ToolSpec,
+  snippet: ParsedAskAgentSnippet,
+  prompt: string,
+  safeMode: boolean,
+  timeoutMs?: number,
+): CacheKey {
+  const schemaRef = snippet.options.schema
+    ? `${snippet.options.schema.file}::${snippet.options.schema.exportName ?? 'default'}`
+    : 'none';
+  return JSON.stringify({
+    tool: tool.type,
+    command: tool.command,
+    args: tool.args,
+    model: tool.model,
+    prompt,
+    json: snippet.options.json ?? false,
+    safeMode,
+    timeoutMs: timeoutMs ?? null,
+    schema: schemaRef,
+  });
+}
+
+const SINGLE_TURN_DIRECTIVE =
+  'Respond with your best possible answer immediately. Do not ask follow-up questions or request additional information.';
+
+function enforceSingleTurnDirective(prompt: string): string {
+  const normalized = prompt.toLowerCase();
+  if (
+    normalized.includes('do not ask for additional information') ||
+    normalized.includes('do not ask follow-up questions')
+  ) {
+    return prompt;
+  }
+  const trimmed = prompt.trimEnd();
+  return `${trimmed}\n\n---\n${SINGLE_TURN_DIRECTIVE}`;
+}
+
+async function validateWithSchema(
+  value: unknown,
+  schemaRef: SchemaReference,
+  options: ExecuteSnippetsOptions,
+): Promise<unknown> {
+  const absolute = path.isAbsolute(schemaRef.file)
+    ? schemaRef.file
+    : path.resolve(options.projectDir, schemaRef.file);
+  let mod: unknown;
+  try {
+    mod = await import(pathToFileURL(absolute).href);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new TerrazulError(
+      ErrorCode.FILE_NOT_FOUND,
+      `Failed to load schema module '${schemaRef.file}': ${message}`,
+    );
+  }
+  const exportName = schemaRef.exportName ?? 'default';
+  const schemaCandidate =
+    (mod as Record<string, unknown>)[exportName] ??
+    (exportName === 'default' ? (mod as { default?: unknown }).default : undefined);
+  if (!schemaCandidate || typeof (schemaCandidate as { parse?: unknown }).parse !== 'function') {
+    throw new TerrazulError(
+      ErrorCode.INVALID_ARGUMENT,
+      `Schema export '${exportName}' from '${schemaRef.file}' is not a Zod schema`,
+    );
+  }
+  const schema = schemaCandidate as z.ZodTypeAny;
+  try {
+    return schema.parse(value);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new TerrazulError(
+        ErrorCode.TOOL_OUTPUT_PARSE_ERROR,
+        `Schema validation failed: ${error.errors.map((e) => e.message).join(', ')}`,
+      );
+    }
+    throw error;
+  }
+}
+
+function toSnippetError(error: unknown) {
+  if (error instanceof TerrazulError) {
+    return { message: error.message, code: error.code };
+  }
+  if (error instanceof Error) {
+    return { message: error.message };
+  }
+  return { message: String(error) };
+}
+
+function toTerrazul(error: unknown): TerrazulError {
+  if (error instanceof TerrazulError) return error;
+  if (error instanceof Error) {
+    return new TerrazulError(ErrorCode.UNKNOWN_ERROR, error.message);
+  }
+  return new TerrazulError(ErrorCode.UNKNOWN_ERROR, String(error));
+}
+
+export function defaultDestinationFilename(tool: ToolType): string {
+  return DIRECTORY_DEFAULT_FILENAMES[tool] ?? 'output.md';
+}

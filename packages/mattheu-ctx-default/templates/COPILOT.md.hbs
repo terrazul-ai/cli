@@ -1,0 +1,19 @@
+{{~ var codingGuidelines = askUser('List coding guidelines or patterns Copilot should reinforce.') ~}}
+{{~ var antiPatterns = askUser('Describe things Copilot should avoid generating (optional). Press enter to skip.') ~}}
+{{~ var reviewExpectations = askUser('How should contributors review Copilot-suggested changes before merging?') ~}}
+{{~ var referenceModules = askUser('Provide reference files/modules Copilot should imitate (optional). Press enter to skip.') ~}}
+
+# GitHub Copilot Instructions
+
+- Prefer suggestions that align with these principles:
+  {{{ vars.codingGuidelines }}}
+
+{{#if vars.antiPatterns}}
+- Avoid patterns such as: {{{ vars.antiPatterns }}}
+{{/if}}
+
+- Encourage contributors to review Copilot output by: {{{ vars.reviewExpectations }}}
+
+{{#if vars.referenceModules}}
+- Useful reference modules or files: {{{ vars.referenceModules }}}
+{{/if}}

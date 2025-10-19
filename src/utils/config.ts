@@ -13,8 +13,67 @@ import {
   type UserConfig,
 } from '../types/config.js';
 
+import type { ToolSpec, ToolType } from '../types/context.js';
+
 const CONFIG_DIRNAME = '.terrazul';
 const CONFIG_FILENAME = 'config.json';
+
+const DEFAULT_COMMANDS: Record<ToolType, string> = {
+  claude: 'claude',
+  codex: 'codex',
+  cursor: 'cursor',
+  copilot: 'copilot',
+};
+
+const DEFAULT_PROFILE_TOOLS: ToolSpec[] = [
+  { type: 'claude', command: 'claude', model: 'default' },
+  { type: 'codex', command: 'codex', args: ['exec'] },
+  { type: 'cursor', command: 'cursor' },
+  { type: 'copilot', command: 'copilot' },
+];
+
+function cloneToolSpec(spec: ToolSpec): ToolSpec {
+  const clone: ToolSpec = {
+    ...spec,
+    command: spec.command,
+    model: spec.model,
+  };
+  if (spec.args) clone.args = [...spec.args];
+  if (spec.env) clone.env = { ...spec.env };
+  return clone;
+}
+
+function defaultCommandFor(tool: ToolType): string {
+  return DEFAULT_COMMANDS[tool];
+}
+
+function normalizeToolSpec(spec: ToolSpec): ToolSpec {
+  const normalized = cloneToolSpec(spec);
+  normalized.command = normalized.command ?? defaultCommandFor(normalized.type);
+  if (normalized.type === 'claude' && !normalized.model) {
+    normalized.model = 'default';
+  }
+  if (!normalized.args && normalized.type === 'codex') {
+    normalized.args = ['exec'];
+  } else if (normalized.args) {
+    normalized.args = [...normalized.args];
+  }
+  if (normalized.env) {
+    normalized.env = { ...normalized.env };
+  }
+  return normalized;
+}
+
+function dedupeTools(list: ToolSpec[]): ToolSpec[] {
+  const seen = new Set<ToolType>();
+  const out: ToolSpec[] = [];
+  for (const spec of list) {
+    if (seen.has(spec.type)) continue;
+    seen.add(spec.type);
+    out.push(normalizeToolSpec(spec));
+  }
+  return out;
+}
 
 export function getConfigDir(): string {
   return path.join(os.homedir(), CONFIG_DIRNAME);
@@ -48,6 +107,17 @@ function withContextFileDefaults(cfg: UserConfig): UserConfig {
     copilot: files.copilot ?? defaults.copilot,
   };
   cfg.context = cfg.context ? { ...cfg.context, files: mergedFiles } : { files: mergedFiles };
+  return cfg;
+}
+
+function withProfileDefaults(cfg: UserConfig): UserConfig {
+  const existing = cfg.profile?.tools;
+  const baseList: ToolSpec[] =
+    existing && existing.length > 0
+      ? existing.map((spec) => cloneToolSpec(spec))
+      : DEFAULT_PROFILE_TOOLS.map((spec) => cloneToolSpec(spec));
+  const normalized = dedupeTools(baseList);
+  cfg.profile = cfg.profile ? { ...cfg.profile, tools: normalized } : { tools: normalized };
   return cfg;
 }
 
@@ -97,7 +167,8 @@ export function normalizeConfig(raw: unknown): UserConfig {
     raw && typeof raw === 'object' ? (raw as RawConfigInput) : undefined;
   const parsed = UserConfigSchema.parse(raw ?? {});
   const withEnv = normalizeEnvironmentConfig(parsed, rawObj);
-  return withContextFileDefaults(withEnv);
+  const withProfile = withProfileDefaults(withEnv);
+  return withContextFileDefaults(withProfile);
 }
 
 export async function readUserConfigFrom(file: string): Promise<UserConfig> {
@@ -155,6 +226,107 @@ export function expandEnvVars(
     out[k] = v.startsWith('env:') ? process.env[v.slice(4)] : v;
   }
   return out;
+}
+
+interface DestinationMap {
+  claude: string;
+  codex: string;
+  cursor: string;
+  copilot: string;
+}
+
+export function getProfileTools(cfg: UserConfig): ToolSpec[] {
+  const tools = cfg.profile?.tools;
+  if (tools && tools.length > 0) {
+    return dedupeTools(tools.map((spec) => cloneToolSpec(spec)));
+  }
+  return dedupeTools(DEFAULT_PROFILE_TOOLS.map((spec) => cloneToolSpec(spec)));
+}
+
+function getDestinationMap(cfg: UserConfig): DestinationMap {
+  const files = cfg.context?.files as DestinationMap | undefined;
+  if (files) return files;
+  const defaults: DestinationMap = {
+    claude: 'CLAUDE.md',
+    codex: 'AGENTS.md',
+    cursor: '.cursor/rules',
+    copilot: '.github/copilot-instructions.md',
+  };
+  return defaults;
+}
+
+export interface OutputTargetOptions {
+  onlyTool?: ToolType;
+  overrides?: Partial<Record<ToolType, string>>;
+}
+
+export interface OutputTarget {
+  tool: ToolType;
+  destination: string;
+}
+
+export function computeOutputTargets(
+  cfg: UserConfig,
+  options: OutputTargetOptions = {},
+): OutputTarget[] {
+  const destinations = getDestinationMap(cfg);
+  const baseTools = getProfileTools(cfg).map((spec) => spec.type);
+  const order = options.onlyTool ? [options.onlyTool] : baseTools;
+  const seen = new Set<ToolType>();
+  const targets: OutputTarget[] = [];
+  for (const tool of order) {
+    if (seen.has(tool)) continue;
+    seen.add(tool);
+    const dest = options.overrides?.[tool] ?? destinations[tool];
+    if (!dest) continue;
+    targets.push({ tool, destination: dest });
+  }
+  if (options.onlyTool && !seen.has(options.onlyTool)) {
+    const fallbackDest = options.overrides?.[options.onlyTool] ?? destinations[options.onlyTool];
+    if (fallbackDest) {
+      targets.push({ tool: options.onlyTool, destination: fallbackDest });
+    }
+  }
+  return targets;
+}
+
+const ANSWER_TOOLS: ReadonlySet<ToolType> = new Set(['claude', 'codex']);
+
+export function selectPrimaryTool(cfg: UserConfig, override?: ToolType): ToolSpec {
+  const normalized = getProfileTools(cfg);
+  const map = new Map<ToolType, ToolSpec>();
+  for (const spec of normalized) {
+    map.set(spec.type, spec);
+  }
+
+  const toSpec = (tool: ToolType): ToolSpec => {
+    const existing = map.get(tool);
+    if (existing) return normalizeToolSpec(existing);
+    const fallback = DEFAULT_PROFILE_TOOLS.find((entry) => entry.type === tool);
+    if (fallback) return normalizeToolSpec(fallback);
+    return normalizeToolSpec({ type: tool });
+  };
+
+  if (override) {
+    if (!ANSWER_TOOLS.has(override)) {
+      throw new TerrazulError(
+        ErrorCode.INVALID_ARGUMENT,
+        `Unsupported answer tool override: '${override}'.`,
+      );
+    }
+    return toSpec(override);
+  }
+
+  for (const spec of normalized) {
+    if (ANSWER_TOOLS.has(spec.type)) {
+      return normalizeToolSpec(spec);
+    }
+  }
+
+  throw new TerrazulError(
+    ErrorCode.INVALID_ARGUMENT,
+    'No answer tool configured in profile.tools (expected claude or codex).',
+  );
 }
 
 export interface ProjectConfigData {

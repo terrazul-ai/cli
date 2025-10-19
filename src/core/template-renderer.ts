@@ -1,15 +1,18 @@
 import { promises as fs, readdirSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
 
-import Handlebars from 'handlebars';
-
 import { ErrorCode, TerrazulError } from './errors.js';
-import { loadConfig } from '../utils/config.js';
+import { loadConfig, getProfileTools, selectPrimaryTool } from '../utils/config.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
 import { resolveWithin } from '../utils/path.js';
+import { renderTemplateWithSnippets } from '../utils/template.js';
+
+import type { ToolType } from '../types/context.js';
+import type { PreprocessResult, SnippetEvent } from '../types/snippet.js';
 
 export interface RenderContext {
+  [key: string]: unknown;
   project: {
     root: string;
     name?: string;
@@ -44,6 +47,20 @@ export interface RenderResult {
   written: string[];
   skipped: Array<{ dest: string; reason: string; code: SkipReasonCode }>;
   backedUp: string[];
+  snippets: Array<{ source: string; dest: string; output: string; preprocess: PreprocessResult }>;
+}
+
+export interface TemplateProgress {
+  templateRel: string;
+  dest: string;
+  pkgName: string | undefined;
+}
+
+export interface SnippetProgress {
+  event: SnippetEvent;
+  templateRel: string;
+  dest: string;
+  pkgName: string | undefined;
 }
 
 const SKIP_REASON_MESSAGES: Record<SkipReasonCode, string> = {
@@ -196,14 +213,6 @@ function computeDestForRel(
   return safeJoinWithin(projectRoot, String(cleaned));
 }
 
-async function readTemplate(file: string): Promise<string> {
-  try {
-    return await fs.readFile(file, 'utf8');
-  } catch (error) {
-    throw new TerrazulError(ErrorCode.FILE_NOT_FOUND, `Missing template: ${file}`, error);
-  }
-}
-
 function collectFromExports(
   pkgRoot: string,
   exp: ExportEntry | undefined,
@@ -287,6 +296,11 @@ export interface ApplyOptions {
   // package filter: only render this package (name exactly as in agent_modules)
   packageName?: string;
   profileName?: string;
+  tool?: ToolType;
+  toolSafeMode?: boolean;
+  verbose?: boolean;
+  onTemplateStart?: (info: TemplateProgress) => void;
+  onSnippetEvent?: (progress: SnippetProgress) => void;
 }
 
 export async function planAndRender(
@@ -296,6 +310,9 @@ export async function planAndRender(
 ): Promise<RenderResult> {
   // Load user config for destination defaults
   const cfg = await loadConfig();
+  const profileTools = getProfileTools(cfg);
+  const primaryTool = selectPrimaryTool(cfg, opts.tool);
+  const toolSafeMode = opts.toolSafeMode ?? true;
   const filesMap: RenderContext['files'] = cfg.context?.files as RenderContext['files'];
 
   // Discover installed packages
@@ -358,6 +375,12 @@ export async function planAndRender(
   const backedUp: string[] = [];
   let backupRoot: string | undefined;
   const backedUpTargets = new Set<string>();
+  const snippetExecutions: Array<{
+    source: string;
+    dest: string;
+    output: string;
+    preprocess: PreprocessResult;
+  }> = [];
 
   async function backupExistingFile(target: string): Promise<void> {
     if (opts.dryRun) return;
@@ -409,10 +432,21 @@ export async function planAndRender(
     };
 
     for (const item of toRender) {
-      const tpl = await readTemplate(item.abs);
       const rel = item.relUnderTemplates.replaceAll('\\', '/');
       const dest = computeDestForRel(projectRoot, filesMapStrict, String(rel));
       const destDir = path.dirname(dest);
+
+      opts.onTemplateStart?.({ templateRel: rel, dest, pkgName: p.name });
+
+      const reporter = opts.onSnippetEvent
+        ? (event: SnippetEvent) =>
+            opts.onSnippetEvent?.({
+              event,
+              templateRel: rel,
+              dest,
+              pkgName: p.name,
+            })
+        : undefined;
 
       let destStat: Stats | null = null;
       try {
@@ -425,6 +459,19 @@ export async function planAndRender(
         skipped.push(makeSkip(dest, 'exists'));
         continue;
       }
+
+      const renderResult = await renderTemplateWithSnippets(item.abs, ctx, {
+        preprocess: {
+          projectDir: projectRoot,
+          packageDir: p.root,
+          currentTool: primaryTool,
+          availableTools: profileTools,
+          toolSafeMode,
+          verbose: opts.verbose ?? false,
+          dryRun: opts.dryRun ?? false,
+          report: reporter,
+        },
+      });
 
       if (!opts.dryRun) {
         // Security: prevent symlink escapes by verifying existing ancestors and
@@ -450,13 +497,17 @@ export async function planAndRender(
           }
         }
         ensureDir(destDir);
-        const compiled = Handlebars.compile(tpl);
-        const out = compiled(ctx);
-        await fs.writeFile(dest, out, 'utf8');
+        await fs.writeFile(dest, renderResult.output, 'utf8');
       }
       written.push(dest);
+      snippetExecutions.push({
+        source: item.abs,
+        dest,
+        output: renderResult.output,
+        preprocess: renderResult.preprocess,
+      });
     }
   }
 
-  return { written, skipped, backedUp };
+  return { written, skipped, backedUp, snippets: snippetExecutions };
 }
