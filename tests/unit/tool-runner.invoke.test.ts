@@ -115,6 +115,27 @@ describe('tool-runner', () => {
     expect(args).not.toContain('42');
   });
 
+  it('skips safe-mode defaults when safe mode is disabled', async () => {
+    const spy = vi.spyOn(proc, 'runCommand').mockResolvedValue({
+      stdout: '{"result":"ok"}',
+      stderr: '',
+      exitCode: 0,
+    } as RunResult);
+
+    await invokeTool({
+      tool: { type: 'claude', command: 'claude' },
+      prompt: 'Explain',
+      cwd: '/tmp/project',
+      safeMode: false,
+    });
+
+    const args = spy.mock.calls[0]?.[1] ?? [];
+    expect(args).not.toContain('--permission-mode');
+    expect(args).not.toContain('plan');
+    expect(args).not.toContain('--max-turns');
+    expect(args).not.toContain('100');
+  });
+
   it('parses fenced JSON output', () => {
     const parsed = parseToolOutput('```json\n{"answers":["ok"]}\n```');
     expect(parsed).toEqual({ answers: ['ok'] });

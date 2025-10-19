@@ -53,8 +53,8 @@ function buildReplacements(parsed: ParsedSnippet[]): Replacement[] {
       };
     }
     const controls = extractWhitespaceControl(snippet.raw);
-    const open = controls.open ? `{{${controls.open}{` : '{{{';
-    const close = controls.close ? `}${controls.close}}}` : '}}}';
+    const open = controls.open ? `{{{${controls.open}` : '{{{';
+    const close = controls.close ? `${controls.close}}}}` : '}}}';
     return {
       start: snippet.startIndex,
       end: snippet.endIndex,

@@ -120,14 +120,15 @@ function appendArgs(target: string[], additions?: string[]): void {
 
 export async function invokeTool(options: InvokeToolOptions): Promise<ToolExecution> {
   const command = options.tool.command ?? options.tool.type;
-  const baseArgsWithOverrides =
-    options.safeMode === false
-      ? [...(options.tool.args ?? [])]
-      : applySafeModeOverrides(options.tool.type, [...(options.tool.args ?? [])]);
-  const baseArgs = baseArgsWithOverrides;
+  const safeModeEnabled = options.safeMode !== false;
+  const baseArgs = safeModeEnabled
+    ? applySafeModeOverrides(options.tool.type, [...(options.tool.args ?? [])])
+    : [...(options.tool.args ?? [])];
   const args = [...baseArgs];
 
-  appendArgs(args, SAFE_ARGS[options.tool.type]);
+  if (safeModeEnabled) {
+    appendArgs(args, SAFE_ARGS[options.tool.type]);
+  }
   appendArgs(args, REQUIRED_ARGS[options.tool.type]);
   if (options.tool.model) {
     appendArgs(args, ['--model', options.tool.model]);
