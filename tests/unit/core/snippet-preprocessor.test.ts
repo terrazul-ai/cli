@@ -1,3 +1,4 @@
+import Handlebars from 'handlebars';
 import inquirer from 'inquirer';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -74,6 +75,17 @@ describe('snippet preprocessor', () => {
     const result = await preprocessTemplate(tpl, baseOptions);
     expect(result.template).toContain('{{{ snippets.snippet_0.value }}}');
     expect(result.renderContext.snippets.snippet_0?.value).toBe('Answer');
+  });
+
+  it('preserves whitespace control markers when replacing inline snippets', async () => {
+    const tpl = "Line A\n{{~ askAgent('Prompt') ~}}\nLine C";
+    const result = await preprocessTemplate(tpl, baseOptions);
+    expect(result.template).toContain('{{~{ snippets.snippet_0.value }~}}');
+
+    const compiled = Handlebars.compile(result.template);
+    const output = compiled(result.renderContext);
+    const snippetValue = result.renderContext.snippets.snippet_0?.value ?? '';
+    expect(output).toBe(`Line A${snippetValue}Line C`);
   });
 
   it('replaces var assignment with vars lookup', async () => {

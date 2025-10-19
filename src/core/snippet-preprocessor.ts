@@ -52,10 +52,13 @@ function buildReplacements(parsed: ParsedSnippet[]): Replacement[] {
         text: '',
       };
     }
+    const controls = extractWhitespaceControl(snippet.raw);
+    const open = controls.open ? `{{${controls.open}{` : '{{{';
+    const close = controls.close ? `}${controls.close}}}` : '}}}';
     return {
       start: snippet.startIndex,
       end: snippet.endIndex,
-      text: `{{{ snippets.${snippet.id}.value }}}`,
+      text: `${open} snippets.${snippet.id}.value ${close}`,
     };
   });
 }
@@ -87,4 +90,37 @@ function buildRenderableContext(
   }
 
   return { snippets: snippetValues, vars: varValues };
+}
+
+function extractWhitespaceControl(raw: string): { open: '' | '~' | '-'; close: '' | '~' | '-' } {
+  const openCount = countLeading(raw, '{');
+  const closeCount = countTrailing(raw, '}');
+
+  const openChar = raw.charAt(openCount);
+  const closeChar = raw.charAt(raw.length - closeCount - 1);
+
+  return {
+    open: isControlChar(openChar) ? openChar : '',
+    close: isControlChar(closeChar) ? closeChar : '',
+  };
+}
+
+function countLeading(input: string, target: string): number {
+  let count = 0;
+  while (count < input.length && input[count] === target) {
+    count += 1;
+  }
+  return count;
+}
+
+function countTrailing(input: string, target: string): number {
+  let count = 0;
+  while (count < input.length && input[input.length - 1 - count] === target) {
+    count += 1;
+  }
+  return count;
+}
+
+function isControlChar(char: string | undefined): char is '~' | '-' {
+  return char === '~' || char === '-';
 }
