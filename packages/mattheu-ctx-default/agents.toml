@@ -10,7 +10,7 @@ template = "templates/AGENTS.md.hbs"
 template = "templates/CLAUDE.md.hbs"
 
 [exports.cursor]
-template = "templates/cursor.rules.hbs"
+template = "templates/cursor.rules.mdc.hbs"
 
 [exports.copilot]
 template = "templates/COPILOT.md.hbs"

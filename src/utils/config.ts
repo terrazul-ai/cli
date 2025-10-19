@@ -96,7 +96,7 @@ function withContextFileDefaults(cfg: UserConfig): UserConfig {
   const defaults = {
     claude: 'CLAUDE.md',
     codex: 'AGENTS.md',
-    cursor: '.cursor/rules',
+    cursor: '.cursor/rules.mdc',
     copilot: '.github/copilot-instructions.md',
   } as const;
   const files = (cfg.context?.files ?? {}) as Record<string, string>;
@@ -249,7 +249,7 @@ function getDestinationMap(cfg: UserConfig): DestinationMap {
   const defaults: DestinationMap = {
     claude: 'CLAUDE.md',
     codex: 'AGENTS.md',
-    cursor: '.cursor/rules',
+    cursor: '.cursor/rules.mdc',
     copilot: '.github/copilot-instructions.md',
   };
   return defaults;

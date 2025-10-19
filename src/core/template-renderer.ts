@@ -1,11 +1,11 @@
 import { promises as fs, readdirSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
 
+import { ensureFileDestination, resolveWritePath, safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
 import { loadConfig, getProfileTools, selectPrimaryTool } from '../utils/config.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
-import { resolveWithin } from '../utils/path.js';
 import { renderTemplateWithSnippets } from '../utils/template.js';
 
 import type { ToolType } from '../types/context.js';
@@ -81,15 +81,6 @@ function makeSkip(
   code: SkipReasonCode,
 ): { dest: string; reason: string; code: SkipReasonCode } {
   return { dest, code, reason: formatSkipReason(code) };
-}
-
-function safeJoinWithin(root: string, ...parts: string[]): string {
-  try {
-    return resolveWithin(root, ...parts);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    throw new TerrazulError(ErrorCode.SECURITY_VIOLATION, msg);
-  }
 }
 
 // Determine whether writing to dest could escape via symlinked ancestors.
@@ -184,41 +175,70 @@ async function evaluateDestinationSafety(
 function computeDestForRel(
   projectRoot: string,
   filesMap: RenderContext['files'],
+  tool: ToolType,
   relUnderTemplates: string,
 ): string {
-  // Normalize separators for matching
   const rel = relUnderTemplates.replaceAll('\\', '/');
 
-  // High-level, tool-specific mappings first
-  if (rel === 'AGENTS.md.hbs') return safeJoinWithin(projectRoot, filesMap.codex);
-  if (rel === 'CLAUDE.md.hbs') return safeJoinWithin(projectRoot, filesMap.claude);
-  if (rel === 'cursor.rules.hbs') return safeJoinWithin(projectRoot, filesMap.cursor);
-  if (rel === 'copilot.md.hbs') return safeJoinWithin(projectRoot, filesMap.copilot);
-
-  // Claude structured assets
-  if (rel === 'claude/settings.json.hbs')
-    return safeJoinWithin(projectRoot, '.claude', 'settings.json');
-  if (rel === 'claude/settings.local.json.hbs')
-    return safeJoinWithin(projectRoot, '.claude', 'settings.local.json');
-  if (rel === 'claude/mcp_servers.json.hbs')
-    return safeJoinWithin(projectRoot, '.claude', 'mcp_servers.json');
-  if (rel.startsWith('claude/agents/')) {
-    const tail = rel.slice('claude/agents/'.length);
-    const under = tail.endsWith('.hbs') ? tail.slice(0, -4) : tail;
-    return safeJoinWithin(projectRoot, '.claude', 'agents', String(under));
+  if (tool === 'codex' && rel === 'AGENTS.md.hbs') {
+    return resolveWritePath({
+      projectDir: projectRoot,
+      value: filesMap.codex,
+      tool,
+      contextFiles: filesMap,
+    }).path;
+  }
+  if (tool === 'claude' && rel === 'CLAUDE.md.hbs') {
+    return resolveWritePath({
+      projectDir: projectRoot,
+      value: filesMap.claude,
+      tool,
+      contextFiles: filesMap,
+    }).path;
+  }
+  if (tool === 'cursor' && (rel === 'cursor.rules.mdc.hbs' || rel === 'cursor.rules.hbs')) {
+    return resolveWritePath({
+      projectDir: projectRoot,
+      value: filesMap.cursor,
+      tool,
+      contextFiles: filesMap,
+    }).path;
+  }
+  if (tool === 'copilot' && rel === 'copilot.md.hbs') {
+    return resolveWritePath({
+      projectDir: projectRoot,
+      value: filesMap.copilot,
+      tool,
+      contextFiles: filesMap,
+    }).path;
   }
 
-  // Default fallback: strip ".hbs" and replicate path at project root
+  if (tool === 'claude' && rel === 'claude/settings.json.hbs') {
+    return safeResolveWithin(projectRoot, path.join('.claude', 'settings.json'));
+  }
+  if (tool === 'claude' && rel === 'claude/settings.local.json.hbs') {
+    return safeResolveWithin(projectRoot, path.join('.claude', 'settings.local.json'));
+  }
+  if (tool === 'claude' && rel === 'claude/mcp_servers.json.hbs') {
+    return safeResolveWithin(projectRoot, path.join('.claude', 'mcp_servers.json'));
+  }
+  if (tool === 'claude' && rel.startsWith('claude/agents/')) {
+    const tail = rel.slice('claude/agents/'.length);
+    const under = tail.endsWith('.hbs') ? tail.slice(0, -4) : tail;
+    return safeResolveWithin(projectRoot, path.join('.claude', 'agents', String(under)));
+  }
+
   const cleaned = rel.endsWith('.hbs') ? rel.slice(0, -4) : rel;
-  return safeJoinWithin(projectRoot, String(cleaned));
+  return safeResolveWithin(projectRoot, String(cleaned));
 }
 
 function collectFromExports(
   pkgRoot: string,
+  tool: ToolType,
   exp: ExportEntry | undefined,
-): Array<{ abs: string; relUnderTemplates: string }> {
+): Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> {
   if (!exp) return [];
-  const out: Array<{ abs: string; relUnderTemplates: string }> = [];
+  const out: Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> = [];
   const tplRoot = path.join(pkgRoot, 'templates');
 
   function ensureWithinTemplates(rel: string): string {
@@ -235,27 +255,24 @@ function collectFromExports(
     return abs;
   }
 
-  // Primary template
   if (typeof exp.template === 'string') {
     const rel = exp.template.startsWith('templates/')
       ? exp.template.slice('templates/'.length)
       : exp.template;
     const abs = ensureWithinTemplates(rel);
-    out.push({ abs, relUnderTemplates: rel });
+    out.push({ abs, relUnderTemplates: rel, tool });
   }
 
-  // Known Claude extras: settings, settingsLocal, mcpServers; tolerate other keys
   const extraKeys: Array<keyof ExportEntry> = ['settings', 'settingsLocal', 'mcpServers'] as never;
   for (const k of extraKeys) {
     const v = (exp as Record<string, unknown>)[k];
     if (typeof v === 'string') {
       const rel = v.startsWith('templates/') ? v.slice('templates/'.length) : v;
       const abs = ensureWithinTemplates(rel);
-      out.push({ abs, relUnderTemplates: rel });
+      out.push({ abs, relUnderTemplates: rel, tool });
     }
   }
 
-  // Claude subagents directory (copy all files under dir)
   const subDirV = (exp as Record<string, unknown>)['subagentsDir'];
   if (typeof subDirV === 'string') {
     const relDir = subDirV.startsWith('templates/') ? subDirV.slice('templates/'.length) : subDirV;
@@ -264,6 +281,7 @@ function collectFromExports(
       ...collectFilesRecursively(absDir).map((f) => ({
         abs: f,
         relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+        tool,
       })),
     );
   }
@@ -313,7 +331,13 @@ export async function planAndRender(
   const profileTools = getProfileTools(cfg);
   const primaryTool = selectPrimaryTool(cfg, opts.tool);
   const toolSafeMode = opts.toolSafeMode ?? true;
-  const filesMap: RenderContext['files'] = cfg.context?.files as RenderContext['files'];
+  const contextFilesRaw = cfg.context?.files as Partial<RenderContext['files']> | undefined;
+  const filesMap: RenderContext['files'] = {
+    claude: contextFilesRaw?.claude ?? 'CLAUDE.md',
+    codex: contextFilesRaw?.codex ?? 'AGENTS.md',
+    cursor: contextFilesRaw?.cursor ?? '.cursor/rules.mdc',
+    copilot: contextFilesRaw?.copilot ?? '.github/copilot-instructions.md',
+  };
 
   // Discover installed packages
   const pkgs: Array<{ name: string; root: string }> = [];
@@ -408,11 +432,11 @@ export async function planAndRender(
     const exp = (m?.exports ?? {}) as Partial<
       Record<'claude' | 'codex' | 'cursor' | 'copilot', ExportEntry>
     >;
-    const toRender: Array<{ abs: string; relUnderTemplates: string }> = [];
-    if (exp?.claude) toRender.push(...collectFromExports(p.root, exp.claude));
-    if (exp?.codex) toRender.push(...collectFromExports(p.root, exp.codex));
-    if (exp?.cursor) toRender.push(...collectFromExports(p.root, exp.cursor));
-    if (exp?.copilot) toRender.push(...collectFromExports(p.root, exp.copilot));
+    const toRender: Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> = [];
+    if (exp?.claude) toRender.push(...collectFromExports(p.root, 'claude', exp.claude));
+    if (exp?.codex) toRender.push(...collectFromExports(p.root, 'codex', exp.codex));
+    if (exp?.cursor) toRender.push(...collectFromExports(p.root, 'cursor', exp.cursor));
+    if (exp?.copilot) toRender.push(...collectFromExports(p.root, 'copilot', exp.copilot));
 
     // Build context once per package
     const ctx: RenderContext = {
@@ -423,17 +447,10 @@ export async function planAndRender(
       files: filesMap,
     };
 
-    // Ensure strict strings for files mapping to satisfy type-aware lint
-    const filesMapStrict: RenderContext['files'] = {
-      claude: String(filesMap.claude),
-      codex: String(filesMap.codex),
-      cursor: String(filesMap.cursor),
-      copilot: String(filesMap.copilot),
-    };
-
     for (const item of toRender) {
       const rel = item.relUnderTemplates.replaceAll('\\', '/');
-      const dest = computeDestForRel(projectRoot, filesMapStrict, String(rel));
+      let dest = computeDestForRel(projectRoot, filesMap, item.tool, rel);
+      dest = await ensureFileDestination(dest, item.tool, projectRoot);
       const destDir = path.dirname(dest);
 
       opts.onTemplateStart?.({ templateRel: rel, dest, pkgName: p.name });

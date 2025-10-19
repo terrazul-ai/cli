@@ -9,7 +9,7 @@ import type { RunResult } from '../../src/utils/proc';
 const defaultContextFiles = {
   claude: 'CLAUDE.md',
   codex: 'AGENTS.md',
-  cursor: '.cursor/rules',
+  cursor: '.cursor/rules.mdc',
   copilot: '.github/copilot-instructions.md',
 } as const;
 

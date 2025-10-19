@@ -29,7 +29,7 @@ describe('config: profile.tools + files', () => {
     // @ts-expect-error runtime assertion for defaults merge
     expect(cfg.context.files.claude).toBe('C.md');
     // @ts-expect-error runtime assertion for defaults merge
-    expect(cfg.context.files.cursor).toBe('.cursor/rules');
+    expect(cfg.context.files.cursor).toBe('.cursor/rules.mdc');
     // @ts-expect-error runtime assertion for defaults merge
     expect(cfg.context.files.codex).toBe('AGENTS.md');
     // @ts-expect-error runtime assertion for defaults merge
