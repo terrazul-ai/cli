@@ -18,11 +18,11 @@ export function registerRunCommand(
     .description('Execute templates and display results without writing files')
     .option('--profile <profile>', 'Limit execution to the packages under the given profile')
     .option('--tool <tool>', 'Use a specific answer tool (claude or codex)')
-    .option('--no-tool-safe-mode', 'Disable safe mode for tool execution', false)
+    .option('--no-tool-safe-mode', 'Disable safe mode for tool execution')
     .action(
       async (
         _pkg: string | undefined,
-        opts: { profile?: string; tool?: string; noToolSafeMode?: boolean },
+        opts: { profile?: string; tool?: string; toolSafeMode?: boolean },
       ) => {
         const globalOpts = program.opts<{ verbose?: boolean }>();
         const ctx = createCtx({ verbose: globalOpts.verbose });
@@ -38,7 +38,7 @@ export function registerRunCommand(
           }
 
           const toolOverride = normalizeToolOption(opts.tool);
-          const toolSafeMode = opts.noToolSafeMode === true ? false : true;
+          const toolSafeMode = opts.toolSafeMode ?? true;
 
           const templateStarts = new Set<string>();
           const summarizePrompt = (prompt: string): string => {

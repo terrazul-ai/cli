@@ -254,9 +254,20 @@ async function validateWithSchema(
   schemaRef: SchemaReference,
   options: ExecuteSnippetsOptions,
 ): Promise<unknown> {
-  const absolute = path.isAbsolute(schemaRef.file)
-    ? schemaRef.file
-    : path.resolve(options.projectDir, schemaRef.file);
+  let absolute: string;
+  if (path.isAbsolute(schemaRef.file)) {
+    absolute = schemaRef.file;
+  } else {
+    try {
+      absolute = safeResolveWithin(options.packageDir, schemaRef.file);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new TerrazulError(
+        ErrorCode.FILE_NOT_FOUND,
+        `Failed to resolve schema path '${schemaRef.file}': ${message}`,
+      );
+    }
+  }
   let mod: unknown;
   try {
     mod = await import(pathToFileURL(absolute).href);

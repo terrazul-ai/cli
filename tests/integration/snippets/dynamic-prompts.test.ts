@@ -15,6 +15,7 @@ describe('integration: dynamic askAgent prompts', () => {
   let counterPath = '';
   let stubCommand = '';
   let stubScriptPath = '';
+  let argLogPath = '';
   let stubArgs: string[] = [];
 
   beforeAll(async () => {
@@ -34,6 +35,17 @@ describe('integration: dynamic askAgent prompts', () => {
     stubScriptPath = path.join(stubDir, 'claude-stub.cjs');
     const stubScript = `
 const fs = require('node:fs');
+
+if (process.env.CLAUDE_STUB_ARG_LOG) {
+  try {
+    fs.writeFileSync(process.env.CLAUDE_STUB_ARG_LOG, JSON.stringify(process.argv.slice(2)));
+  } catch (error) {
+    fs.writeFileSync(
+      process.env.CLAUDE_STUB_ARG_LOG,
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+    );
+  }
+}
 
 const input = fs.readFileSync(0, 'utf8');
 if (process.env.CLAUDE_STUB_LOG) {
@@ -138,5 +150,21 @@ template = "ignored"
     expect(prompts).toHaveLength(2);
     expect(prompts[0]).toContain('Provide initial value');
     expect(prompts[1]).toContain('Use First result and First result to craft final output');
+  });
+
+  it('disables safe mode when requested', async () => {
+    argLogPath = path.join(tmpProj, 'claude-args.json');
+    const env = {
+      ...process.env,
+      HOME: tmpHome,
+      USERPROFILE: tmpHome,
+      CLAUDE_STUB_COUNTER: counterPath,
+      CLAUDE_STUB_OUTPUTS: 'Result',
+      CLAUDE_STUB_ARG_LOG: argLogPath,
+    };
+    await run('node', [cli, 'apply', '--dry-run', '--no-tool-safe-mode'], { cwd: tmpProj, env });
+    const rawArgs = JSON.parse(await fs.readFile(argLogPath, 'utf8')) as string[];
+    expect(rawArgs).not.toContain('--permission-mode');
+    expect(rawArgs).not.toContain('--max-turns');
   });
 });

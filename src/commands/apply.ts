@@ -20,7 +20,7 @@ export function registerApplyCommand(
     .option('--dry-run', 'Plan without writing any files', false)
     .option('--profile <profile>', 'Apply only the packages associated with the given profile')
     .option('--tool <tool>', 'Use a specific answer tool (claude or codex)')
-    .option('--no-tool-safe-mode', 'Disable safe mode for tool execution', false)
+    .option('--no-tool-safe-mode', 'Disable safe mode for tool execution')
     .action(
       async (
         _pkg: string | undefined,
@@ -29,7 +29,7 @@ export function registerApplyCommand(
           dryRun?: boolean;
           profile?: string;
           tool?: string;
-          noToolSafeMode?: boolean;
+          toolSafeMode?: boolean;
         },
       ) => {
         const g = program.opts<{ verbose?: boolean }>();
@@ -46,7 +46,7 @@ export function registerApplyCommand(
           }
 
           const toolOverride = normalizeToolOption(opts.tool);
-          const toolSafeMode = opts.noToolSafeMode === true ? false : true;
+          const toolSafeMode = opts.toolSafeMode ?? true;
 
           const templateStarts = new Set<string>();
           const summarizePrompt = (prompt: string): string => {

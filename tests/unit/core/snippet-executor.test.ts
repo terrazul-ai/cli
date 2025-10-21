@@ -132,7 +132,7 @@ describe('snippet executor', () => {
   });
 
   it('validates JSON output via schema reference', async () => {
-    const schemaDir = path.join(projectDir, 'schemas');
+    const schemaDir = path.join(packageDir, 'schemas');
     await fs.mkdir(schemaDir, { recursive: true });
     const schemaFile = path.join(schemaDir, 'summary-schema.mjs');
     await fs.writeFile(
@@ -160,7 +160,7 @@ describe('snippet executor', () => {
   });
 
   it('captures schema validation errors', async () => {
-    const schemaFile = path.join(projectDir, 'summary-schema.mjs');
+    const schemaFile = path.join(packageDir, 'summary-schema.mjs');
     await fs.writeFile(
       schemaFile,
       `
@@ -198,7 +198,7 @@ describe('snippet executor', () => {
   });
 
   it('records errors when schema is provided without json flag', async () => {
-    const schemaFile = path.join(projectDir, 'schema.mjs');
+    const schemaFile = path.join(packageDir, 'schema.mjs');
     await fs.writeFile(
       schemaFile,
       `
