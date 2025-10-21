@@ -162,7 +162,6 @@ template = "ignored"
     };
     await run('node', [cli, 'apply'], { cwd: tmpProj, env });
     const { stdout } = await run('node', [cli, 'run'], { cwd: tmpProj, env });
-    console.log('RUN STDOUT:', stdout);
     expect(stdout).toMatch(/run: previewed \d+ files/);
     expect(stdout).toContain('Preview result');
     expect(stdout).not.toMatch(/skipped: .*\(destination exists\)/);

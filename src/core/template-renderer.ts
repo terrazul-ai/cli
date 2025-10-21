@@ -526,10 +526,5 @@ export async function planAndRender(
     }
   }
 
-  console.log('planAndRender debug', {
-    force: opts.force,
-    dryRun: opts.dryRun,
-    written: written.length,
-  });
   return { written, skipped, backedUp, snippets: snippetExecutions };
 }
