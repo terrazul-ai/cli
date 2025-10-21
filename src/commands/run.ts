@@ -73,9 +73,10 @@ export function registerRunCommand(
             }
           };
 
+          // Force rendering so existing destination files do not short-circuit previews.
           const res = await planAndRender(projectRoot, agentModulesRoot, {
             dryRun: true,
-            force: false,
+            force: true,
             packageName: _pkg,
             profileName,
             tool: toolOverride,

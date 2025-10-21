@@ -30,6 +30,14 @@ describe('snippet parser', () => {
     expect(snippet.question).toBe('Trimmed?');
   });
 
+  it('parses triple-mustache askAgent snippets', () => {
+    const tpl = "{{{ askAgent('Summarize this repo') }}}";
+    const [snippet] = parseSnippets(tpl);
+    if (snippet.type !== 'askAgent') throw new Error('expected askAgent snippet');
+    expect(snippet.prompt.kind).toBe('text');
+    expect(snippet.prompt.value).toBe('Summarize this repo');
+  });
+
   it('parses askAgent inline prompt with options', () => {
     const tpl =
       "{{ askAgent('Summarize this repo', { json: true, tool: 'claude', safeMode: false, timeoutMs: 120000 }) }}";

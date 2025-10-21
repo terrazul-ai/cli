@@ -152,6 +152,22 @@ template = "ignored"
     expect(prompts[1]).toContain('Use First result and First result to craft final output');
   });
 
+  it('previews template output even when destinations already exist', async () => {
+    const env = {
+      ...process.env,
+      HOME: tmpHome,
+      USERPROFILE: tmpHome,
+      CLAUDE_STUB_COUNTER: counterPath,
+      CLAUDE_STUB_OUTPUTS: 'Alpha|Preview result',
+    };
+    await run('node', [cli, 'apply'], { cwd: tmpProj, env });
+    const { stdout } = await run('node', [cli, 'run'], { cwd: tmpProj, env });
+    console.log('RUN STDOUT:', stdout);
+    expect(stdout).toMatch(/run: previewed \d+ files/);
+    expect(stdout).toContain('Preview result');
+    expect(stdout).not.toMatch(/skipped: .*\(destination exists\)/);
+  });
+
   it('disables safe mode when requested', async () => {
     argLogPath = path.join(tmpProj, 'claude-args.json');
     const env = {

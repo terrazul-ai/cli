@@ -90,6 +90,13 @@ describe('snippet preprocessor', () => {
     expect(result.template).toBe(expected);
   });
 
+  it('handles triple-mustache snippets without leaving extra braces', async () => {
+    const tpl = "Intro\n{{{ askAgent('Prompt') }}}\nOutro";
+    const result = await preprocessTemplate(tpl, baseOptions);
+    const expected = 'Intro\n{{{ snippets.snippet_0.value }}}\nOutro';
+    expect(result.template).toBe(expected);
+  });
+
   it('trims whitespace for var snippets with tilde controls', async () => {
     const tpl = "{{~ var summary = askAgent('Prompt') ~}}\nHeading";
     const result = await preprocessTemplate(tpl, baseOptions);

@@ -38,8 +38,9 @@ export function parseSnippets(template: string): ParsedSnippet[] {
     const start = template.indexOf('{{', cursor);
     if (start === -1) break;
 
-    const innerStart = start + 2;
-    const innerEnd = findSnippetEnd(template, innerStart);
+    const openCount = countOpeningBraces(template, start);
+    const innerStart = start + openCount;
+    const innerEnd = findSnippetEnd(template, innerStart, openCount);
     if (innerEnd === -1) {
       throw new TerrazulError(
         ErrorCode.INVALID_ARGUMENT,
@@ -47,18 +48,19 @@ export function parseSnippets(template: string): ParsedSnippet[] {
       );
     }
 
-    const raw = template.slice(start, innerEnd + 2);
+    const closingCount = openCount === 3 ? 3 : 2;
+    const raw = template.slice(start, innerEnd + closingCount);
     const expressionRaw = template.slice(innerStart, innerEnd);
     const expression = stripWhitespaceControl(expressionRaw).trim();
 
     if (expression.length === 0) {
-      cursor = innerEnd + 2;
+      cursor = innerEnd + closingCount;
       continue;
     }
 
     // Skip Handlebars control flow helpers, comments, etc.
     if (expression.startsWith('#') || expression.startsWith('/') || expression.startsWith('!')) {
-      cursor = innerEnd + 2;
+      cursor = innerEnd + closingCount;
       continue;
     }
 
@@ -99,7 +101,7 @@ export function parseSnippets(template: string): ParsedSnippet[] {
       if (body.includes('askUser') || body.includes('askAgent')) {
         throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, `Malformed snippet: "${body}"`);
       }
-      cursor = innerEnd + 2;
+      cursor = innerEnd + closingCount;
       continue;
     }
 
@@ -120,7 +122,7 @@ export function parseSnippets(template: string): ParsedSnippet[] {
         type: 'askUser',
         raw,
         startIndex: start,
-        endIndex: innerEnd + 2,
+        endIndex: innerEnd + closingCount,
         question,
         options,
         varName,
@@ -135,20 +137,20 @@ export function parseSnippets(template: string): ParsedSnippet[] {
         type: 'askAgent',
         raw,
         startIndex: start,
-        endIndex: innerEnd + 2,
+        endIndex: innerEnd + closingCount,
         prompt: snippetPrompt,
         options,
         varName,
       });
     }
 
-    cursor = innerEnd + 2;
+    cursor = innerEnd + closingCount;
   }
 
   return snippets;
 }
 
-function findSnippetEnd(template: string, start: number): number {
+function findSnippetEnd(template: string, start: number, openCount: number): number {
   let i = start;
   let inSingle = false;
   let inDouble = false;
@@ -188,6 +190,10 @@ function findSnippetEnd(template: string, start: number): number {
       continue;
     }
     if (template[i] === '}' && template[i + 1] === '}') {
+      if (openCount === 3 && template[i + 2] !== '}') {
+        i += 1;
+        continue;
+      }
       return i;
     }
     i += 1;
@@ -543,4 +549,12 @@ function stripWhitespaceControl(raw: string): string {
 
 function isWhitespaceControl(char: string): boolean {
   return char === '~' || char === '-';
+}
+
+function countOpeningBraces(template: string, start: number): number {
+  let count = 0;
+  while (start + count < template.length && template[start + count] === '{') {
+    count += 1;
+  }
+  return count;
 }
