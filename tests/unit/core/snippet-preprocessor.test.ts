@@ -72,21 +72,21 @@ describe('snippet preprocessor', () => {
   it('replaces inline snippet with snippets map reference', async () => {
     const tpl = "Start {{ askUser('Question?') }} End";
     const result = await preprocessTemplate(tpl, baseOptions);
-    expect(result.template).toContain('{{{ snippets.snippet_0.value }}}');
+    expect(result.template).toContain('{{ snippets.snippet_0.value }}');
     expect(result.renderContext.snippets.snippet_0?.value).toBe('Answer');
   });
 
   it('preserves whitespace control markers when replacing inline snippets', async () => {
     const tpl = "Line A\n{{~ askAgent('Prompt') ~}}\nLine C";
     const result = await preprocessTemplate(tpl, baseOptions);
-    const expected = 'Line A\n{{{~ snippets.snippet_0.value ~}}}\nLine C';
+    const expected = 'Line A\n{{~ snippets.snippet_0.value ~}}\nLine C';
     expect(result.template).toBe(expected);
   });
 
   it('supports dash whitespace control markers when replacing inline snippets', async () => {
     const tpl = "Alpha\n{{- askAgent('Prompt') -}}\nOmega";
     const result = await preprocessTemplate(tpl, baseOptions);
-    const expected = 'Alpha\n{{{- snippets.snippet_0.value -}}}\nOmega';
+    const expected = 'Alpha\n{{- snippets.snippet_0.value -}}\nOmega';
     expect(result.template).toBe(expected);
   });
 

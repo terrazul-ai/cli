@@ -58,8 +58,12 @@ function buildReplacements(parsed: ParsedSnippet[]): Replacement[] {
       };
     }
     const controls = extractWhitespaceControl(snippet.raw);
-    const open = controls.open ? `{{{${controls.open}` : '{{{';
-    const close = controls.close ? controls.close + '}}}' : '}}}';
+    const openBraceCount = countLeading(snippet.raw, '{');
+    const closeBraceCount = countTrailing(snippet.raw, '}');
+    const openBraces = openBraceCount >= 3 ? '{{{' : '{{';
+    const closeBraces = closeBraceCount >= 3 ? '}}}' : '}}';
+    const open = controls.open ? `${openBraces}${controls.open}` : openBraces;
+    const close = controls.close ? `${controls.close}${closeBraces}` : closeBraces;
     return {
       start: snippet.startIndex,
       end: snippet.endIndex,
