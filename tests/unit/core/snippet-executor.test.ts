@@ -131,6 +131,22 @@ describe('snippet executor', () => {
     expect(context.snippets.snippet_0.value).toEqual({ result: 'ok' });
   });
 
+  it('interpolates askAgent prompts with base template context', async () => {
+    invokeToolMock.mockResolvedValueOnce({
+      command: 'claude',
+      args: [],
+      stdout: 'ok',
+      stderr: '',
+    });
+    const snippets = parseSnippets("{{ askAgent('Summarize {{ project.name }}') }}");
+    await executeSnippets(
+      snippets,
+      makeOptions({ baseContext: { project: { name: 'Demo Project' } } }),
+    );
+    const prompt = invokeToolMock.mock.calls[0]?.[0]?.prompt;
+    expect(prompt).toContain('Summarize Demo Project');
+  });
+
   it('validates JSON output via schema reference', async () => {
     const schemaDir = path.join(packageDir, 'schemas');
     await fs.mkdir(schemaDir, { recursive: true });

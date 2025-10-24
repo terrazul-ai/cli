@@ -20,6 +20,7 @@ import type {
   SnippetExecutionContext,
   SnippetValue,
 } from '../types/snippet.js';
+import type { TemplateContext } from '../utils/handlebars-runtime.js';
 import type { QuestionCollection } from 'inquirer';
 
 interface CacheEntry {
@@ -91,7 +92,7 @@ async function runAskAgent(
   const basePrompt = await resolvePrompt(snippet, options.packageDir, promptCache);
   options.report?.({ type: 'askAgent:start', snippet, prompt: basePrompt });
 
-  const promptContext = buildPromptContext(context);
+  const promptContext = buildPromptContext(context, options.baseContext);
   const interpolatedPrompt = interpolate(basePrompt, promptContext);
 
   const finalPrompt = enforceSingleTurnDirective(interpolatedPrompt);
@@ -324,12 +325,19 @@ export function defaultDestinationFilename(tool: ToolType): string {
   return DIRECTORY_DEFAULT_FILENAMES[tool] ?? 'output.md';
 }
 
-function buildPromptContext(context: SnippetExecutionContext): {
-  vars: Record<string, unknown>;
-  snippets: Record<string, unknown>;
-} {
-  const vars = { ...context.vars };
-  const snippets: Record<string, unknown> = {};
+function buildPromptContext(
+  context: SnippetExecutionContext,
+  baseContext?: TemplateContext,
+): TemplateContext {
+  const promptContext: TemplateContext = baseContext ? { ...baseContext } : {};
+  const baseVarsSource = baseContext ? baseContext['vars'] : undefined;
+  const baseVars = isRecord(baseVarsSource) ? { ...baseVarsSource } : {};
+  const baseSnippetsSource = baseContext ? baseContext['snippets'] : undefined;
+  const baseSnippets = isRecord(baseSnippetsSource) ? { ...baseSnippetsSource } : {};
+
+  const vars = { ...baseVars, ...context.vars };
+  const snippets: Record<string, unknown> = { ...baseSnippets };
+
   for (const [id, entry] of Object.entries(context.snippets)) {
     if (!entry || entry.error) {
       snippets[id] = undefined;
@@ -337,7 +345,14 @@ function buildPromptContext(context: SnippetExecutionContext): {
     }
     snippets[id] = entry.value;
   }
-  return { vars, snippets };
+
+  promptContext.vars = vars;
+  promptContext.snippets = snippets;
+  return promptContext;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function extractPreferredResult(parsed: unknown): unknown {

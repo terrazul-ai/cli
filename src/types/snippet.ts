@@ -1,4 +1,5 @@
 import type { ToolSpec, ToolType } from './context.js';
+import type { TemplateContext } from '../utils/handlebars-runtime.js';
 
 export type SnippetType = 'askUser' | 'askAgent';
 
@@ -85,6 +86,7 @@ export interface ExecuteSnippetsOptions {
   verbose?: boolean;
   dryRun?: boolean;
   report?: (event: SnippetEvent) => void;
+  baseContext?: TemplateContext;
 }
 
 export interface PreprocessOptions extends ExecuteSnippetsOptions {}

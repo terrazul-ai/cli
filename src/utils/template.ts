@@ -54,7 +54,8 @@ export async function renderTemplateWithSnippets(
     return { output, preprocess: empty };
   }
 
-  const preprocess = await preprocessTemplate(raw, options.preprocess);
+  const preprocessOptions = { ...options.preprocess, baseContext };
+  const preprocess = await preprocessTemplate(raw, preprocessOptions);
   const mergedContext = mergeRenderContext(baseContext, preprocess.renderContext);
   const output = interpolate(preprocess.template, mergedContext);
   return { output, preprocess };
