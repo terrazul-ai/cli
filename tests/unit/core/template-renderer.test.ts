@@ -45,7 +45,7 @@ describe('core/template-renderer', () => {
     await fs.mkdir(pkgRoot, { recursive: true });
     await write(
       path.join(pkgRoot, 'agents.toml'),
-      `\n[package]\nname = "@test/demo"\nversion = "1.2.3"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n\n[exports.claude]\ntemplate = "templates/CLAUDE.md.hbs"\nsettingsLocal = "templates/claude/settings.local.json.hbs"\nsubagentsDir = "templates/claude/agents"\n\n[exports.cursor]\ntemplate = "templates/cursor.rules.mdc.hbs"\n`,
+      `\n[package]\nname = "@test/demo"\nversion = "1.2.3"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n\n[exports.claude]\ntemplate = "templates/CLAUDE.md.hbs"\nsettingsLocal = "templates/claude/settings.local.json.hbs"\nsubagentsDir = "templates/claude/agents"\n\n[exports.copilot]\ntemplate = "templates/COPILOT.md.hbs"\n\n[exports.cursor]\ntemplate = "templates/cursor.rules.mdc.hbs"\n`,
     );
     await write(path.join(pkgRoot, 'templates', 'AGENTS.md.hbs'), '# Codex for {{project.name}}');
     await write(path.join(pkgRoot, 'templates', 'CLAUDE.md.hbs'), '# Claude {{pkg.name}}');
@@ -57,6 +57,7 @@ describe('core/template-renderer', () => {
       path.join(pkgRoot, 'templates', 'claude', 'agents', 'reviewer.md.hbs'),
       'agent for {{project.version}}',
     );
+    await write(path.join(pkgRoot, 'templates', 'COPILOT.md.hbs'), 'copilot: {{pkg.version}}');
     await write(path.join(pkgRoot, 'templates', 'cursor.rules.mdc.hbs'), 'rule: {{env.USER}}');
   });
 
@@ -87,6 +88,7 @@ describe('core/template-renderer', () => {
       path.join(projectRoot, '.claude', 'settings.local.json'),
       path.join(projectRoot, '.claude', 'agents', 'reviewer.md'),
       path.join(projectRoot, files.cursor),
+      path.join(projectRoot, files.copilot),
     ];
     for (const f of expected) {
       const st = await fs.stat(f).catch(() => null);

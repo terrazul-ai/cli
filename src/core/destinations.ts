@@ -76,8 +76,17 @@ export async function ensureFileDestination(
   }
 
   const filename = DIRECTORY_DEFAULT_FILENAMES[tool] ?? 'output.md';
-  const target = resolveWithin(directoryPath, filename);
-  return resolveWithin(projectDir, path.relative(projectDir, target));
+  let target: string;
+  try {
+    target = resolveWithin(directoryPath, filename);
+  } catch {
+    return dest;
+  }
+  try {
+    return resolveWithin(projectDir, path.relative(projectDir, target));
+  } catch {
+    return dest;
+  }
 }
 
 async function statMaybe(p: string): Promise<Stats | null> {

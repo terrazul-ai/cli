@@ -204,13 +204,16 @@ function computeDestForRel(
       contextFiles: filesMap,
     }).path;
   }
-  if (tool === 'copilot' && rel.toLowerCase() === 'copilot.md.hbs') {
-    return resolveWritePath({
-      projectDir: projectRoot,
-      value: filesMap.copilot,
-      tool,
-      contextFiles: filesMap,
-    }).path;
+  if (tool === 'copilot') {
+    const segment = rel.split('/').pop()?.toLowerCase();
+    if (segment === 'copilot.md.hbs') {
+      return resolveWritePath({
+        projectDir: projectRoot,
+        value: filesMap.copilot,
+        tool,
+        contextFiles: filesMap,
+      }).path;
+    }
   }
 
   if (tool === 'claude' && rel === 'claude/settings.json.hbs') {
