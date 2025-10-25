@@ -21,7 +21,7 @@ import type {
   SnippetValue,
 } from '../types/snippet.js';
 import type { TemplateContext } from '../utils/handlebars-runtime.js';
-import type { QuestionCollection } from 'inquirer';
+import type { InputQuestion } from 'inquirer';
 
 interface CacheEntry {
   value: SnippetValue;
@@ -70,12 +70,23 @@ async function runAskUser(
   snippet: ParsedAskUserSnippet,
   options: ExecuteSnippetsOptions,
 ): Promise<SnippetValue> {
-  const promptConfig: QuestionCollection<{ value: string }> = {
+  const placeholder = snippet.options.placeholder;
+  const hasPlaceholder = typeof placeholder === 'string' && placeholder.trim().length > 0;
+  const promptConfig: InputQuestion<{ value: string }> = {
     type: 'input',
     name: 'value',
     message: snippet.question,
     default: snippet.options.default,
   };
+  if (hasPlaceholder && placeholder) {
+    const placeholderText = placeholder;
+    promptConfig.transformer = (input, _answers, flags) => {
+      if (!input && !flags.isFinal) {
+        return placeholderText;
+      }
+      return input;
+    };
+  }
   options.report?.({ type: 'askUser:start', snippet });
   const answers = await inquirer.prompt<{ value: string }>([promptConfig]);
   options.report?.({ type: 'askUser:end', snippet, answer: answers.value });

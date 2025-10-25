@@ -63,6 +63,15 @@ export interface SnippetProgress {
   pkgName: string | undefined;
 }
 
+interface SnippetFailureDetail {
+  pkgName?: string;
+  dest: string;
+  templateRel: string;
+  snippetId: string;
+  snippetType: 'askUser' | 'askAgent';
+  message: string;
+}
+
 const SKIP_REASON_MESSAGES: Record<SkipReasonCode, string> = {
   exists: 'destination exists (use --force to overwrite)',
   'symlink-ancestor-outside': 'unsafe symlink ancestor resolves outside project root',
@@ -311,6 +320,48 @@ function collectFilesRecursively(root: string): string[] {
   }
 }
 
+function collectSnippetFailures(
+  preprocess: PreprocessResult,
+  dest: string,
+  templateRel: string,
+  pkgName: string | undefined,
+): SnippetFailureDetail[] {
+  const failures: SnippetFailureDetail[] = [];
+  for (const snippet of preprocess.parsed) {
+    const execution = preprocess.execution.snippets[snippet.id];
+    if (!execution || !execution.error) continue;
+    failures.push({
+      pkgName,
+      dest,
+      templateRel,
+      snippetId: snippet.id,
+      snippetType: snippet.type,
+      message: execution.error.message,
+    });
+  }
+  return failures;
+}
+
+function formatSnippetFailureMessage(
+  projectRoot: string,
+  failures: SnippetFailureDetail[],
+): string {
+  const count = failures.length;
+  const header =
+    count === 1
+      ? 'Snippet execution failed while rendering templates.'
+      : `${count} snippets failed while rendering templates.`;
+  const lines = failures.map((failure) => {
+    const destLabel = path.relative(projectRoot, failure.dest) || failure.dest;
+    const locationParts = [];
+    if (failure.pkgName) locationParts.push(failure.pkgName);
+    locationParts.push(failure.templateRel);
+    const location = locationParts.join(':');
+    return `- ${destLabel} :: ${failure.snippetId} (${failure.snippetType}) from ${location} — ${failure.message}`;
+  });
+  return [header, ...lines].join('\n');
+}
+
 export interface ApplyOptions {
   force?: boolean; // overwrite if exists
   dryRun?: boolean;
@@ -408,6 +459,7 @@ export async function planAndRender(
     output: string;
     preprocess: PreprocessResult;
   }> = [];
+  const snippetFailures: SnippetFailureDetail[] = [];
 
   async function backupExistingFile(target: string): Promise<void> {
     if (opts.dryRun) return;
@@ -493,6 +545,19 @@ export async function planAndRender(
         },
       });
 
+      snippetExecutions.push({
+        source: item.abs,
+        dest,
+        output: renderResult.output,
+        preprocess: renderResult.preprocess,
+      });
+
+      const failures = collectSnippetFailures(renderResult.preprocess, dest, rel, p.name);
+      if (failures.length > 0) {
+        snippetFailures.push(...failures);
+        continue;
+      }
+
       if (!opts.dryRun) {
         // Security: prevent symlink escapes by verifying existing ancestors and
         // destination symlink behavior before writing.
@@ -520,13 +585,15 @@ export async function planAndRender(
         await fs.writeFile(dest, renderResult.output, 'utf8');
       }
       written.push(dest);
-      snippetExecutions.push({
-        source: item.abs,
-        dest,
-        output: renderResult.output,
-        preprocess: renderResult.preprocess,
-      });
     }
+  }
+
+  if (snippetFailures.length > 0) {
+    throw new TerrazulError(
+      ErrorCode.TOOL_EXECUTION_FAILED,
+      formatSnippetFailureMessage(projectRoot, snippetFailures),
+      { snippetFailures },
+    );
   }
 
   return { written, skipped, backedUp, snippets: snippetExecutions };
