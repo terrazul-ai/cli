@@ -61,6 +61,14 @@ describe('snippet parser', () => {
     expect(snippet.prompt.value).toBe('templates/summary.txt');
   });
 
+  it('treats inline prompts with slashes and spaces as text', () => {
+    const tpl = "{{ askAgent('Summarize src/utils/snippet-parser.ts usage') }}";
+    const [snippet] = parseSnippets(tpl);
+    if (snippet.type !== 'askAgent') throw new Error('expected askAgent snippet');
+    expect(snippet.prompt.kind).toBe('text');
+    expect(snippet.prompt.value).toBe('Summarize src/utils/snippet-parser.ts usage');
+  });
+
   it('supports variable assignment with triple-quoted literal', () => {
     const tpl = `
     {{ var summary = askAgent(""" 
@@ -105,6 +113,16 @@ describe('snippet parser', () => {
     expect(() => parseSnippets(tpl)).not.toThrow();
     const snippets = parseSnippets(tpl);
     expect(snippets).toHaveLength(0);
+  });
+
+  it('rejects nested askAgent call embedded in another helper', () => {
+    const tpl = "{{ helper askAgent('Nested prompt?') }}";
+    expect(() => parseSnippets(tpl)).toThrow(/Malformed snippet/);
+  });
+
+  it('ignores literal strings that contain askUser call syntax', () => {
+    const tpl = '{{ helper "askUser(\'noop\')" }}';
+    expect(() => parseSnippets(tpl)).not.toThrow();
   });
 
   it('throws on unsupported askAgent option keys', () => {

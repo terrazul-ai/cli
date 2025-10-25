@@ -99,7 +99,11 @@ export function parseSnippets(template: string): ParsedSnippet[] {
     const callMatch = body.match(CALL_PATTERN);
     if (!callMatch) {
       const trimmed = body.trimStart();
-      if (trimmed.startsWith('askUser') || trimmed.startsWith('askAgent')) {
+      if (/^(askUser|askAgent)\b/.test(trimmed)) {
+        throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, `Malformed snippet: "${body}"`);
+      }
+      const askCallPattern = /(?<!["'])\bask(User|Agent)\s*\(/;
+      if (askCallPattern.test(body)) {
         throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, `Malformed snippet: "${body}"`);
       }
       cursor = innerEnd + closingCount;
@@ -529,9 +533,21 @@ function toPrompt(value: string, literalKind: LiteralKind): SnippetPrompt {
 function isLikelyFilePath(value: string): boolean {
   if (value.includes('\n')) return false;
   if (value.includes('{{')) return false;
-  if (value.startsWith('./') || value.startsWith('../')) return true;
-  if (value.includes('/') || value.includes('\\')) return true;
-  if (/\.(txt|md|prompt|json|hbs|yaml|yml)$/i.test(value)) return true;
+  const trimmed = value.trim();
+  if (
+    trimmed.startsWith('./') ||
+    trimmed.startsWith('../') ||
+    trimmed.startsWith('.\\') ||
+    trimmed.startsWith('..\\')
+  ) {
+    return true;
+  }
+  if (/\s/.test(value)) {
+    return false;
+  }
+  const normalized = value.replaceAll('\\', '/');
+  if (normalized.includes('/')) return true;
+  if (/\.(txt|md|prompt|json|hbs|yaml|yml)$/i.test(normalized)) return true;
   return false;
 }
 
