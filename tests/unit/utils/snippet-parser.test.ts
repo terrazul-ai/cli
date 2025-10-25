@@ -100,6 +100,13 @@ describe('snippet parser', () => {
     expect(snippets).toHaveLength(0);
   });
 
+  it('allows mentioning snippet helper names inside other expressions', () => {
+    const tpl = "{{ helper 'askUser' }} {{ lookup map 'askAgent' }}";
+    expect(() => parseSnippets(tpl)).not.toThrow();
+    const snippets = parseSnippets(tpl);
+    expect(snippets).toHaveLength(0);
+  });
+
   it('throws on unsupported askAgent option keys', () => {
     const tpl = "{{ askAgent('Prompt', { unexpected: true }) }}";
     expect(() => parseSnippets(tpl)).toThrow(/Unsupported askAgent option/);

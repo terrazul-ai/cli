@@ -98,7 +98,8 @@ export function parseSnippets(template: string): ParsedSnippet[] {
 
     const callMatch = body.match(CALL_PATTERN);
     if (!callMatch) {
-      if (body.includes('askUser') || body.includes('askAgent')) {
+      const trimmed = body.trimStart();
+      if (trimmed.startsWith('askUser') || trimmed.startsWith('askAgent')) {
         throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, `Malformed snippet: "${body}"`);
       }
       cursor = innerEnd + closingCount;
