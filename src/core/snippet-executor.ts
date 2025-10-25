@@ -103,6 +103,12 @@ async function runAskAgent(
 
   const cached = cache.get(cacheKey);
   if (cached) {
+    options.report?.({
+      type: 'askAgent:end',
+      snippet,
+      prompt: basePrompt,
+      value: cached.value.value,
+    });
     return cached.value;
   }
 

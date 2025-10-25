@@ -10,7 +10,7 @@ import { parseSnippets } from '../../../src/utils/snippet-parser';
 import * as toolRunner from '../../../src/utils/tool-runner';
 
 import type { ToolSpec } from '../../../src/types/context';
-import type { ExecuteSnippetsOptions } from '../../../src/types/snippet';
+import type { ExecuteSnippetsOptions, SnippetEvent } from '../../../src/types/snippet';
 
 type ToolRunnerModule = typeof toolRunner;
 
@@ -232,6 +232,35 @@ describe('snippet executor', () => {
     const snippets = parseSnippets("{{ askAgent('Prompt', { schema: './schema.mjs' }) }}");
     const context = await executeSnippets(snippets, makeOptions());
     expect(context.snippets.snippet_0.error?.message).toMatch(/requires json: true/);
+  });
+
+  it('emits askAgent:end for cached prompts', async () => {
+    invokeToolMock.mockResolvedValueOnce({
+      command: 'claude',
+      args: [],
+      stdout: 'Completed',
+      stderr: '',
+    });
+    const snippets = parseSnippets(`
+      {{ askAgent('Repeated prompt') }}
+      {{ askAgent('Repeated prompt') }}
+    `);
+    const reports: SnippetEvent[] = [];
+    const context = await executeSnippets(
+      snippets,
+      makeOptions({
+        report: (event) => {
+          reports.push(event);
+        },
+      }),
+    );
+    expect(invokeToolMock).toHaveBeenCalledTimes(1);
+    expect(context.snippets.snippet_0.value).toBe('Completed');
+    expect(context.snippets.snippet_1.value).toBe('Completed');
+    const startEvents = reports.filter((event) => event.type === 'askAgent:start');
+    const endEvents = reports.filter((event) => event.type === 'askAgent:end');
+    expect(startEvents).toHaveLength(2);
+    expect(endEvents).toHaveLength(2);
   });
 
   it('interpolates askAgent prompts with current vars and snippets', async () => {
