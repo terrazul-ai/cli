@@ -204,7 +204,7 @@ function computeDestForRel(
       contextFiles: filesMap,
     }).path;
   }
-  if (tool === 'copilot' && rel === 'copilot.md.hbs') {
+  if (tool === 'copilot' && rel.toLowerCase() === 'copilot.md.hbs') {
     return resolveWritePath({
       projectDir: projectRoot,
       value: filesMap.copilot,
