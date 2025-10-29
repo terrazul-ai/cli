@@ -27,7 +27,7 @@ const ContextFilesSchema = z
   .object({
     claude: z.string().default('CLAUDE.md'),
     codex: z.string().default('AGENTS.md'),
-    cursor: z.string().default('.cursor/rules'),
+    cursor: z.string().default('.cursor/rules.mdc'),
     copilot: z.string().default('.github/copilot-instructions.md'),
   })
   .partial()

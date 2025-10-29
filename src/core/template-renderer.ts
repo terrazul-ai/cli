@@ -1,15 +1,18 @@
 import { promises as fs, readdirSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
 
-import Handlebars from 'handlebars';
-
+import { ensureFileDestination, resolveWritePath, safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
-import { loadConfig } from '../utils/config.js';
+import { loadConfig, getProfileTools, selectPrimaryTool } from '../utils/config.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
-import { resolveWithin } from '../utils/path.js';
+import { renderTemplateWithSnippets } from '../utils/template.js';
+
+import type { ToolType } from '../types/context.js';
+import type { PreprocessResult, SnippetEvent } from '../types/snippet.js';
 
 export interface RenderContext {
+  [key: string]: unknown;
   project: {
     root: string;
     name?: string;
@@ -44,6 +47,29 @@ export interface RenderResult {
   written: string[];
   skipped: Array<{ dest: string; reason: string; code: SkipReasonCode }>;
   backedUp: string[];
+  snippets: Array<{ source: string; dest: string; output: string; preprocess: PreprocessResult }>;
+}
+
+export interface TemplateProgress {
+  templateRel: string;
+  dest: string;
+  pkgName: string | undefined;
+}
+
+export interface SnippetProgress {
+  event: SnippetEvent;
+  templateRel: string;
+  dest: string;
+  pkgName: string | undefined;
+}
+
+interface SnippetFailureDetail {
+  pkgName?: string;
+  dest: string;
+  templateRel: string;
+  snippetId: string;
+  snippetType: 'askUser' | 'askAgent';
+  message: string;
 }
 
 const SKIP_REASON_MESSAGES: Record<SkipReasonCode, string> = {
@@ -64,15 +90,6 @@ function makeSkip(
   code: SkipReasonCode,
 ): { dest: string; reason: string; code: SkipReasonCode } {
   return { dest, code, reason: formatSkipReason(code) };
-}
-
-function safeJoinWithin(root: string, ...parts: string[]): string {
-  try {
-    return resolveWithin(root, ...parts);
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    throw new TerrazulError(ErrorCode.SECURITY_VIOLATION, msg);
-  }
 }
 
 // Determine whether writing to dest could escape via symlinked ancestors.
@@ -167,49 +184,73 @@ async function evaluateDestinationSafety(
 function computeDestForRel(
   projectRoot: string,
   filesMap: RenderContext['files'],
+  tool: ToolType,
   relUnderTemplates: string,
 ): string {
-  // Normalize separators for matching
   const rel = relUnderTemplates.replaceAll('\\', '/');
 
-  // High-level, tool-specific mappings first
-  if (rel === 'AGENTS.md.hbs') return safeJoinWithin(projectRoot, filesMap.codex);
-  if (rel === 'CLAUDE.md.hbs') return safeJoinWithin(projectRoot, filesMap.claude);
-  if (rel === 'cursor.rules.hbs') return safeJoinWithin(projectRoot, filesMap.cursor);
-  if (rel === 'copilot.md.hbs') return safeJoinWithin(projectRoot, filesMap.copilot);
+  if (tool === 'codex' && rel === 'AGENTS.md.hbs') {
+    return resolveWritePath({
+      projectDir: projectRoot,
+      value: filesMap.codex,
+      tool,
+      contextFiles: filesMap,
+    }).path;
+  }
+  if (tool === 'claude' && rel === 'CLAUDE.md.hbs') {
+    return resolveWritePath({
+      projectDir: projectRoot,
+      value: filesMap.claude,
+      tool,
+      contextFiles: filesMap,
+    }).path;
+  }
+  if (tool === 'cursor' && (rel === 'cursor.rules.mdc.hbs' || rel === 'cursor.rules.hbs')) {
+    return resolveWritePath({
+      projectDir: projectRoot,
+      value: filesMap.cursor,
+      tool,
+      contextFiles: filesMap,
+    }).path;
+  }
+  if (tool === 'copilot') {
+    const segment = rel.split('/').pop()?.toLowerCase();
+    if (segment === 'copilot.md.hbs') {
+      return resolveWritePath({
+        projectDir: projectRoot,
+        value: filesMap.copilot,
+        tool,
+        contextFiles: filesMap,
+      }).path;
+    }
+  }
 
-  // Claude structured assets
-  if (rel === 'claude/settings.json.hbs')
-    return safeJoinWithin(projectRoot, '.claude', 'settings.json');
-  if (rel === 'claude/settings.local.json.hbs')
-    return safeJoinWithin(projectRoot, '.claude', 'settings.local.json');
-  if (rel === 'claude/mcp_servers.json.hbs')
-    return safeJoinWithin(projectRoot, '.claude', 'mcp_servers.json');
-  if (rel.startsWith('claude/agents/')) {
+  if (tool === 'claude' && rel === 'claude/settings.json.hbs') {
+    return safeResolveWithin(projectRoot, path.join('.claude', 'settings.json'));
+  }
+  if (tool === 'claude' && rel === 'claude/settings.local.json.hbs') {
+    return safeResolveWithin(projectRoot, path.join('.claude', 'settings.local.json'));
+  }
+  if (tool === 'claude' && rel === 'claude/mcp_servers.json.hbs') {
+    return safeResolveWithin(projectRoot, path.join('.claude', 'mcp_servers.json'));
+  }
+  if (tool === 'claude' && rel.startsWith('claude/agents/')) {
     const tail = rel.slice('claude/agents/'.length);
     const under = tail.endsWith('.hbs') ? tail.slice(0, -4) : tail;
-    return safeJoinWithin(projectRoot, '.claude', 'agents', String(under));
+    return safeResolveWithin(projectRoot, path.join('.claude', 'agents', String(under)));
   }
 
-  // Default fallback: strip ".hbs" and replicate path at project root
   const cleaned = rel.endsWith('.hbs') ? rel.slice(0, -4) : rel;
-  return safeJoinWithin(projectRoot, String(cleaned));
-}
-
-async function readTemplate(file: string): Promise<string> {
-  try {
-    return await fs.readFile(file, 'utf8');
-  } catch (error) {
-    throw new TerrazulError(ErrorCode.FILE_NOT_FOUND, `Missing template: ${file}`, error);
-  }
+  return safeResolveWithin(projectRoot, String(cleaned));
 }
 
 function collectFromExports(
   pkgRoot: string,
+  tool: ToolType,
   exp: ExportEntry | undefined,
-): Array<{ abs: string; relUnderTemplates: string }> {
+): Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> {
   if (!exp) return [];
-  const out: Array<{ abs: string; relUnderTemplates: string }> = [];
+  const out: Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> = [];
   const tplRoot = path.join(pkgRoot, 'templates');
 
   function ensureWithinTemplates(rel: string): string {
@@ -226,27 +267,24 @@ function collectFromExports(
     return abs;
   }
 
-  // Primary template
   if (typeof exp.template === 'string') {
     const rel = exp.template.startsWith('templates/')
       ? exp.template.slice('templates/'.length)
       : exp.template;
     const abs = ensureWithinTemplates(rel);
-    out.push({ abs, relUnderTemplates: rel });
+    out.push({ abs, relUnderTemplates: rel, tool });
   }
 
-  // Known Claude extras: settings, settingsLocal, mcpServers; tolerate other keys
   const extraKeys: Array<keyof ExportEntry> = ['settings', 'settingsLocal', 'mcpServers'] as never;
   for (const k of extraKeys) {
     const v = (exp as Record<string, unknown>)[k];
     if (typeof v === 'string') {
       const rel = v.startsWith('templates/') ? v.slice('templates/'.length) : v;
       const abs = ensureWithinTemplates(rel);
-      out.push({ abs, relUnderTemplates: rel });
+      out.push({ abs, relUnderTemplates: rel, tool });
     }
   }
 
-  // Claude subagents directory (copy all files under dir)
   const subDirV = (exp as Record<string, unknown>)['subagentsDir'];
   if (typeof subDirV === 'string') {
     const relDir = subDirV.startsWith('templates/') ? subDirV.slice('templates/'.length) : subDirV;
@@ -255,6 +293,7 @@ function collectFromExports(
       ...collectFilesRecursively(absDir).map((f) => ({
         abs: f,
         relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+        tool,
       })),
     );
   }
@@ -281,12 +320,59 @@ function collectFilesRecursively(root: string): string[] {
   }
 }
 
+function collectSnippetFailures(
+  preprocess: PreprocessResult,
+  dest: string,
+  templateRel: string,
+  pkgName: string | undefined,
+): SnippetFailureDetail[] {
+  const failures: SnippetFailureDetail[] = [];
+  for (const snippet of preprocess.parsed) {
+    const execution = preprocess.execution.snippets[snippet.id];
+    if (!execution || !execution.error) continue;
+    failures.push({
+      pkgName,
+      dest,
+      templateRel,
+      snippetId: snippet.id,
+      snippetType: snippet.type,
+      message: execution.error.message,
+    });
+  }
+  return failures;
+}
+
+function formatSnippetFailureMessage(
+  projectRoot: string,
+  failures: SnippetFailureDetail[],
+): string {
+  const count = failures.length;
+  const header =
+    count === 1
+      ? 'Snippet execution failed while rendering templates.'
+      : `${count} snippets failed while rendering templates.`;
+  const lines = failures.map((failure) => {
+    const destLabel = path.relative(projectRoot, failure.dest) || failure.dest;
+    const locationParts = [];
+    if (failure.pkgName) locationParts.push(failure.pkgName);
+    locationParts.push(failure.templateRel);
+    const location = locationParts.join(':');
+    return `- ${destLabel} :: ${failure.snippetId} (${failure.snippetType}) from ${location} — ${failure.message}`;
+  });
+  return [header, ...lines].join('\n');
+}
+
 export interface ApplyOptions {
   force?: boolean; // overwrite if exists
   dryRun?: boolean;
   // package filter: only render this package (name exactly as in agent_modules)
   packageName?: string;
   profileName?: string;
+  tool?: ToolType;
+  toolSafeMode?: boolean;
+  verbose?: boolean;
+  onTemplateStart?: (info: TemplateProgress) => void;
+  onSnippetEvent?: (progress: SnippetProgress) => void;
 }
 
 export async function planAndRender(
@@ -296,7 +382,16 @@ export async function planAndRender(
 ): Promise<RenderResult> {
   // Load user config for destination defaults
   const cfg = await loadConfig();
-  const filesMap: RenderContext['files'] = cfg.context?.files as RenderContext['files'];
+  const profileTools = getProfileTools(cfg);
+  const primaryTool = selectPrimaryTool(cfg, opts.tool);
+  const toolSafeMode = opts.toolSafeMode ?? true;
+  const contextFilesRaw = cfg.context?.files as Partial<RenderContext['files']> | undefined;
+  const filesMap: RenderContext['files'] = {
+    claude: contextFilesRaw?.claude ?? 'CLAUDE.md',
+    codex: contextFilesRaw?.codex ?? 'AGENTS.md',
+    cursor: contextFilesRaw?.cursor ?? '.cursor/rules.mdc',
+    copilot: contextFilesRaw?.copilot ?? '.github/copilot-instructions.md',
+  };
 
   // Discover installed packages
   const pkgs: Array<{ name: string; root: string }> = [];
@@ -358,6 +453,13 @@ export async function planAndRender(
   const backedUp: string[] = [];
   let backupRoot: string | undefined;
   const backedUpTargets = new Set<string>();
+  const snippetExecutions: Array<{
+    source: string;
+    dest: string;
+    output: string;
+    preprocess: PreprocessResult;
+  }> = [];
+  const snippetFailures: SnippetFailureDetail[] = [];
 
   async function backupExistingFile(target: string): Promise<void> {
     if (opts.dryRun) return;
@@ -385,11 +487,11 @@ export async function planAndRender(
     const exp = (m?.exports ?? {}) as Partial<
       Record<'claude' | 'codex' | 'cursor' | 'copilot', ExportEntry>
     >;
-    const toRender: Array<{ abs: string; relUnderTemplates: string }> = [];
-    if (exp?.claude) toRender.push(...collectFromExports(p.root, exp.claude));
-    if (exp?.codex) toRender.push(...collectFromExports(p.root, exp.codex));
-    if (exp?.cursor) toRender.push(...collectFromExports(p.root, exp.cursor));
-    if (exp?.copilot) toRender.push(...collectFromExports(p.root, exp.copilot));
+    const toRender: Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> = [];
+    if (exp?.claude) toRender.push(...collectFromExports(p.root, 'claude', exp.claude));
+    if (exp?.codex) toRender.push(...collectFromExports(p.root, 'codex', exp.codex));
+    if (exp?.cursor) toRender.push(...collectFromExports(p.root, 'cursor', exp.cursor));
+    if (exp?.copilot) toRender.push(...collectFromExports(p.root, 'copilot', exp.copilot));
 
     // Build context once per package
     const ctx: RenderContext = {
@@ -400,19 +502,23 @@ export async function planAndRender(
       files: filesMap,
     };
 
-    // Ensure strict strings for files mapping to satisfy type-aware lint
-    const filesMapStrict: RenderContext['files'] = {
-      claude: String(filesMap.claude),
-      codex: String(filesMap.codex),
-      cursor: String(filesMap.cursor),
-      copilot: String(filesMap.copilot),
-    };
-
     for (const item of toRender) {
-      const tpl = await readTemplate(item.abs);
       const rel = item.relUnderTemplates.replaceAll('\\', '/');
-      const dest = computeDestForRel(projectRoot, filesMapStrict, String(rel));
+      let dest = computeDestForRel(projectRoot, filesMap, item.tool, rel);
+      dest = await ensureFileDestination(dest, item.tool, projectRoot);
       const destDir = path.dirname(dest);
+
+      opts.onTemplateStart?.({ templateRel: rel, dest, pkgName: p.name });
+
+      const reporter = opts.onSnippetEvent
+        ? (event: SnippetEvent) =>
+            opts.onSnippetEvent?.({
+              event,
+              templateRel: rel,
+              dest,
+              pkgName: p.name,
+            })
+        : undefined;
 
       let destStat: Stats | null = null;
       try {
@@ -423,6 +529,32 @@ export async function planAndRender(
 
       if (!opts.force && destStat?.isFile()) {
         skipped.push(makeSkip(dest, 'exists'));
+        continue;
+      }
+
+      const renderResult = await renderTemplateWithSnippets(item.abs, ctx, {
+        preprocess: {
+          projectDir: projectRoot,
+          packageDir: p.root,
+          currentTool: primaryTool,
+          availableTools: profileTools,
+          toolSafeMode,
+          verbose: opts.verbose ?? false,
+          dryRun: opts.dryRun ?? false,
+          report: reporter,
+        },
+      });
+
+      snippetExecutions.push({
+        source: item.abs,
+        dest,
+        output: renderResult.output,
+        preprocess: renderResult.preprocess,
+      });
+
+      const failures = collectSnippetFailures(renderResult.preprocess, dest, rel, p.name);
+      if (failures.length > 0) {
+        snippetFailures.push(...failures);
         continue;
       }
 
@@ -450,13 +582,19 @@ export async function planAndRender(
           }
         }
         ensureDir(destDir);
-        const compiled = Handlebars.compile(tpl);
-        const out = compiled(ctx);
-        await fs.writeFile(dest, out, 'utf8');
+        await fs.writeFile(dest, renderResult.output, 'utf8');
       }
       written.push(dest);
     }
   }
 
-  return { written, skipped, backedUp };
+  if (snippetFailures.length > 0) {
+    throw new TerrazulError(
+      ErrorCode.TOOL_EXECUTION_FAILED,
+      formatSnippetFailureMessage(projectRoot, snippetFailures),
+      { snippetFailures },
+    );
+  }
+
+  return { written, skipped, backedUp, snippets: snippetExecutions };
 }

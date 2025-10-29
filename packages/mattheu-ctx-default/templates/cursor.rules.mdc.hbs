@@ -1,0 +1,26 @@
+{{~ var editingGoals = askUser('What should Cursor focus on when suggesting edits?') ~}}
+{{~ var prohibitedChanges = askUser('List files, patterns, or behaviours Cursor should never touch (optional). Press enter to skip.') ~}}
+{{~ var commitPractices = askUser('Describe preferred commit and review practices for this repo.') ~}}
+{{~ var proactivePrompts = askAgent("""You are defining guardrails for the Cursor editor.
+Create three short proactive prompts that remind developers to seek context (e.g., run tests, review docs) before applying large edits.
+Return plain-text bullet points only, with no extra commentary.""") ~}}
+
+# Cursor Rules
+
+## Editing Goals
+{{{ vars.editingGoals }}}
+
+{{#if vars.prohibitedChanges}}
+## Do Not Touch
+{{{ vars.prohibitedChanges }}}
+{{/if}}
+
+## Working Agreement
+{{{ vars.commitPractices }}}
+
+## Proactive Prompts
+{{#if vars.proactivePrompts.result}}
+{{{ vars.proactivePrompts.result }}}
+{{else}}
+{{{ vars.proactivePrompts }}}
+{{/if}}

@@ -68,6 +68,33 @@ See `tz --help` for the full command catalog and flags.
 
 ---
 
+## Template Snippets: `askUser` & `askAgent`
+
+Templates can gather inputs interactively using `askUser` (prompts the user) and `askAgent` (calls AI tools):
+
+- **Inline prompts**: `{{ askUser('Question?') }}` and `{{ askAgent('Prompt text') }}`. Both support whitespace trimming (`~` / `-`) and can appear inline or within blocks.
+- **Variable capture**: `{{ var summary = askAgent('Prompt', { json: true }) }}` stores the result under `vars.summary` for later reuse.
+- **Options**: `askUser` accepts `{ default, placeholder }`. `askAgent` accepts `{ json, tool, schema, safeMode, timeoutMs }`.
+- **Multi-line prompts**: Use triple quotes for `askAgent`: `{{ askAgent("""Multi-line prompt here""") }}`.
+- **Interpolation**: Access captured variables in prompts: `{{ askAgent('Summarize: {{ vars.userInput }}') }}`.
+
+**Example**
+
+```handlebars
+{{~ var projectName = askUser('Project name?', { default: 'My Project' }) ~}}
+{{~ var summary = askAgent("""
+Analyze the repository and provide a brief summary.
+Project: {{ vars.projectName }}
+""", { json: true }) ~}}
+
+# {{{ vars.projectName }}}
+{{{ vars.summary.result }}}
+```
+
+See [`packages/mattheu-ctx-default/templates/CLAUDE.md.hbs`](packages/mattheu-ctx-default/templates/CLAUDE.md.hbs) for a complete example.
+
+---
+
 ## Switch registries & authenticate
 
 ```shell

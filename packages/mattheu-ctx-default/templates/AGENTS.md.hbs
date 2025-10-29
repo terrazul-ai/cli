@@ -1,0 +1,30 @@
+{{~ var projectMission = askUser('What problem does this project solve? Share 1-2 sentences.') ~}}
+{{~ var architectureHighlights = askUser('Summarize the architecture or main components to highlight.') ~}}
+{{~ var operationsNotes = askUser('Outline the build/deploy process or key operational notes.') ~}}
+{{~ var developerNotes = askUser('Share developer onboarding steps or must-run commands.') ~}}
+{{~ var roadmapNotes = askUser('List upcoming work or roadmap themes (optional). Press enter to skip.') ~}}
+{{~ var risksNotes = askUser('List known risks or open questions (optional). Press enter to skip.') ~}}
+
+# Repository Context
+
+## Overview
+{{{ vars.projectMission }}}
+
+## Architecture & Stack
+{{{ vars.architectureHighlights }}}
+
+## Delivery & Operations
+{{{ vars.operationsNotes }}}
+
+## Developer Experience
+{{{ vars.developerNotes }}}
+
+{{#if vars.roadmapNotes}}
+## Roadmap
+{{{ vars.roadmapNotes }}}
+{{/if}}
+
+{{#if vars.risksNotes}}
+## Risks & Open Questions
+{{{ vars.risksNotes }}}
+{{/if}}

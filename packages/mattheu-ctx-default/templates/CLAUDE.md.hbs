@@ -1,0 +1,41 @@
+{{~ var projectPitch = askUser('Summarize this project for Claude (1-2 sentences).') ~}}
+{{~ var mainPersona = askUser('Who is Claude primarily assisting? (e.g., maintainers, support engineers)') ~}}
+{{~ var coreWorkflows = askUser('Describe the most important workflows or tasks Claude should help with.') ~}}
+{{~ var guardrails = askUser('List any constraints, compliance requirements, or guardrails Claude must respect.') ~}}
+{{~ var repoFiles = askAgent("""You are an expert technical writer documenting a software repository.\nProduce a concise bullet list where each bullet has the format `- path: short description`.\nSummarize the purpose of key files and directories that exist in this repository.\nOnly describe items you are confident about from the available context.\nIf you lack context about the repo contents, output `- Unable to determine repository structure.`.""", { json: true }) ~}}
+{{~ var kickoffBrief = askAgent("""You to write a summarise the pitch and audience into a two-sentence summary.
+
+Project pitch:
+{{ vars.projectPitch }}
+
+Main audience:
+{{ vars.mainPersona }}
+""") ~}}
+
+# Claude Briefing
+
+## Snapshot
+{{{ vars.projectPitch }}}
+
+## Audience
+{{{ vars.mainPersona }}}
+
+## Core Workflows
+{{{ vars.coreWorkflows }}}
+
+## Guardrails
+{{{ vars.guardrails }}}
+
+## Repository Files
+{{#if vars.repoFiles.result}}
+{{{ vars.repoFiles.result }}}
+{{else}}
+{{{ vars.repoFiles }}}
+{{/if}}
+
+## Kickoff Message For Claude
+{{#if vars.kickoffBrief.summary}}
+{{{ vars.kickoffBrief.summary }}}
+{{else}}
+{{{ vars.kickoffBrief }}}
+{{/if}}

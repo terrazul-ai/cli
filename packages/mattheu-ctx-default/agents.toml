@@ -1,0 +1,16 @@
+[package]
+name = "mattheu-ctx-default"
+version = "0.1.0"
+description = "Snippet-driven default context templates for Terrazul CLI"
+
+[exports.codex]
+template = "templates/AGENTS.md.hbs"
+
+[exports.claude]
+template = "templates/CLAUDE.md.hbs"
+
+[exports.cursor]
+template = "templates/cursor.rules.mdc.hbs"
+
+[exports.copilot]
+template = "templates/COPILOT.md.hbs"
