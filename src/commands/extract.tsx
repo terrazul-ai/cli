@@ -16,17 +16,10 @@ import {
 } from '../core/extract/orchestrator.js';
 import { ExtractWizard } from '../ui/extract/ExtractWizard.js';
 import { createInkLogger } from '../ui/logger-adapter.js';
+import { resolveProfileScope, slugifySegment } from '../utils/profile.js';
 
 import type { Command } from 'commander';
 import type { CLIContext } from '../utils/context.js';
-
-function slugifySegment(input: string): string {
-  const normalized = input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return normalized || 'package';
-}
 
 function deriveDefaultName(fromDir: string): string {
   const base = path.basename(fromDir) || 'project';
@@ -48,22 +41,6 @@ interface ExtractArgs {
   force?: boolean;
   dryRun?: boolean;
   interactive?: boolean;
-}
-
-async function resolveProfileScope(ctx: CLIContext): Promise<string | undefined> {
-  try {
-    const cfg = await ctx.config.load();
-    const activeEnv = cfg.environments?.[cfg.environment];
-    const username = activeEnv?.username ?? cfg.username;
-    const trimmed = username?.trim().replace(/^@+/, '');
-    if (!trimmed) return undefined;
-    const normalized = slugifySegment(trimmed);
-    return normalized || undefined;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    ctx.logger.debug(`extract: unable to read profile scope: ${message}`);
-    return undefined;
-  }
 }
 
 export async function buildInteractiveBaseOptions(
