@@ -332,6 +332,7 @@ cli/
 - `tz publish` – Validate structure; build tarball; POST to registry
 - `tz yank @pkg@version` / `tz unyank @pkg@version` – Hide/restore package versions from new installs
 - `tz extract --from .claude --out ../pkg --name @user/pkg --pkg-version 0.1.0` – Extract AI configs into publishable package scaffold
+- `tz create [name]` – Interactive wizard to scaffold a new AI agent package (supports `--dry-run` and `TZ_CREATE_AUTOFILL` automation)
 - `tz link [@user/package]` – Register local package for development (like `npm link`)
 - `tz unlink [package]` – Remove local development link, restore to published version
 - `tz validate [--offline]` – Validate package structure, manifest, and dependencies
@@ -387,6 +388,29 @@ tz extract --from .claude --out ../my-package --name @user/pkg --pkg-version 0.1
 - `agents.toml` generated and valid.
 - Selected directories fully copied; relative paths preserved.
 - `tz validate` passes on the result.
+
+---
+
+### `tz create`
+
+**Purpose**: Scaffold a new Terrazul package via an interactive wizard or scripted automation.
+
+**Behavior**
+
+1. Wizard presents four steps: metadata → tool compatibility → options → review.
+2. Defaults package name to `@{username}/{cwd-basename}` (or `@local/{cwd-basename}` when no username is configured).
+3. Generates `agents.toml`, `README.md`, `.gitignore`, and empty directories (`agents/`, `commands/`, `configurations/`, `mcp/`; optionally `hooks/`).
+4. Adds selected tools (claude, codex, cursor, copilot) to `[compatibility]` with wildcard ranges.
+5. Supports `--dry-run` to preview the scaffold without writing files.
+6. Accepts `TZ_CREATE_AUTOFILL` JSON for non-interactive runs (fields: `description`, `license`, `tools`, `includeExamples`, `includeHooks`, `dryRun`, `submit`, `cancel`).
+
+**Acceptance Criteria**
+
+- Wizard navigation mirrors `tz extract` (Tab/Shift+Tab, Space, Enter, Esc, double Ctrl+C to cancel).
+- Generated manifests include `[compatibility]` when tools are selected; dry-run mode only logs planned outputs.
+- Non-empty target directories throw a `FILE_EXISTS` error with guidance.
+- Automation payloads can create or preview scaffolds without a TTY.
+- Success output lists created files and recommended next steps (cd, link, validate, publish).
 
 ---
 

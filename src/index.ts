@@ -4,6 +4,7 @@ import { registerAddCommand } from './commands/add.js';
 import { registerApplyCommand } from './commands/apply.js';
 import { registerAuthCommand } from './commands/auth.js';
 import { registerCacheCommand } from './commands/cache.js';
+import { registerCreateCommand } from './commands/create.js';
 import { registerEnvCommand } from './commands/env.js';
 import { registerExtractCommand } from './commands/extract.js';
 import { registerInitCommand } from './commands/init.js';
@@ -37,6 +38,7 @@ function buildProgram(argv: string[]): Command {
   registerAddCommand(program, createCLIContext);
   registerUpdateCommand(program, createCLIContext);
   registerPublishCommand(program, createCLIContext);
+  registerCreateCommand(program, createCLIContext);
   registerRunCommand(program, createCLIContext);
   registerYankCommand(program, createCLIContext);
   registerUnyankCommand(program, createCLIContext);
