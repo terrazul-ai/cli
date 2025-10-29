@@ -1,0 +1,64 @@
+name: Jira Webhook Handler
+
+# This workflow is triggered by Jira webhooks via repository_dispatch
+on:
+  repository_dispatch:
+    types: [jira_issue_created]
+
+jobs:
+  handle-jira-event:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display Jira event data
+        run: |
+          echo "Jira Event Received!"
+          echo "Event Type: ${{ github.event.action }}"
+          echo "Issue Key: ${{ github.event.client_payload.issue.key }}"
+          echo "Issue Summary: ${{ github.event.client_payload.issue.fields.summary }}"
+          echo "Issue Type: ${{ github.event.client_payload.issue.fields.issuetype.name }}"
+          echo "Reporter: ${{ github.event.client_payload.issue.fields.reporter.displayName }}"
+          echo ""
+          echo "Full payload:"
+          echo '${{ toJSON(github.event.client_payload) }}'
+
+      # Example: Create a GitHub issue for the Jira ticket
+      - name: Create corresponding GitHub issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jiraIssue = context.payload.client_payload.issue;
+            const issueBody = `
+            **Jira Issue:** [${jiraIssue.key}](${context.payload.client_payload.issue.self.replace('/rest/api/2/issue/', '/browse/')})
+            **Type:** ${jiraIssue.fields.issuetype.name}
+            **Reporter:** ${jiraIssue.fields.reporter.displayName}
+
+            ## Description
+            ${jiraIssue.fields.description || 'No description provided'}
+
+            ---
+            _Automatically created from Jira webhook_
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[${jiraIssue.key}] ${jiraIssue.fields.summary}`,
+              body: issueBody,
+              labels: ['jira-sync', jiraIssue.fields.issuetype.name.toLowerCase()]
+            });
+
+      # Add your custom automation steps here
+      # Examples:
+      # - Send notifications to Slack
+      # - Update documentation
+      # - Trigger a build or deployment
+      # - Run tests related to the issue
+
+      - name: Custom automation step
+        run: |
+          echo "Add your custom automation logic here"
+          echo "You can access Jira data using: \${{ github.event.client_payload.issue.* }}"
