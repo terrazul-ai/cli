@@ -3,13 +3,14 @@
 // Produces a single-file ESM bundle with a shebang at dist/tz.mjs
 
 import esbuild from 'esbuild';
-import { promises as fsPromises } from 'node:fs';
-import fs from 'node:fs';
+import fs, { promises as fsPromises } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const isWatch = process.argv.includes('--watch');
 
 const stripInkDevtoolsPlugin = {
   name: 'strip-ink-devtools',
@@ -36,35 +37,7 @@ async function ensureYogaAsset() {
   }
 }
 
-async function build() {
-  // Build the ESM bundle (for regular npm usage)
-  await esbuild.build({
-    entryPoints: ['src/index.ts'],
-    outfile: 'dist/tz.mjs',
-    bundle: true,
-    platform: 'node',
-    target: ['node22'],
-    format: 'esm',
-    logLevel: 'info',
-    sourcemap: false,
-    legalComments: 'none',
-    banner: {
-      js: '#!/usr/bin/env node\nimport { createRequire as __createRequire } from "module";\nconst require = __createRequire(import.meta.url);',
-    },
-    loader: {
-      '.ts': 'ts',
-      '.tsx': 'tsx',
-    },
-    jsx: 'automatic',
-    jsxImportSource: 'react',
-    external: ['react-devtools-core'],
-    define: {
-      'process.env.NODE_ENV': '"production"',
-    },
-    plugins: [stripInkDevtoolsPlugin],
-  });
-
-  // Create a CJS wrapper for SEA that executes the bundled ESM entry via Module.runMain
+async function writeSeaWrapper() {
   const seaWrapperCode = `#!/usr/bin/env node
 // CJS wrapper that executes the bundled ESM entry via Module.runMain
 (() => {
@@ -108,7 +81,9 @@ async function build() {
 
   await fsPromises.writeFile('dist/sea-entry.cjs', seaWrapperCode);
   await fsPromises.chmod('dist/sea-entry.cjs', 0o755);
+}
 
+async function buildSeaFetcherBundle() {
   await esbuild.build({
     entryPoints: ['src/runtime/sea-fetcher.ts'],
     outfile: 'dist/runtime/sea-fetcher.mjs',
@@ -123,6 +98,11 @@ async function build() {
       js: 'import { fileURLToPath as __fileURLToPath } from "url";\nimport { dirname as __pathDirname } from "path";\nconst __filename = __fileURLToPath(import.meta.url);\nconst __dirname = __pathDirname(__filename);',
     },
   });
+}
+
+async function runPostBuildSteps() {
+  await writeSeaWrapper();
+  await buildSeaFetcherBundle();
 
   try {
     fs.chmodSync('dist/tz.mjs', 0o755);
@@ -137,6 +117,93 @@ async function build() {
   }
 
   await ensureYogaAsset();
+}
+
+let postBuildChain = Promise.resolve();
+let buildCount = 0;
+
+const postBuildPlugin = {
+  name: 'terrazul-post-build-steps',
+  setup(build) {
+    build.onEnd((result) => {
+      if (result.errors.length > 0) {
+        console.error('❌ Build failed. Fix the errors above to continue.');
+        return;
+      }
+
+      buildCount += 1;
+
+      postBuildChain = postBuildChain
+        .then(async () => {
+          await runPostBuildSteps();
+          const label = buildCount === 1 ? '✅ Built dist/tz.mjs' : '✅ Rebuilt dist/tz.mjs';
+          console.log(label);
+        })
+        .catch((postError) => {
+          console.error('❌ Post-build step failed:', postError);
+        });
+
+      return postBuildChain;
+    });
+  },
+};
+
+async function build() {
+  const mainContext = await esbuild.context({
+    entryPoints: ['src/index.ts'],
+    outfile: 'dist/tz.mjs',
+    bundle: true,
+    platform: 'node',
+    target: ['node22'],
+    format: 'esm',
+    logLevel: 'info',
+    sourcemap: false,
+    legalComments: 'none',
+    banner: {
+      js: '#!/usr/bin/env node\nimport { createRequire as __createRequire } from "module";\nconst require = __createRequire(import.meta.url);',
+    },
+    loader: {
+      '.ts': 'ts',
+      '.tsx': 'tsx',
+    },
+    jsx: 'automatic',
+    jsxImportSource: 'react',
+    external: ['react-devtools-core'],
+    define: {
+      'process.env.NODE_ENV': '"production"',
+    },
+    plugins: [stripInkDevtoolsPlugin, postBuildPlugin],
+  });
+
+  try {
+    await mainContext.rebuild();
+  } catch (error) {
+    await postBuildChain.catch(() => {});
+    await mainContext.dispose();
+    throw error;
+  }
+
+  if (isWatch) {
+    await mainContext.watch();
+
+    console.log('⚡ Watching for changes in src/... (press Ctrl+C to exit)');
+
+    const shutdown = async () => {
+      try {
+        await postBuildChain.catch(() => {});
+        await mainContext.dispose();
+      } finally {
+        process.exit(0);
+      }
+    };
+
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+    return;
+  }
+
+  await postBuildChain.catch(() => {});
+  await mainContext.dispose();
 }
 
 build().catch((err) => {
