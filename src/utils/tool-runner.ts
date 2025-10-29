@@ -130,25 +130,45 @@ export async function invokeTool(options: InvokeToolOptions): Promise<ToolExecut
     appendArgs(args, SAFE_ARGS[options.tool.type]);
   }
   appendArgs(args, REQUIRED_ARGS[options.tool.type]);
-  if (options.tool.model) {
+  if (options.tool.model && options.tool.model !== 'default') {
     appendArgs(args, ['--model', options.tool.model]);
   }
 
   const env = expandEnvVars(options.tool.env);
   const runEnv = mergeEnv(env, options.env);
 
-  const result = await runCommand(command, args, {
-    cwd: options.cwd,
-    input: options.prompt,
-    timeoutMs: options.timeoutMs,
-    env: runEnv,
-  });
+  let result;
+  try {
+    result = await runCommand(command, args, {
+      cwd: options.cwd,
+      input: options.prompt,
+      timeoutMs: options.timeoutMs,
+      env: runEnv,
+    });
+  } catch (error) {
+    const isNodeError = error && typeof error === 'object' && 'code' in error;
+    const errorCode = isNodeError ? (error as { code: string }).code : undefined;
+
+    if (errorCode === 'ENOENT') {
+      throw new TerrazulError(
+        ErrorCode.TOOL_NOT_FOUND,
+        `Command '${command}' not found in PATH. Please ensure '${options.tool.type}' CLI is installed and accessible.`,
+        { command, PATH: process.env.PATH },
+      );
+    }
+
+    throw new TerrazulError(
+      ErrorCode.TOOL_EXECUTION_FAILED,
+      `Failed to spawn command '${command}': ${error instanceof Error ? error.message : String(error)}`,
+      { command, error },
+    );
+  }
 
   if (result.exitCode !== 0) {
     throw new TerrazulError(
       ErrorCode.TOOL_EXECUTION_FAILED,
       `Tool '${command}' exited with code ${result.exitCode ?? -1}`,
-      { stderr: result.stderr },
+      { stderr: result.stderr, stdout: result.stdout },
     );
   }
 
