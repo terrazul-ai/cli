@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/terrazul-ai/cli/compare/v0.9.0...v0.10.0) (2025-10-29)
+
+
+### Features
+
+* **create:** Introduces the 'tz create' CLI command ([#33](https://github.com/terrazul-ai/cli/issues/33)) ([05eab7e](https://github.com/terrazul-ai/cli/commit/05eab7e68d59306ce696b04a8fe5ebcc1b84aa29))
+
 ## [0.9.0](https://github.com/terrazul-ai/cli/compare/v0.8.0...v0.9.0) (2025-10-29)
 
 
