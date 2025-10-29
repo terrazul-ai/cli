@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/terrazul-ai/cli/compare/v0.8.0...v0.9.0) (2025-10-29)
+
+
+### Features
+
+* **apply tools:** Add snippet-based template processing ([#29](https://github.com/terrazul-ai/cli/issues/29)) ([fa59f13](https://github.com/terrazul-ai/cli/commit/fa59f13abe73bb2d0fc6ad4f69cf2e42c4f3f2c7))
+
 ## [0.8.0](https://github.com/terrazul-ai/cli/compare/v0.7.4...v0.8.0) (2025-10-08)
 
 
