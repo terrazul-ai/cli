@@ -374,6 +374,195 @@ The workflow file is located at `.github/workflows/jira-webhook.yml`. You can cu
    - Jira API tokens are passed via Authorization headers (not URL params)
    - Sensitive data in logs is masked by GitHub Actions
 
+## Alternative: Using CircleCI Instead of GitHub Actions
+
+If you prefer to run your processes in CircleCI, you can use the Jira → GitHub Actions → CircleCI → Jira flow.
+
+### Why Use CircleCI?
+
+- More complex build environments or dependencies
+- Longer-running processes (CircleCI has higher time limits)
+- Existing CircleCI infrastructure
+- Better caching and parallelization for complex workflows
+
+### Setup Overview
+
+1. **Jira webhook** triggers GitHub Actions (as before)
+2. **GitHub Actions** receives the webhook and triggers a CircleCI pipeline
+3. **CircleCI** runs your process and posts results back to Jira
+4. **Jira** receives updates at each stage
+
+### Step 1: Create CircleCI API Token
+
+1. Go to [CircleCI User Settings](https://app.circleci.com/settings/user/tokens)
+2. Click **Create New Token**
+3. Give it a name (e.g., "Jira Integration")
+4. Click **Create Token**
+5. **Copy the token immediately**
+
+### Step 2: Add CircleCI Token to GitHub Secrets
+
+Add this to your GitHub repository secrets:
+
+**CIRCLE_TOKEN**
+
+```
+your-circleci-token-here
+```
+
+### Step 3: Use the CircleCI Workflow
+
+The repository includes a workflow file at `.github/workflows/jira-circleci-webhook.yml` that:
+
+- Receives Jira webhooks
+- Posts an acknowledgment to Jira ("Processing started...")
+- Triggers a CircleCI pipeline with Jira parameters
+- Handles errors and posts them back to Jira
+
+To use it, update your Jira webhook `event_type` to match the workflow:
+
+- `jira_issue_created`
+- `jira_issue_updated`
+
+### Step 4: Configure CircleCI
+
+Create or update `.circleci/config.yml` in your repository. A complete example is available at `docs/circleci-config-example.yml`.
+
+**Key features of the CircleCI config:**
+
+1. **Pipeline parameters** - Receives Jira issue data from GitHub Actions:
+
+   ```yaml
+   parameters:
+     run_jira_workflow:
+       type: boolean
+       default: false
+     jira_issue_key:
+       type: string
+       default: ''
+     jira_base_url:
+       type: string
+       default: ''
+     # ... and more
+   ```
+
+2. **Reusable commands** for posting to Jira:
+
+   ```yaml
+   commands:
+     post_jira_comment:
+       description: 'Post a comment to a Jira issue'
+       # ... parameters and steps
+   ```
+
+3. **Jobs that post updates to Jira:**
+
+   ```yaml
+   jobs:
+     process-jira-issue:
+       steps:
+         - post_jira_comment:
+             message: 'Build started'
+         - run:
+             name: Run your process
+             command: |
+               # Your process here
+               echo "Results" | tee /tmp/results.txt
+         - post_jira_results:
+             results_file: /tmp/results.txt
+         - post_jira_comment:
+             message: 'Build completed'
+             status: 'success'
+   ```
+
+4. **Conditional workflow** - Only runs when triggered by Jira:
+   ```yaml
+   workflows:
+     jira-triggered:
+       when: << pipeline.parameters.run_jira_workflow >>
+       jobs:
+         - process-jira-issue
+   ```
+
+### Step 5: Test the Integration
+
+1. **Create a test Jira issue**
+2. **Check the flow:**
+   - GitHub Actions (should trigger CircleCI)
+   - CircleCI (should start a pipeline)
+   - Jira (should receive multiple comments)
+
+Expected Jira comments:
+
+1. "⚙️ Processing started" (from GitHub Actions)
+2. "ℹ️ CircleCI: Build started" (from CircleCI)
+3. "📊 Results from CircleCI" (from CircleCI with output)
+4. "✅ CircleCI: Build completed successfully" (from CircleCI)
+
+### CircleCI Example: Running Tests
+
+Here's a practical example that runs tests and posts results:
+
+```yaml
+jobs:
+  run-tests:
+    docker:
+      - image: cimg/node:22.0
+    steps:
+      - checkout
+      - post_jira_comment:
+          message: 'Running tests'
+      - run:
+          name: Install and test
+          command: |
+            pnpm install
+            pnpm test 2>&1 | tee /tmp/test-results.txt
+      - post_jira_results:
+          results_file: /tmp/test-results.txt
+      - post_jira_comment:
+          message: 'Tests completed'
+          status: 'success'
+```
+
+### CircleCI vs GitHub Actions: When to Use Each
+
+**Use GitHub Actions when:**
+
+- Simple, quick processes (< 5 minutes)
+- Minimal dependencies
+- Staying within GitHub ecosystem
+- Using GitHub-specific integrations
+
+**Use CircleCI when:**
+
+- Complex build environments
+- Long-running processes (> 30 minutes)
+- Need advanced caching
+- Existing CircleCI infrastructure
+- Need Docker layer caching or parallelization
+
+### Troubleshooting CircleCI Integration
+
+**CircleCI pipeline not triggering:**
+
+1. Check that `CIRCLE_TOKEN` secret is set in GitHub
+2. Verify the repository path in the API URL matches your GitHub repo
+3. Check CircleCI project is set up and following the repository
+4. Look at GitHub Actions logs for the API response
+
+**CircleCI not posting to Jira:**
+
+1. Verify pipeline parameters are being received (check CircleCI UI)
+2. Ensure Jira credentials are passed correctly
+3. Check CircleCI logs for curl responses
+4. Verify the issue key exists and is accessible
+
+**Pipeline parameters not working:**
+
+1. Ensure `.circleci/config.yml` defines the parameters at the top level
+2. Check the workflow uses `when: << pipeline.parameters.run_jira_workflow >>`
+3. Verify parameter names match exactly between GitHub Actions and CircleCI config
+
 ## Additional Events
 
 To handle more Jira events, modify the workflow's `on` section:
@@ -392,9 +581,23 @@ Then create separate webhooks in Jira for each event type with the corresponding
 
 ## Resources
 
+### GitHub Actions
+
 - [GitHub Actions: repository_dispatch event](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows#repository_dispatch)
-- [Jira Webhooks Documentation](https://developer.atlassian.com/server/jira/platform/webhooks/)
 - [GitHub REST API: Create a repository dispatch event](https://docs.github.com/en/rest/repos/repos#create-a-repository-dispatch-event)
+- [GitHub Actions: Encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
+
+### Jira API
+
+- [Jira Webhooks Documentation](https://developer.atlassian.com/server/jira/platform/webhooks/)
 - [Jira REST API: Add Comment](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-comments/#api-rest-api-3-issue-issueidorkey-comment-post)
 - [Jira Document Format](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
 - [Jira REST API: Transitions](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/#api-rest-api-3-issue-issueidorkey-transitions-post)
+
+### CircleCI
+
+- [CircleCI API v2 Documentation](https://circleci.com/docs/api/v2/)
+- [Trigger a pipeline with parameters](https://circleci.com/docs/api/v2/index.html#operation/triggerPipeline)
+- [Pipeline parameters and values](https://circleci.com/docs/pipeline-variables/#pipeline-parameters-in-configuration)
+- [Conditional workflows](https://circleci.com/docs/configuration-reference/#using-when-in-workflows)
+- [Personal API tokens](https://circleci.com/docs/managing-api-tokens/)

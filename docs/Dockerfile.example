@@ -1,0 +1,41 @@
+# Example Dockerfile for Jira-triggered workflows with Claude/Codex
+# This container installs dependencies, clones the repo, and runs commands
+
+FROM node:22-bullseye
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    jq \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Claude Code CLI (if using npm package)
+# Replace with actual installation method when Claude Code is public
+# RUN npm install -g @anthropic/claude-code
+
+# Or install from GitHub releases
+# RUN curl -L https://github.com/anthropics/claude-code/releases/latest/download/claude-code-linux-x64 -o /usr/local/bin/claude-code \
+#     && chmod +x /usr/local/bin/claude-code
+
+# Install OpenAI Codex CLI (example)
+# RUN pip3 install openai
+
+# Set working directory
+WORKDIR /workspace
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Environment variables will be passed from GitHub Actions:
+# - JIRA_ISSUE_KEY
+# - JIRA_ISSUE_SUMMARY
+# - JIRA_ISSUE_DESCRIPTION
+# - JIRA_BASE_URL
+# - JIRA_USER_EMAIL
+# - JIRA_API_TOKEN
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

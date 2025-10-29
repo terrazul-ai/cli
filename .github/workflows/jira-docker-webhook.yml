@@ -1,0 +1,241 @@
+name: Jira Docker Handler
+
+# This workflow receives Jira webhooks and runs a Docker container to process them
+on:
+  repository_dispatch:
+    types: [jira_issue_created]
+
+jobs:
+  run-docker-process:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display Jira event data
+        run: |
+          echo "Jira Event Received!"
+          echo "Issue Key: ${{ github.event.client_payload.issue.key }}"
+          echo "Issue Summary: ${{ github.event.client_payload.issue.fields.summary }}"
+
+      - name: Post acknowledgment to Jira
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+        run: |
+          comment_body=$(cat <<'EOF'
+          {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "🐳 Docker processing started",
+                      "marks": [{"type": "strong"}]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          )
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            -d "$comment_body" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/comment"
+
+      # Option 1: Pull pre-built image from a registry
+      - name: Pull Docker image
+        run: |
+          # Pull from Docker Hub
+          docker pull your-dockerhub-username/your-image:latest
+
+          # Or pull from GitHub Container Registry (ghcr.io)
+          # echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          # docker pull ghcr.io/${{ github.repository_owner }}/your-image:latest
+
+          # Or pull from a private registry
+          # echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login your-registry.com -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
+          # docker pull your-registry.com/your-image:latest
+
+      # Option 2: Build image from Dockerfile in the repo
+      # Uncomment this section if you want to build the image on-the-fly
+      # - name: Build Docker image
+      #   run: |
+      #     docker build -t jira-processor:latest -f .github/docker/Dockerfile .
+
+      - name: Run Docker container and capture output
+        id: docker_run
+        env:
+          JIRA_ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+          JIRA_ISSUE_SUMMARY: ${{ github.event.client_payload.issue.fields.summary }}
+          JIRA_ISSUE_DESCRIPTION: ${{ github.event.client_payload.issue.fields.description }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          # Run the Docker container with:
+          # - Environment variables for Jira data
+          # - Current repo mounted as /workspace
+          # - Output captured to a file
+
+          # Replace 'your-dockerhub-username/your-image:latest' with your actual image
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            -e JIRA_ISSUE_KEY="${JIRA_ISSUE_KEY}" \
+            -e JIRA_ISSUE_SUMMARY="${JIRA_ISSUE_SUMMARY}" \
+            -e JIRA_ISSUE_DESCRIPTION="${JIRA_ISSUE_DESCRIPTION}" \
+            -e JIRA_BASE_URL="${JIRA_BASE_URL}" \
+            -e JIRA_USER_EMAIL="${JIRA_USER_EMAIL}" \
+            -e JIRA_API_TOKEN="${JIRA_API_TOKEN}" \
+            your-dockerhub-username/your-image:latest \
+            2>&1 | tee docker_output.txt
+
+          # The container should:
+          # 1. Read environment variables
+          # 2. Perform processing
+          # 3. Output results to stdout
+          # 4. Optionally post to Jira directly
+
+          echo "Docker container completed"
+
+      - name: Post Docker output to Jira
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+        run: |
+          # Read the Docker output
+          output=$(cat docker_output.txt)
+
+          # Escape for JSON (basic)
+          output_escaped=$(echo "$output" | jq -Rs .)
+
+          # Create comment body
+          comment_body=$(cat <<EOF
+          {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "🐳 Docker processing completed",
+                      "marks": [{"type": "strong"}]
+                    }
+                  ]
+                },
+                {
+                  "type": "codeBlock",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": $output_escaped
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "View workflow: "
+                    },
+                    {
+                      "type": "text",
+                      "text": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "marks": [
+                        {
+                          "type": "link",
+                          "attrs": {
+                            "href": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          )
+
+          # Post to Jira
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            -d "$comment_body" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/comment"
+
+      - name: Post error to Jira if workflow fails
+        if: failure()
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+        run: |
+          comment_body=$(cat <<'EOF'
+          {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "❌ Docker processing failed",
+                      "marks": [{"type": "strong"}]
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Check logs: "
+                    },
+                    {
+                      "type": "text",
+                      "text": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "marks": [
+                        {
+                          "type": "link",
+                          "attrs": {
+                            "href": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          )
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            -d "$comment_body" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/comment"

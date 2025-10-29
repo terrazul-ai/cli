@@ -1,0 +1,304 @@
+# Example CircleCI configuration for Jira integration
+# Place this in .circleci/config.yml
+
+version: 2.1
+
+# Define pipeline parameters to receive from GitHub Actions
+parameters:
+  run_jira_workflow:
+    type: boolean
+    default: false
+  jira_issue_key:
+    type: string
+    default: ''
+  jira_issue_summary:
+    type: string
+    default: ''
+  jira_base_url:
+    type: string
+    default: ''
+  jira_user_email:
+    type: string
+    default: ''
+  jira_api_token:
+    type: string
+    default: ''
+
+# Define commands for reusable steps
+commands:
+  post_jira_comment:
+    description: 'Post a comment to a Jira issue'
+    parameters:
+      message:
+        type: string
+      status:
+        type: string
+        default: 'info'
+    steps:
+      - run:
+          name: Post comment to Jira
+          command: |
+            # Determine emoji based on status
+            case "<< parameters.status >>" in
+              success) emoji="✅" ;;
+              error) emoji="❌" ;;
+              warning) emoji="⚠️" ;;
+              *) emoji="ℹ️" ;;
+            esac
+
+            # Create comment body
+            cat > /tmp/jira_comment.json <<EOF
+            {
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "${emoji} CircleCI: << parameters.message >>",
+                        "marks": [{"type": "strong"}]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Job: ${CIRCLE_JOB}"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Build: "
+                      },
+                      {
+                        "type": "text",
+                        "text": "${CIRCLE_BUILD_URL}",
+                        "marks": [
+                          {
+                            "type": "link",
+                            "attrs": {
+                              "href": "${CIRCLE_BUILD_URL}"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+            EOF
+
+            # Post to Jira
+            curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -u "<< pipeline.parameters.jira_user_email >>:<< pipeline.parameters.jira_api_token >>" \
+              -d @/tmp/jira_comment.json \
+              "<< pipeline.parameters.jira_base_url >>/rest/api/3/issue/<< pipeline.parameters.jira_issue_key >>/comment"
+
+  post_jira_results:
+    description: 'Post detailed results to Jira'
+    parameters:
+      results_file:
+        type: string
+    steps:
+      - run:
+          name: Post results to Jira
+          command: |
+            # Read results from file
+            results=$(cat << parameters.results_file >>)
+
+            # Escape for JSON (basic escaping)
+            results_escaped=$(echo "$results" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}' | sed '$ s/\\n$//')
+
+            # Create comment with code block
+            cat > /tmp/jira_results.json <<EOF
+            {
+              "body": {
+                "type": "doc",
+                "version": 1,
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "📊 Results from CircleCI",
+                        "marks": [{"type": "strong"}]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "codeBlock",
+                    "attrs": {
+                      "language": "text"
+                    },
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "${results_escaped}"
+                      }
+                    ]
+                  },
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "View full build: "
+                      },
+                      {
+                        "type": "text",
+                        "text": "${CIRCLE_BUILD_URL}",
+                        "marks": [
+                          {
+                            "type": "link",
+                            "attrs": {
+                              "href": "${CIRCLE_BUILD_URL}"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+            EOF
+
+            # Post to Jira
+            curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -u "<< pipeline.parameters.jira_user_email >>:<< pipeline.parameters.jira_api_token >>" \
+              -d @/tmp/jira_results.json \
+              "<< pipeline.parameters.jira_base_url >>/rest/api/3/issue/<< pipeline.parameters.jira_issue_key >>/comment"
+
+jobs:
+  process-jira-issue:
+    docker:
+      - image: cimg/node:22.0
+    steps:
+      - checkout
+
+      - post_jira_comment:
+          message: 'Build started'
+          status: 'info'
+
+      - run:
+          name: Install dependencies
+          command: |
+            echo "Installing dependencies..."
+            # Add your dependency installation commands
+            # npm install
+            # pnpm install
+
+      - run:
+          name: Run your process
+          command: |
+            echo "Processing Jira issue: << pipeline.parameters.jira_issue_key >>"
+            echo "Summary: << pipeline.parameters.jira_issue_summary >>"
+
+            # Your actual process here - replace with your commands
+            # This example just creates some output
+            {
+              echo "=== Processing Results ==="
+              echo "Issue: << pipeline.parameters.jira_issue_key >>"
+              echo "Time: $(date)"
+              echo ""
+              echo "Process completed successfully!"
+              echo "- Task 1: Done"
+              echo "- Task 2: Done"
+              echo "- Task 3: Done"
+            } | tee /tmp/results.txt
+
+            # Example: Run tests
+            # npm test | tee /tmp/results.txt
+
+            # Example: Run build
+            # npm run build 2>&1 | tee /tmp/results.txt
+
+            # Example: Run custom script
+            # node scripts/process.js << pipeline.parameters.jira_issue_key >> | tee /tmp/results.txt
+
+      - post_jira_results:
+          results_file: /tmp/results.txt
+
+      - post_jira_comment:
+          message: 'Build completed successfully'
+          status: 'success'
+
+      # Handle failures
+      - when:
+          condition:
+            equal: [failure, << job.status >>]
+          steps:
+            - post_jira_comment:
+                message: 'Build failed'
+                status: 'error'
+
+  # Alternative: Run tests and post results
+  run-tests:
+    docker:
+      - image: cimg/node:22.0
+    steps:
+      - checkout
+
+      - post_jira_comment:
+          message: 'Running tests'
+          status: 'info'
+
+      - run:
+          name: Install dependencies
+          command: pnpm install
+
+      - run:
+          name: Run tests
+          command: |
+            pnpm test 2>&1 | tee /tmp/test-results.txt || true
+
+      - post_jira_results:
+          results_file: /tmp/test-results.txt
+
+      - run:
+          name: Check test results
+          command: |
+            if grep -q "FAIL" /tmp/test-results.txt; then
+              exit 1
+            fi
+
+      - post_jira_comment:
+          message: 'All tests passed'
+          status: 'success'
+
+      - when:
+          condition:
+            equal: [failure, << job.status >>]
+          steps:
+            - post_jira_comment:
+                message: 'Tests failed'
+                status: 'error'
+
+# Define workflows
+workflows:
+  # Regular workflow (runs on every push)
+  main:
+    when:
+      not: << pipeline.parameters.run_jira_workflow >>
+    jobs:
+      - run-tests
+
+  # Jira-triggered workflow
+  jira-triggered:
+    when: << pipeline.parameters.run_jira_workflow >>
+    jobs:
+      - process-jira-issue
+      # - run-tests  # Add more jobs as needed
