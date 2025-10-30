@@ -1,0 +1,157 @@
+name: Jira to CircleCI Handler
+
+# This workflow receives Jira webhooks and triggers CircleCI pipelines
+on:
+  repository_dispatch:
+    types: [jira_issue_created, jira_issue_updated]
+
+jobs:
+  trigger-circleci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Display Jira event data
+        run: |
+          echo "Jira Event Received!"
+          echo "Event Type: ${{ github.event.action }}"
+          echo "Issue Key: ${{ github.event.client_payload.issue.key }}"
+          echo "Issue Summary: ${{ github.event.client_payload.issue.fields.summary }}"
+
+      - name: Post acknowledgment to Jira
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+        run: |
+          comment_body=$(cat <<'EOF'
+          {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "⚙️ Processing started",
+                      "marks": [{"type": "strong"}]
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "CircleCI pipeline has been triggered. Results will be posted when complete."
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          )
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            -d "$comment_body" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/comment"
+
+      - name: Trigger CircleCI pipeline
+        env:
+          CIRCLE_TOKEN: ${{ secrets.CIRCLE_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+          ISSUE_SUMMARY: ${{ github.event.client_payload.issue.fields.summary }}
+        run: |
+          # Trigger CircleCI pipeline via API
+          response=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "Circle-Token: ${CIRCLE_TOKEN}" \
+            -d "{
+              \"branch\": \"main\",
+              \"parameters\": {
+                \"jira_issue_key\": \"${ISSUE_KEY}\",
+                \"jira_issue_summary\": \"${ISSUE_SUMMARY}\",
+                \"jira_base_url\": \"${{ secrets.JIRA_BASE_URL }}\",
+                \"jira_user_email\": \"${{ secrets.JIRA_USER_EMAIL }}\",
+                \"jira_api_token\": \"${{ secrets.JIRA_API_TOKEN }}\",
+                \"run_jira_workflow\": true
+              }
+            }" \
+            "https://circleci.com/api/v2/project/gh/${{ github.repository }}/pipeline")
+
+          # Extract pipeline information
+          pipeline_id=$(echo "$response" | jq -r '.id')
+          pipeline_number=$(echo "$response" | jq -r '.number')
+
+          if [ "$pipeline_id" != "null" ]; then
+            echo "✅ CircleCI pipeline triggered successfully"
+            echo "Pipeline ID: $pipeline_id"
+            echo "Pipeline Number: $pipeline_number"
+            echo "View at: https://app.circleci.com/pipelines/gh/${{ github.repository }}/${pipeline_number}"
+          else
+            echo "❌ Failed to trigger CircleCI pipeline"
+            echo "Response: $response"
+            exit 1
+          fi
+
+      - name: Post error to Jira if workflow fails
+        if: failure()
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+        run: |
+          comment_body=$(cat <<'EOF'
+          {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "❌ Failed to trigger CircleCI pipeline",
+                      "marks": [{"type": "strong"}]
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Check GitHub Actions for details: "
+                    },
+                    {
+                      "type": "text",
+                      "text": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "marks": [
+                        {
+                          "type": "link",
+                          "attrs": {
+                            "href": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          )
+
+          curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            -d "$comment_body" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/comment"

@@ -1,0 +1,179 @@
+name: Jira Webhook Handler
+
+# This workflow is triggered by Jira webhooks via repository_dispatch
+on:
+  repository_dispatch:
+    types: [jira_issue_created]
+
+jobs:
+  handle-jira-event:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Display Jira event data
+        run: |
+          echo "Jira Event Received!"
+          echo "Event Type: ${{ github.event.action }}"
+          echo "Issue Key: ${{ github.event.client_payload.issue.key }}"
+          echo "Issue Summary: ${{ github.event.client_payload.issue.fields.summary }}"
+          echo "Issue Type: ${{ github.event.client_payload.issue.fields.issuetype.name }}"
+          echo "Reporter: ${{ github.event.client_payload.issue.fields.reporter.displayName }}"
+          echo ""
+          echo "Full payload:"
+          echo '${{ toJSON(github.event.client_payload) }}'
+
+      # Example: Create a GitHub issue for the Jira ticket
+      - name: Create corresponding GitHub issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const jiraIssue = context.payload.client_payload.issue;
+            const issueBody = `
+            **Jira Issue:** [${jiraIssue.key}](${context.payload.client_payload.issue.self.replace('/rest/api/2/issue/', '/browse/')})
+            **Type:** ${jiraIssue.fields.issuetype.name}
+            **Reporter:** ${jiraIssue.fields.reporter.displayName}
+
+            ## Description
+            ${jiraIssue.fields.description || 'No description provided'}
+
+            ---
+            _Automatically created from Jira webhook_
+            `;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[${jiraIssue.key}] ${jiraIssue.fields.summary}`,
+              body: issueBody,
+              labels: ['jira-sync', jiraIssue.fields.issuetype.name.toLowerCase()]
+            });
+
+      # Add your custom automation steps here
+      # Examples:
+      # - Send notifications to Slack
+      # - Update documentation
+      # - Trigger a build or deployment
+      # - Run tests related to the issue
+
+      - name: Run your process and capture output
+        id: process_output
+        run: |
+          # Run your process here and capture its output
+          # Example: Replace this with your actual command
+          echo "Running process for issue: ${{ github.event.client_payload.issue.key }}"
+
+          # Your process command - replace with actual command
+          # output=$(your-command --arg1 --arg2)
+          output=$(echo "Process completed successfully!\n\nResults:\n- Item 1\n- Item 2\n- Item 3")
+
+          # Store output in a file to preserve multiline content
+          echo "$output" > process_output.txt
+
+          # Also set as output for next steps (escaped for JSON)
+          {
+            echo 'result<<EOF'
+            cat process_output.txt
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Post output back to Jira
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+        run: |
+          # Read the process output
+          output=$(cat process_output.txt)
+
+          # Format as Jira comment (supports Jira markdown)
+          comment_body=$(cat <<EOF
+          {
+            "body": {
+              "type": "doc",
+              "version": 1,
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "GitHub Action completed:",
+                      "marks": [{"type": "strong"}]
+                    }
+                  ]
+                },
+                {
+                  "type": "codeBlock",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "$output"
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "View workflow run: ",
+                      "marks": [{"type": "em"}]
+                    },
+                    {
+                      "type": "text",
+                      "text": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                      "marks": [
+                        {
+                          "type": "link",
+                          "attrs": {
+                            "href": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+          EOF
+          )
+
+          # Post comment to Jira using REST API v3
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            -d "$comment_body" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/comment"
+
+          echo "Comment posted to Jira issue: ${ISSUE_KEY}"
+
+      - name: Update Jira issue status (optional)
+        if: success()
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          ISSUE_KEY: ${{ github.event.client_payload.issue.key }}
+        run: |
+          # Optional: Transition the issue to a different status
+          # First, get available transitions
+          transitions=$(curl -s -X GET \
+            -H "Content-Type: application/json" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+            "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/transitions")
+
+          echo "Available transitions for ${ISSUE_KEY}:"
+          echo "$transitions" | jq '.transitions[] | {id: .id, name: .name}'
+
+          # Example: Transition to "In Progress" (adjust transition ID as needed)
+          # Uncomment and adjust the transition ID based on your workflow
+          # curl -X POST \
+          #   -H "Content-Type: application/json" \
+          #   -u "${JIRA_USER_EMAIL}:${JIRA_API_TOKEN}" \
+          #   -d '{"transition": {"id": "21"}}' \
+          #   "${JIRA_BASE_URL}/rest/api/3/issue/${ISSUE_KEY}/transitions"
