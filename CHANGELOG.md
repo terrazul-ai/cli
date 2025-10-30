@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/terrazul-ai/cli/compare/v0.10.0...v0.10.1) (2025-10-30)
+
+
+### Bug Fixes
+
+* Fixes --model default, as this causes Claude Code to fail ([#32](https://github.com/terrazul-ai/cli/issues/32)) ([8d2b400](https://github.com/terrazul-ai/cli/commit/8d2b400a986c2f3b4eca742d6fb0dc5de48e60e7))
+
 ## [0.10.0](https://github.com/terrazul-ai/cli/compare/v0.9.0...v0.10.0) (2025-10-29)
 
 
