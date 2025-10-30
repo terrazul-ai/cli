@@ -1,0 +1,20 @@
+[package]
+name = "@mattheu/research-code-agent"
+version = "0.0.0"
+description = "This agent does pre-work research before you kick off a difficult story"
+license = "MIT"
+
+[dependencies]
+# Add package dependencies here
+# "@terrazul/base" = "^1.0.0"
+
+[compatibility]
+claude = "*"
+codex = "*"
+
+[exports.claude]
+template = "templates/CLAUDE.md.hbs"
+
+[exports.codex]
+template = "templates/AGENTS.md.hbs"
+
