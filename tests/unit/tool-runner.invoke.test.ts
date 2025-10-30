@@ -39,7 +39,7 @@ describe('tool-runner', () => {
     } as RunResult);
 
     await invokeTool({
-      tool: { type: 'claude', command: 'claude', model: 'default' },
+      tool: { type: 'claude', command: 'claude', model: 'sonnet' },
       prompt: 'Explain',
       cwd: '/tmp/project',
     });
@@ -55,10 +55,31 @@ describe('tool-runner', () => {
         '--max-turns',
         '100',
         '--model',
-        'default',
+        'sonnet',
       ],
       expect.objectContaining({ cwd: '/tmp/project', input: 'Explain' }),
     );
+  });
+
+  it('skips --model flag when model is default', async () => {
+    const spy = vi.spyOn(proc, 'runCommand').mockResolvedValue({
+      stdout: '{"result":"ok"}',
+      stderr: '',
+      exitCode: 0,
+    } as RunResult);
+
+    await invokeTool({
+      tool: { type: 'claude', command: 'claude', model: 'default' },
+      prompt: 'Explain',
+      cwd: '/tmp/project',
+    });
+
+    const args = spy.mock.calls[0]?.[1] ?? [];
+    expect(args).not.toContain('--model');
+    expect(args).not.toContain('default');
+    expect(args).toContain('-p');
+    expect(args).toContain('--output-format');
+    expect(args).toContain('json');
   });
 
   it('expands spec env vars before invoking tool', async () => {
