@@ -1,5 +1,5 @@
 import { expandEnvVars } from './config.js';
-import { runCommand } from './proc.js';
+import { runCommand, type RunResult } from './proc.js';
 import { ErrorCode, TerrazulError } from '../core/errors.js';
 
 import type { ToolSpec, ToolType } from '../types/context.js';
@@ -137,7 +137,7 @@ export async function invokeTool(options: InvokeToolOptions): Promise<ToolExecut
   const env = expandEnvVars(options.tool.env);
   const runEnv = mergeEnv(env, options.env);
 
-  let result;
+  let result: RunResult;
   try {
     result = await runCommand(command, args, {
       cwd: options.cwd,
