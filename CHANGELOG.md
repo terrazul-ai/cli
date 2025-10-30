@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/terrazul-ai/cli/compare/v0.10.1...v0.11.0) (2025-10-30)
+
+
+### Features
+
+* **hotreload:** Refactor directory validation and add dryRun check ([#37](https://github.com/terrazul-ai/cli/issues/37)) ([9292c1f](https://github.com/terrazul-ai/cli/commit/9292c1fe35bee595c68efb2f96a6d1eb2996859f))
+
 ## [0.10.1](https://github.com/terrazul-ai/cli/compare/v0.10.0...v0.10.1) (2025-10-30)
 
 
