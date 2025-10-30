@@ -34,15 +34,9 @@ export function splitPackageName(fullName: string): PackagePath {
   };
 }
 
-function toRegistrySlug(owner: string, name: string): string {
-  // Staging API expects package slug `${owner}-${name}` rather than raw scoped name segments.
-  return `${owner}-${name}`;
-}
-
 export function buildPackageApiPath(fullName: string, ...segments: string[]): string {
   const { owner, name } = splitPackageName(fullName);
-  const slug = toRegistrySlug(owner, name);
-  const parts = [`/packages/v1/${encodeURIComponent(owner)}/${encodeURIComponent(slug)}`];
+  const parts = [`/packages/v1/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`];
   if (segments.length > 0) {
     parts.push(segments.map((seg) => `/${encodeURIComponent(seg)}`).join(''));
   }
