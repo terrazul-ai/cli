@@ -36,12 +36,21 @@ export async function login(opts: LoginOptions = {}): Promise<void> {
   const cfg = await loadConfig();
   const activeEnvName = cfg.environment;
   const activeEnv = cfg.environments[activeEnvName] ?? { registry: cfg.registry };
-  cfg.environments[activeEnvName] = {
+  const nextEnv = {
     ...activeEnv,
     token,
     username: opts.username ?? activeEnv.username,
   };
+  delete nextEnv.tokenCreatedAt;
+  delete nextEnv.tokenExpiresAt;
+  delete nextEnv.user;
+  delete nextEnv.tokenExpiry;
+  cfg.environments[activeEnvName] = nextEnv;
   cfg.token = token;
+  delete cfg.tokenCreatedAt;
+  delete cfg.tokenExpiresAt;
+  delete cfg.tokenExpiry;
+  delete cfg.user;
   if (opts.username) cfg.username = opts.username;
   await saveConfig(cfg);
   opts.logger?.info(`Logged in successfully for ${activeEnvName}. Token saved.`);
@@ -54,8 +63,15 @@ export async function logout(opts: { logger?: Logger } = {}): Promise<void> {
     delete cfg.environments[activeEnvName].token;
     delete cfg.environments[activeEnvName].tokenExpiry;
     delete cfg.environments[activeEnvName].username;
+    delete cfg.environments[activeEnvName].tokenCreatedAt;
+    delete cfg.environments[activeEnvName].tokenExpiresAt;
+    delete cfg.environments[activeEnvName].user;
   }
   delete cfg.token;
+  delete cfg.tokenCreatedAt;
+  delete cfg.tokenExpiresAt;
+  delete cfg.tokenExpiry;
+  delete cfg.user;
   delete cfg.username;
   await saveConfig(cfg);
   opts.logger?.info(`Logged out from ${activeEnvName}. Token cleared.`);

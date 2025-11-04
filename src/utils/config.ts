@@ -13,10 +13,18 @@ import {
   type UserConfig,
 } from '../types/config.js';
 
+import type { Logger } from './logger.js';
 import type { ToolSpec, ToolType } from '../types/context.js';
 
 const CONFIG_DIRNAME = '.terrazul';
 const CONFIG_FILENAME = 'config.json';
+
+function toEpochSeconds(iso?: string): number | undefined {
+  if (!iso) return undefined;
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return undefined;
+  return Math.floor(ms / 1000);
+}
 
 const DEFAULT_COMMANDS: Record<ToolType, string> = {
   claude: 'claude',
@@ -85,9 +93,51 @@ export function getConfigPath(): string {
 
 async function ensureDirExists(dir: string): Promise<void> {
   try {
-    await fs.mkdir(dir, { recursive: true });
+    await fs.mkdir(dir, {
+      recursive: true,
+      mode: process.platform === 'win32' ? undefined : 0o700,
+    });
   } catch {
     // ignore
+  }
+}
+
+export class ConfigPermissionError extends Error {
+  exitCode = 5;
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigPermissionError';
+  }
+}
+
+export interface SaveConfigOptions {
+  logger?: Logger;
+}
+
+function formatDisplayPath(target: string): string {
+  const home = os.homedir();
+  if (target.startsWith(home)) {
+    return `~${target.slice(home.length)}`;
+  }
+  return target;
+}
+
+async function ensurePermission(target: string, mode: number, logger?: Logger): Promise<void> {
+  if (process.platform === 'win32') return;
+  try {
+    const stat = await fs.stat(target);
+    const current = stat.mode & 0o777;
+    if (current === mode) return;
+    await fs.chmod(target, mode);
+    const message = `Fixed insecure permissions on ${formatDisplayPath(target)}`;
+    if (logger) logger.warn(message);
+    else console.warn(message);
+  } catch (error) {
+    throw new ConfigPermissionError(
+      `Failed to secure permissions on ${formatDisplayPath(target)}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
   }
 }
 
@@ -121,6 +171,16 @@ function withProfileDefaults(cfg: UserConfig): UserConfig {
   return cfg;
 }
 
+function withAccessibilityDefaults(cfg: UserConfig): UserConfig {
+  const defaults = { largeText: false, audioFeedback: false } as const;
+  const current = cfg.accessibility ?? defaults;
+  cfg.accessibility = {
+    largeText: current.largeText ?? defaults.largeText,
+    audioFeedback: current.audioFeedback ?? defaults.audioFeedback,
+  };
+  return cfg;
+}
+
 type RawConfigInput = Partial<UserConfig> & {
   environments?: Record<string, Partial<EnvironmentConfig>>;
 };
@@ -141,11 +201,19 @@ function normalizeEnvironmentConfig(cfg: UserConfig, raw?: RawConfigInput): User
     raw?.environments?.[environmentName]?.registry ??
     cfg.registry ??
     DEFAULT_ENVIRONMENTS.production.registry;
+  const expirySeconds =
+    activeSource.tokenExpiry ??
+    cfg.tokenExpiry ??
+    toEpochSeconds(activeSource.tokenExpiresAt) ??
+    toEpochSeconds(cfg.tokenExpiresAt);
   const activeEnv: EnvironmentConfig = {
     registry: resolvedRegistry,
     token: activeSource.token ?? cfg.token,
-    tokenExpiry: activeSource.tokenExpiry ?? cfg.tokenExpiry,
+    tokenExpiry: expirySeconds,
     username: activeSource.username ?? cfg.username,
+    tokenCreatedAt: activeSource.tokenCreatedAt ?? cfg.tokenCreatedAt,
+    tokenExpiresAt: activeSource.tokenExpiresAt ?? cfg.tokenExpiresAt,
+    user: activeSource.user ?? cfg.user,
   };
 
   mergedEnvironments[environmentName] = { ...activeEnv };
@@ -157,7 +225,10 @@ function normalizeEnvironmentConfig(cfg: UserConfig, raw?: RawConfigInput): User
     registry: activeEnv.registry,
     token: activeEnv.token,
     tokenExpiry: activeEnv.tokenExpiry,
+    tokenCreatedAt: activeEnv.tokenCreatedAt,
+    tokenExpiresAt: activeEnv.tokenExpiresAt,
     username: activeEnv.username,
+    user: activeEnv.user,
   };
   return normalized;
 }
@@ -168,7 +239,8 @@ export function normalizeConfig(raw: unknown): UserConfig {
   const parsed = UserConfigSchema.parse(raw ?? {});
   const withEnv = normalizeEnvironmentConfig(parsed, rawObj);
   const withProfile = withProfileDefaults(withEnv);
-  return withContextFileDefaults(withProfile);
+  const withAccessibility = withAccessibilityDefaults(withProfile);
+  return withContextFileDefaults(withAccessibility);
 }
 
 export async function readUserConfigFrom(file: string): Promise<UserConfig> {
@@ -186,24 +258,51 @@ export async function loadConfig(): Promise<UserConfig> {
   return readUserConfigFrom(getConfigPath());
 }
 
-export async function saveConfig(config: UserConfig): Promise<void> {
+export async function saveConfig(config: UserConfig, opts: SaveConfigOptions = {}): Promise<void> {
   const file = getConfigPath();
-  await ensureDirExists(path.dirname(file));
+  const dir = path.dirname(file);
+  await ensureDirExists(dir);
   const normalized = normalizeConfig(config);
   const json = JSON.stringify(normalized, null, 2) + '\n';
-  await fs.writeFile(file, json, { encoding: 'utf8' });
+  const tempName = `.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const tempPath = path.join(dir, tempName);
+  const writeOptions =
+    process.platform === 'win32'
+      ? { encoding: 'utf8' as const }
+      : { encoding: 'utf8' as const, mode: 0o600 };
+
+  await fs.writeFile(tempPath, json, writeOptions);
+  try {
+    if (process.platform === 'win32') {
+      await fs.rename(tempPath, file);
+    } else {
+      try {
+        await fs.rename(tempPath, file);
+      } catch {
+        await fs.rm(file, { force: true });
+        await fs.rename(tempPath, file);
+      }
+    }
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(() => {});
+    throw error;
+  }
+
   if (process.platform !== 'win32') {
-    // 0600 perms on Unix-like systems
-    await fs.chmod(file, 0o600);
+    await ensurePermission(dir, 0o700, opts.logger);
+    await ensurePermission(file, 0o600, opts.logger);
   }
 }
 
-export async function updateConfig(patch: Partial<UserConfig>): Promise<UserConfig> {
+export async function updateConfig(
+  patch: Partial<UserConfig>,
+  opts?: SaveConfigOptions,
+): Promise<UserConfig> {
   const current = await loadConfig();
   const merged = { ...current, ...patch } as UserConfig;
   // Validate before save
   const valid = normalizeConfig(merged);
-  await saveConfig(valid);
+  await saveConfig(valid, opts);
   return valid;
 }
 

@@ -19,6 +19,7 @@
     "dev:watch": "tsx watch src/index.ts",
     "install:global": "pnpm run build && pnpm install -g .",
     "test": "vitest run --reporter=default",
+    "test:login-smoke": "vitest run tests/integration/login-callback.test.ts tests/unit/core/interactive-login-manual.test.ts tests/integration/whoami-logout.test.ts",
     "test:watch": "vitest",
     "test:sea": "tsx tools/test-sea.ts",
     "sea:install": "tsx tools/sea-install.ts",

@@ -318,6 +318,89 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'POST' && path === '/auth/v1/cli/initiate') {
+    const state = crypto.randomBytes(16).toString('hex');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    respondJson(res, 200, {
+      success: true,
+      data: {
+        state,
+        expiresAt,
+        browserUrl: 'https://login.terrazul.dev/cli/auth',
+      },
+    });
+    return;
+  }
+
+  if (method === 'POST' && path === '/auth/v1/cli/complete') {
+    const body = await collectBody(req);
+    let token = 'tz_cli_dummy_token';
+    try {
+      const parsed = JSON.parse(body.toString('utf8')) as { token?: string };
+      if (parsed.token && typeof parsed.token === 'string') {
+        token = parsed.token;
+      }
+    } catch {
+      // ignore parse errors and use default token
+    }
+    respondJson(res, 200, {
+      success: true,
+      data: {
+        token,
+        tokenId: `tok_${token.slice(-6)}`,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString(),
+        user: {
+          id: 'user_dummy',
+          username: 'dummy-user',
+          email: 'dummy@example.com',
+        },
+      },
+    });
+    return;
+  }
+
+  if (method === 'POST' && path === '/auth/v1/cli/introspect') {
+    const body = await collectBody(req);
+    let token = 'tz_cli_dummy_token';
+    try {
+      const parsed = JSON.parse(body.toString('utf8')) as { token?: string };
+      if (parsed.token && typeof parsed.token === 'string') {
+        token = parsed.token;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    respondJson(res, 200, {
+      success: true,
+      data: {
+        token,
+        tokenId: `tok_${token.slice(-6)}`,
+        createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
+        user: {
+          id: 'user_dummy',
+          username: 'dummy-user',
+          email: 'dummy@example.com',
+        },
+      },
+    });
+    return;
+  }
+
+  if (method === 'DELETE' && path.startsWith('/auth/v1/tokens/')) {
+    if (Math.random() < 0.9) {
+      res.writeHead(204);
+      res.end();
+    } else {
+      respondJson(res, 500, {
+        success: false,
+        error: { code: 'SERVER_ERROR', message: 'Random failure' },
+      });
+    }
+    return;
+  }
+
   // Package detail
   let match = path.match(/^\/packages\/v1\/([^/]+)\/([^/]+)$/);
   if (method === 'GET' && match) {

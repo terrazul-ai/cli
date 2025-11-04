@@ -7,12 +7,23 @@ export const DEFAULT_ENVIRONMENTS = {
   staging: { registry: 'https://staging.api.terrazul.com' },
 } as const;
 
+const UserIdentitySchema = z
+  .object({
+    id: z.number(),
+    username: z.string(),
+    email: z.string().optional(),
+  })
+  .partial({ email: true });
+
 const EnvironmentConfigSchema = z
   .object({
     registry: z.string().min(1),
     token: z.string().optional(),
     tokenExpiry: z.number().int().positive().optional(),
     username: z.string().optional(),
+    tokenCreatedAt: z.string().optional(),
+    tokenExpiresAt: z.string().optional(),
+    user: UserIdentitySchema.optional(),
   })
   .strict();
 const ToolSpecSchema = z.object({
@@ -33,11 +44,21 @@ const ContextFilesSchema = z
   .partial()
   .default({});
 
+const AccessibilityConfigSchema = z
+  .object({
+    largeText: z.boolean().default(false),
+    audioFeedback: z.boolean().default(false),
+  })
+  .default({ largeText: false, audioFeedback: false });
+
 export const UserConfigSchema = z.object({
   registry: z.string().default('https://api.terrazul.com'),
   token: z.string().optional(),
   tokenExpiry: z.number().int().positive().optional(),
+  tokenCreatedAt: z.string().optional(),
+  tokenExpiresAt: z.string().optional(),
   username: z.string().optional(),
+  user: UserIdentitySchema.optional(),
   environment: z.string().default('production'),
   environments: z.record(EnvironmentConfigSchema).default({ ...DEFAULT_ENVIRONMENTS }),
   cache: z
@@ -47,6 +68,7 @@ export const UserConfigSchema = z.object({
     })
     .default({ ttl: 3600, maxSize: 500 }),
   telemetry: z.boolean().default(false),
+  accessibility: AccessibilityConfigSchema,
   profile: z
     .object({
       tools: z.array(ToolSpecSchema).optional(),
