@@ -19,6 +19,7 @@ const EnvironmentConfigSchema = z
   .object({
     registry: z.string().min(1),
     token: z.string().optional(),
+    tokenId: z.string().optional(),
     tokenExpiry: z.number().int().positive().optional(),
     username: z.string().optional(),
     tokenCreatedAt: z.string().optional(),
@@ -54,6 +55,7 @@ const AccessibilityConfigSchema = z
 export const UserConfigSchema = z.object({
   registry: z.string().default('https://api.terrazul.com'),
   token: z.string().optional(),
+  tokenId: z.string().optional(),
   tokenExpiry: z.number().int().positive().optional(),
   tokenCreatedAt: z.string().optional(),
   tokenExpiresAt: z.string().optional(),

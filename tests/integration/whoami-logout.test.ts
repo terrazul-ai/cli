@@ -37,7 +37,7 @@ describe('integration: whoami/logout', () => {
     tokenId: string;
     createdAt: string;
     expiresAt: string;
-    user: { id: string; username: string; email?: string };
+    user: { id: number; username: string; email?: string };
   };
   let shouldFailDelete = false;
   const introspectCalls: string[] = [];
@@ -47,19 +47,39 @@ describe('integration: whoami/logout', () => {
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
     server = createServer((req, res) => {
-      if (req.method === 'POST' && req.url === '/auth/v1/cli/introspect') {
-        const chunks: Buffer[] = [];
-        req.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
-        req.on('end', () => {
-          try {
-            const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { token?: string };
-            if (parsed.token) introspectCalls.push(parsed.token);
-          } catch {
-            void 0;
-          }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(introspectResponse));
-        });
+      // Handle whoami endpoint: GET /auth/v1/me
+      if (req.method === 'GET' && req.url === '/auth/v1/me') {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.slice(7);
+          introspectCalls.push(token);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(introspectResponse.user));
+        return;
+      }
+
+      // Handle logout: GET /auth/v1/tokens to get current token details
+      if (req.method === 'GET' && req.url === '/auth/v1/tokens') {
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.slice(7);
+          introspectCalls.push(token);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            data: [
+              {
+                id: introspectResponse.tokenId,
+                name: 'CLI Token',
+                created_at: introspectResponse.createdAt,
+                expires_at: introspectResponse.expiresAt,
+                last_used_at: new Date().toISOString(),
+              },
+            ],
+          }),
+        );
         return;
       }
 
@@ -103,7 +123,7 @@ describe('integration: whoami/logout', () => {
           tokenCreatedAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
           username: 'stored-user',
           user: {
-            id: 'user_stored',
+            id: 30_003,
             username: 'stored-user',
             email: 'stored@example.com',
           },
@@ -115,7 +135,7 @@ describe('integration: whoami/logout', () => {
               tokenExpiresAt: new Date(Date.now() + 20 * 24 * 3600 * 1000).toISOString(),
               tokenCreatedAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
               user: {
-                id: 'user_stored',
+                id: 30_003,
                 username: 'stored-user',
                 email: 'stored@example.com',
               },
@@ -149,20 +169,44 @@ describe('integration: whoami/logout', () => {
     const program = new Command();
     program.option('-v, --verbose');
     registerWhoamiCommand(program, createCLIContext);
+    const expiresIn3Days = new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString();
     introspectResponse = {
       token: 'tz_cli_local',
       tokenId: 'tok_cli_123',
       createdAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
-      expiresAt: new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString(),
+      expiresAt: expiresIn3Days,
       user: {
-        id: 'user_cli_001',
+        id: 10_001,
         username: 'cli-user',
         email: 'cli-user@example.com',
       },
     };
 
+    // Update config file with near-expiry token
+    const cfgPath = path.join(tmpHome, '.terrazul', 'config.json');
+    const config = JSON.parse(await fs.readFile(cfgPath, 'utf8'));
+    config.tokenExpiresAt = expiresIn3Days;
+    // Also update the environment-specific token expiration
+    if (config.environments && config.environments.production) {
+      config.environments.production.tokenExpiresAt = expiresIn3Days;
+    }
+    await fs.writeFile(cfgPath, JSON.stringify(config, null, 2), 'utf8');
+
+    // Verify the config was updated
+    const verifyConfig = JSON.parse(await fs.readFile(cfgPath, 'utf8'));
+    if (!verifyConfig.tokenExpiresAt || !verifyConfig.tokenCreatedAt) {
+      console.error('Config after update:', verifyConfig);
+      throw new Error('Config missing expiry fields');
+    }
+
     const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {});
     const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    // Ensure home directory mock is active
+    if (os.homedir() !== tmpHome) {
+      console.error('homedir mock not working!', { expected: tmpHome, actual: os.homedir() });
+      throw new Error('homedir mock failed');
+    }
 
     await program.parseAsync(['whoami'], { from: 'user' });
 
@@ -171,6 +215,12 @@ describe('integration: whoami/logout', () => {
     expect(logOutput).toMatch(/@cli-user/);
     expect(logOutput).toMatch(/token expires/i);
     const warnOutput = consoleWarn.mock.calls.map((args) => args.join(' ')).join('\n');
+    // Temporary debug
+    if (!/expiring/i.test(warnOutput)) {
+      console.error('WARN OUTPUT:', warnOutput);
+      console.error('WARN CALLS:', consoleWarn.mock.calls);
+      console.error('LOG OUTPUT:', logOutput);
+    }
     expect(warnOutput).toMatch(/expiring/i);
 
     consoleLog.mockRestore();
@@ -187,7 +237,7 @@ describe('integration: whoami/logout', () => {
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
       user: {
-        id: 'user_env',
+        id: 20_002,
         username: 'env-user',
       },
     };
@@ -218,7 +268,7 @@ describe('integration: whoami/logout', () => {
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 40 * 24 * 3600 * 1000).toISOString(),
       user: {
-        id: 'user_cli_001',
+        id: 10_001,
         username: 'cli-user',
       },
     };

@@ -43,25 +43,48 @@ export function launchBrowser(
     return Promise.resolve({ success: false, command: launcher.command, args, suppressed: true });
   }
 
-  try {
-    const child = spawn(launcher.command, args, {
-      detached: true,
-      stdio: 'ignore',
-    });
-    child.unref?.();
-    opts.logger.debug('\n\nOpening browser for authentication...');
-    return Promise.resolve({ success: true, command: launcher.command, args });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : typeof error === 'string' ? error : 'Unknown error';
-    opts.logger.warn(
-      `Failed to open browser automatically. Please open ${url} manually. (${message})`,
-    );
-    return Promise.resolve({
-      success: false,
-      command: launcher.command,
-      args,
-      error: error instanceof Error ? error : undefined,
-    });
-  }
+  return new Promise<BrowserLaunchResult>((resolve) => {
+    try {
+      const child = spawn(launcher.command, args, {
+        detached: true,
+        stdio: 'ignore',
+      });
+
+      // Handle spawn errors (e.g., command not found, permission denied)
+      child.on('error', (error) => {
+        const message = error.message || 'Unknown error';
+        opts.logger.warn(
+          `Failed to open browser automatically. Please open ${url} manually. (${message})`,
+        );
+        resolve({
+          success: false,
+          command: launcher.command,
+          args,
+          error,
+        });
+      });
+
+      // If spawn succeeded, unref and resolve immediately
+      child.unref?.();
+      opts.logger.debug('\n\nOpening browser for authentication...');
+      resolve({ success: true, command: launcher.command, args });
+    } catch (error) {
+      // Synchronous errors during spawn setup
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error';
+      opts.logger.warn(
+        `Failed to open browser automatically. Please open ${url} manually. (${message})`,
+      );
+      resolve({
+        success: false,
+        command: launcher.command,
+        args,
+        error: error instanceof Error ? error : undefined,
+      });
+    }
+  });
 }

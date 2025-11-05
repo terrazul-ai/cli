@@ -68,6 +68,7 @@ Telemetry:
           ...currentEnv,
           registry: currentEnv.registry ?? registryBase,
           token: result.token,
+          tokenId: result.tokenId,
           tokenExpiry: expirySeconds,
           tokenCreatedAt: result.createdAt,
           tokenExpiresAt: result.expiresAt,
@@ -79,6 +80,7 @@ Telemetry:
           {
             ...config,
             token: result.token,
+            tokenId: result.tokenId,
             tokenExpiry: expirySeconds,
             tokenCreatedAt: result.createdAt,
             tokenExpiresAt: result.expiresAt,

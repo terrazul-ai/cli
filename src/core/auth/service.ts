@@ -119,12 +119,14 @@ export class AuthService {
     return data;
   }
 
-  async getAuthenticatedUser(token: string): Promise<{ user: { id: number; username: string; email?: string } }> {
+  async getAuthenticatedUser(
+    token: string,
+  ): Promise<{ user: { id: number; username: string; email?: string } }> {
     const endpoint = `${this.baseUrl}/auth/v1/me`;
     const res = await fetch(endpoint, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
@@ -147,12 +149,14 @@ export class AuthService {
     };
   }
 
-  async getCurrentTokenDetails(token: string): Promise<{ id: string; name: string; createdAt: string; expiresAt: string }> {
+  async getCurrentTokenDetails(
+    token: string,
+  ): Promise<{ id: string; name: string; createdAt: string; expiresAt: string }> {
     const endpoint = `${this.baseUrl}/auth/v1/tokens`;
     const res = await fetch(endpoint, {
       method: 'GET',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });
@@ -165,10 +169,18 @@ export class AuthService {
       );
     }
 
-    const response = (await res.json()) as { data: Array<{ id: string; name: string; created_at: string; expires_at: string; last_used_at: string | null }> };
+    const response = (await res.json()) as {
+      data: Array<{
+        id: string;
+        name: string;
+        created_at: string;
+        expires_at: string;
+        last_used_at: string | null;
+      }>;
+    };
 
     // The current token should be the most recently used one
-    const currentToken = response.data.find(t => t.last_used_at !== null) || response.data[0];
+    const currentToken = response.data.find((t) => t.last_used_at !== null) || response.data[0];
 
     if (!currentToken) {
       throw new TerrazulError(ErrorCode.AUTH_REQUIRED, 'No token found in response');
@@ -187,7 +199,7 @@ export class AuthService {
     const res = await fetch(endpoint, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
     });

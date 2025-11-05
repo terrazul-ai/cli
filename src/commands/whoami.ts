@@ -58,15 +58,21 @@ export function registerWhoamiCommand(
         }
 
         // Display token metadata from local config
-        if (config.tokenCreatedAt) {
-          const created = new Date(config.tokenCreatedAt);
+        // Check both environment-specific and global config
+        const activeEnv = config.environment;
+        const envConfig = config.environments?.[activeEnv];
+        const tokenCreatedAt = envConfig?.tokenCreatedAt ?? config.tokenCreatedAt;
+        const tokenExpiresAt = envConfig?.tokenExpiresAt ?? config.tokenExpiresAt;
+
+        if (tokenCreatedAt) {
+          const created = new Date(tokenCreatedAt);
           if (!Number.isNaN(created.getTime())) {
             console.log(`Token created: ${created.toISOString()}`);
           }
         }
 
-        if (config.tokenExpiresAt) {
-          const expiryInfo = formatRelative(config.tokenExpiresAt);
+        if (tokenExpiresAt) {
+          const expiryInfo = formatRelative(tokenExpiresAt);
           console.log(`Token expires: ${expiryInfo.display}`);
 
           if (expiryInfo.daysRemaining !== undefined && expiryInfo.daysRemaining < 7) {

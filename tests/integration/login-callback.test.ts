@@ -82,7 +82,7 @@ describe('integration: login interactive foundation', () => {
             createdAt: tokenCreatedAt,
             expiresAt: tokenExpiresAt,
             user: {
-              id: 'user_cli_001',
+              id: 12_345,
               username: 'cli-user',
               email: 'cli-user@example.com',
             },
@@ -177,7 +177,7 @@ describe('integration: login interactive foundation', () => {
     const cfg = JSON.parse(contents) as UserConfig;
     expect(cfg.token).toBe(issuedToken);
     expect(cfg.user).toEqual({
-      id: 'user_cli_001',
+      id: 12_345,
       username: 'cli-user',
       email: 'cli-user@example.com',
     });
