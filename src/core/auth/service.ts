@@ -3,8 +3,6 @@ import { URL } from 'node:url';
 import { getCliVersion } from '../../utils/version.js';
 import { ErrorCode, TerrazulError } from '../errors.js';
 
-import type { APIErrorResponse } from '../../types/api.js';
-
 interface CLIInitiateResponse {
   state: string;
   expiresAt: string;
@@ -206,10 +204,35 @@ export class AuthService {
 
     if (res.ok || res.status === 204) return;
 
-    const payload = (await res.json().catch(() => {})) as APIErrorResponse | undefined;
-    if (payload && payload.success === false) {
-      throw new TerrazulError(ErrorCode.NETWORK_ERROR, payload.error.message);
-    }
-    throw new TerrazulError(ErrorCode.NETWORK_ERROR, `Failed to revoke token (HTTP ${res.status})`);
+    const error = (await res.json().catch(() => ({}))) as { error?: string; details?: string };
+    throw new TerrazulError(
+      ErrorCode.NETWORK_ERROR,
+      error.error || `Failed to revoke token (HTTP ${res.status})`,
+    );
+  }
+
+  /**
+   * Revoke a token by its value when tokenId is not available.
+   * Uses the backend's token_value query parameter as fallback.
+   */
+  async revokeTokenByValue(token: string): Promise<void> {
+    // Backend supports ?token_value=<token> query parameter for revocation
+    // Use a dummy ID since the backend will use the query param instead
+    const endpoint = `${this.baseUrl}/auth/v1/tokens/by-value?token_value=${encodeURIComponent(token)}`;
+    const res = await fetch(endpoint, {
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (res.ok || res.status === 204) return;
+
+    const error = (await res.json().catch(() => ({}))) as { error?: string; details?: string };
+    throw new TerrazulError(
+      ErrorCode.NETWORK_ERROR,
+      error.error || `Failed to revoke token by value (HTTP ${res.status})`,
+    );
   }
 }

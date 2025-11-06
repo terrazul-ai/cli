@@ -176,6 +176,7 @@ describe('integration: login interactive foundation', () => {
     const contents = await fs.readFile(cfgPath, 'utf8');
     const cfg = JSON.parse(contents) as UserConfig;
     expect(cfg.token).toBe(issuedToken);
+    expect(cfg.tokenId).toBe('tok_cli_test_123');
     expect(cfg.user).toEqual({
       id: 12_345,
       username: 'cli-user',
@@ -186,6 +187,7 @@ describe('integration: login interactive foundation', () => {
     const expectedExpirySeconds = Math.floor(Date.parse(tokenExpiresAt) / 1000);
     expect(cfg.tokenExpiry).toBe(expectedExpirySeconds);
     expect(cfg.environments.production.token).toBe(issuedToken);
+    expect(cfg.environments.production.tokenId).toBe('tok_cli_test_123');
     expect(cfg.environments.production.username).toBe('cli-user');
     expect(cfg.environments.production.tokenExpiry).toBe(expectedExpirySeconds);
 

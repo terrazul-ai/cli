@@ -29,40 +29,28 @@ export function registerLogoutCommand(
       const usingEnv = Boolean(process.env.TERRAZUL_TOKEN);
       const authService = new AuthService({ baseUrl: config.registry });
 
-      // Try to get tokenId from config first
+      // Get tokenId from config
       const activeEnv = config.environment;
       const envConfig = config.environments?.[activeEnv];
-      let tokenId = envConfig?.tokenId ?? config.tokenId;
+      const tokenId = envConfig?.tokenId ?? config.tokenId;
 
       try {
-        // If we don't have a stored tokenId, try to fetch it
-        if (!tokenId) {
-          ctx.logger.debug('[logout] No stored token ID found; fetching from API.');
-          const tokenDetails = await authService.getCurrentTokenDetails(token);
-          tokenId = tokenDetails.id;
-        }
-
         if (tokenId) {
-          try {
-            // Revoke using token ID
-            await authService.revokeToken(token, tokenId);
-            ctx.logger.info(`[logout] Revoked token.`);
-          } catch (error) {
-            const message =
-              error instanceof Error && error.message
-                ? error.message
-                : 'Failed to revoke token remotely.';
-            ctx.logger.warn(`[logout] ${message} Clearing local credentials regardless.`);
-          }
+          // Revoke using stored token ID
+          await authService.revokeToken(token, tokenId);
+          ctx.logger.info('[logout] Revoked token.');
         } else {
-          ctx.logger.warn('[logout] Could not determine token ID; skipping remote revocation.');
+          // Fallback: revoke by token value when tokenId not stored
+          ctx.logger.warn('[logout] No tokenId stored; using fallback revocation by token value.');
+          await authService.revokeTokenByValue(token);
+          ctx.logger.info('[logout] Revoked token.');
         }
       } catch (error) {
         const message =
           error instanceof Error && error.message
             ? error.message
-            : 'Could not get token details before logout.';
-        ctx.logger.warn(`[logout] ${message} Proceeding to clear local credentials.`);
+            : 'Failed to revoke token remotely.';
+        ctx.logger.warn(`[logout] ${message} Clearing local credentials regardless.`);
       }
 
       await logoutUtil({ logger: ctx.logger });

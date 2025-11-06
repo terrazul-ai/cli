@@ -50,8 +50,12 @@ export function launchBrowser(
         stdio: 'ignore',
       });
 
+      let resolved = false;
+
       // Handle spawn errors (e.g., command not found, permission denied)
       child.on('error', (error) => {
+        if (resolved) return; // Already resolved successfully
+        resolved = true;
         const message = error.message || 'Unknown error';
         opts.logger.warn(
           `Failed to open browser automatically. Please open ${url} manually. (${message})`,
@@ -64,10 +68,16 @@ export function launchBrowser(
         });
       });
 
-      // If spawn succeeded, unref and resolve immediately
-      child.unref?.();
-      opts.logger.debug('\n\nOpening browser for authentication...');
-      resolve({ success: true, command: launcher.command, args });
+      // Give a small window for immediate spawn errors before considering it successful
+      // This helps catch errors like ENOENT (command not found) quickly
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          child.unref?.();
+          opts.logger.debug('\n\nOpening browser for authentication...');
+          resolve({ success: true, command: launcher.command, args });
+        }
+      }, 100);
     } catch (error) {
       // Synchronous errors during spawn setup
       const message =

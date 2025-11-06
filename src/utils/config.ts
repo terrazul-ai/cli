@@ -209,6 +209,7 @@ function normalizeEnvironmentConfig(cfg: UserConfig, raw?: RawConfigInput): User
   const activeEnv: EnvironmentConfig = {
     registry: resolvedRegistry,
     token: activeSource.token ?? cfg.token,
+    tokenId: activeSource.tokenId ?? cfg.tokenId,
     tokenExpiry: expirySeconds,
     username: activeSource.username ?? cfg.username,
     tokenCreatedAt: activeSource.tokenCreatedAt ?? cfg.tokenCreatedAt,

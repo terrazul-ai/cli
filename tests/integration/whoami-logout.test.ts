@@ -119,6 +119,7 @@ describe('integration: whoami/logout', () => {
           cache: { ttl: 3600, maxSize: 500 },
           telemetry: false,
           token: 'tz_cli_local',
+          tokenId: 'tok_cli_123',
           tokenExpiresAt: new Date(Date.now() + 20 * 24 * 3600 * 1000).toISOString(),
           tokenCreatedAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
           username: 'stored-user',
@@ -132,6 +133,7 @@ describe('integration: whoami/logout', () => {
             production: {
               registry: baseUrl,
               token: 'tz_cli_local',
+              tokenId: 'tok_cli_123',
               tokenExpiresAt: new Date(Date.now() + 20 * 24 * 3600 * 1000).toISOString(),
               tokenCreatedAt: new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString(),
               user: {
@@ -276,7 +278,9 @@ describe('integration: whoami/logout', () => {
 
     await program.parseAsync(['logout'], { from: 'user' });
 
-    expect(introspectCalls).toContain('tz_cli_local');
+    // Should NOT call GET /auth/v1/tokens since tokenId is stored
+    expect(introspectCalls).toHaveLength(0);
+    // Should call DELETE with stored tokenId
     expect(deleteCalls.some((url) => url.includes('tok_cli_123'))).toBe(true);
 
     const cfgPath = path.join(tmpHome, '.terrazul', 'config.json');
