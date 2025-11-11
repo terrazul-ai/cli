@@ -21,6 +21,8 @@ export function registerApplyCommand(
     .option('--profile <profile>', 'Apply only the packages associated with the given profile')
     .option('--tool <tool>', 'Use a specific answer tool (claude or codex)')
     .option('--no-tool-safe-mode', 'Disable safe mode for tool execution')
+    .option('--no-cache', 'Bypass cache and re-execute all snippets', false)
+    .option('--cache-file <path>', 'Path to cache file (default: ./agents-cache.toml)')
     .action(
       async (
         _pkg: string | undefined,
@@ -30,6 +32,8 @@ export function registerApplyCommand(
           profile?: string;
           tool?: string;
           toolSafeMode?: boolean;
+          noCache?: boolean;
+          cacheFile?: string;
         },
       ) => {
         const g = program.opts<{ verbose?: boolean }>();
@@ -91,6 +95,8 @@ export function registerApplyCommand(
             verbose: ctx.logger.isVerbose(),
             onTemplateStart,
             onSnippetEvent,
+            noCache: opts.noCache,
+            cacheFilePath: opts.cacheFile,
           });
           if (opts.dryRun) {
             ctx.logger.info(`apply (dry-run): would write ${res.written.length} files`);

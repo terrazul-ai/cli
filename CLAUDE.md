@@ -780,9 +780,72 @@ IMPORTANT IMPORTANT IMPORTANT, REQUIRED RUN AND FIX ANY ERRORS FROM
 
 ## Appendix: New Command — tz apply
 
-- `tz apply [@user/package] [--force] [--dry-run]` — Render installed templates into actual config files (CLAUDE.md, .claude/, etc.).
+- `tz apply [@user/package] [--force] [--dry-run] [--no-cache] [--cache-file <path>]` — Render installed templates into actual config files (CLAUDE.md, .claude/, etc.).
   - Scans `agent_modules/` and reads `agents.toml` `[exports]`.
   - Supports Claude extras: `settings`, `settingsLocal`, `mcpServers`, `subagentsDir`.
   - Uses Handlebars context `{ project, pkg, env, now, files }`.
   - Safe path handling ensures outputs stay within project root.
   - `tz add` integrates apply by default; disable with `--no-apply`, overwrite with `--apply-force`.
+
+### Snippet Caching
+
+**Purpose**: Cache `askUser` and `askAgent` responses to avoid re-prompting when re-running `tz apply` for the same package version.
+
+**Behavior**
+
+1. **Cache Storage**: Responses are stored in `agents-cache.toml` (or custom path via `--cache-file`).
+2. **Content-Based Keys**: Cache uses SHA-256 hash of snippet content (prompt + options) for stable identification across variable name changes.
+3. **Sequential IDs for Templates**: Templates continue to reference snippets as `snippet_0`, `snippet_1`, etc. for backwards compatibility.
+4. **Version-Scoped**: Cache entries are keyed by `packageName` and `version`; changing package version invalidates cached responses.
+5. **Automatic Pruning**: When running `tz apply`, stale cache entries for uninstalled packages are automatically removed.
+6. **Package Manager Integration**: Cache is automatically cleared for a package when its version changes during `tz add` or `tz update`.
+
+**Flags**
+
+- `--no-cache`: Bypass cache and re-execute all snippets, prompting users and invoking agents afresh.
+- `--cache-file <path>`: Specify custom cache file location (default: `./agents-cache.toml`).
+
+**Cache File Format** (`agents-cache.toml`)
+
+```toml
+version = 1
+
+[metadata]
+generated_at = "2025-01-15T10:30:00Z"
+cli_version = "0.11.0"
+
+[packages."@user/package"]
+version = "1.0.0"
+
+[[packages."@user/package".snippets]]
+id = "snippet_a1b2c3d4"
+type = "askUser"
+promptExcerpt = "What is your name?"
+value = "\"Alice\""
+timestamp = "2025-01-15T10:30:05Z"
+
+[[packages."@user/package".snippets]]
+id = "snippet_e5f6g7h8"
+type = "askAgent"
+promptExcerpt = "Summarize this project"
+value = "\"This is a CLI tool for managing AI agent configurations\""
+timestamp = "2025-01-15T10:30:10Z"
+tool = "claude"
+```
+
+**Acceptance Criteria**
+
+- Cache file is created/updated atomically (write to temp file, then rename).
+- Cache entries include `id` (content hash), `type`, `promptExcerpt` (first 100 chars), `value` (JSON stringified), `timestamp`, and optional `tool`.
+- Cache lookup uses content-based hash for stability; cache misses re-execute snippets.
+- `--no-cache` bypasses cache entirely; `--cache-file` allows custom location.
+- Automatic pruning removes entries for packages not in `agent_modules/`.
+- Package version changes (via add/update/uninstall) invalidate cache for that package.
+
+**Implementation Notes**
+
+- `SnippetCacheManager` class in `src/core/snippet-cache.ts` handles CRUD operations.
+- `generateSnippetId()` in `src/utils/snippet-parser.ts` creates content-based hash IDs.
+- Cache integration in `src/core/snippet-executor.ts` checks cache before execution, stores after.
+- Package manager (`src/core/package-manager.ts`) clears cache entries on version changes.
+- Template renderer (`src/core/template-renderer.ts`) initializes cache manager and prunes stale entries.

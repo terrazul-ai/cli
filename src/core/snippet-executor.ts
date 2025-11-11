@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { DIRECTORY_DEFAULT_FILENAMES, safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
 import { interpolate } from '../utils/handlebars-runtime.js';
+import { generateSnippetId } from '../utils/snippet-parser.js';
 import { defaultToolSpec, invokeTool, parseToolOutput, stripAnsi } from '../utils/tool-runner.js';
 
 import type { ToolSpec, ToolType } from '../types/context.js';
@@ -70,6 +71,24 @@ async function runAskUser(
   snippet: ParsedAskUserSnippet,
   options: ExecuteSnippetsOptions,
 ): Promise<SnippetValue> {
+  // Check persistent cache first (unless --no-cache)
+  if (!options.noCache && options.cacheManager && options.packageName && options.packageVersion) {
+    const cacheKey = await generateSnippetId(snippet);
+    const cached = options.cacheManager.getSnippet(
+      options.packageName,
+      options.packageVersion,
+      cacheKey,
+    );
+    if (cached) {
+      if (options.verbose) {
+        console.log(`Using cached value for askUser snippet ${snippet.id}`);
+      }
+      const value = JSON.parse(cached.value);
+      options.report?.({ type: 'askUser:end', snippet, answer: value as string });
+      return { value };
+    }
+  }
+
   const placeholder = snippet.options.placeholder;
   const hasPlaceholder = typeof placeholder === 'string' && placeholder.trim().length > 0;
   const promptConfig: InputQuestion<{ value: string }> = {
@@ -90,6 +109,19 @@ async function runAskUser(
   options.report?.({ type: 'askUser:start', snippet });
   const answers = await inquirer.prompt<{ value: string }>([promptConfig]);
   options.report?.({ type: 'askUser:end', snippet, answer: answers.value });
+
+  // Store to persistent cache
+  if (options.cacheManager && options.packageName && options.packageVersion) {
+    const cacheKey = await generateSnippetId(snippet);
+    await options.cacheManager.setSnippet(options.packageName, options.packageVersion, {
+      id: cacheKey,
+      type: 'askUser',
+      promptExcerpt: truncatePrompt(snippet.question, 100),
+      value: JSON.stringify(answers.value),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   return { value: answers.value };
 }
 
@@ -100,6 +132,25 @@ async function runAskAgent(
   promptCache: Map<string, string>,
   context: SnippetExecutionContext,
 ): Promise<SnippetValue> {
+  // Check persistent cache first (unless --no-cache)
+  if (!options.noCache && options.cacheManager && options.packageName && options.packageVersion) {
+    const persistentCacheKey = await generateSnippetId(snippet, options.packageDir);
+    const persistentCached = options.cacheManager.getSnippet(
+      options.packageName,
+      options.packageVersion,
+      persistentCacheKey,
+    );
+    if (persistentCached) {
+      if (options.verbose) {
+        console.log(`Using cached value for askAgent snippet ${snippet.id}`);
+      }
+      const value = JSON.parse(persistentCached.value);
+      const basePrompt = await resolvePrompt(snippet, options.packageDir, promptCache);
+      options.report?.({ type: 'askAgent:end', snippet, prompt: basePrompt, value });
+      return { value };
+    }
+  }
+
   const basePrompt = await resolvePrompt(snippet, options.packageDir, promptCache);
   options.report?.({ type: 'askAgent:start', snippet, prompt: basePrompt });
 
@@ -179,6 +230,20 @@ async function runAskAgent(
   const result: SnippetValue = { value };
   cache.set(cacheKey, { value: result });
   options.report?.({ type: 'askAgent:end', snippet, prompt: basePrompt, value });
+
+  // Store to persistent cache
+  if (options.cacheManager && options.packageName && options.packageVersion) {
+    const persistentCacheKey = await generateSnippetId(snippet, options.packageDir);
+    await options.cacheManager.setSnippet(options.packageName, options.packageVersion, {
+      id: persistentCacheKey,
+      type: 'askAgent',
+      promptExcerpt: truncatePrompt(basePrompt, 100),
+      value: JSON.stringify(value),
+      timestamp: new Date().toISOString(),
+      tool: toolSpec.type,
+    });
+  }
+
   return result;
 }
 
@@ -384,4 +449,11 @@ function extractPreferredResult(parsed: unknown): unknown {
     return record.result_parsed;
   }
   return undefined;
+}
+
+function truncatePrompt(text: string, maxLength: number): string {
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return text.slice(0, maxLength - 3) + '...';
 }

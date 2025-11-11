@@ -73,7 +73,10 @@ describe('core/template-renderer', () => {
   });
 
   it('renders templates to expected destinations', async () => {
-    const res = await planAndRender(projectRoot, agentModules, { packageName: '@test/demo' });
+    const res = await planAndRender(projectRoot, agentModules, {
+      packageName: '@test/demo',
+      noCache: true,
+    });
     const cfg = await loadConfig();
     const files = cfg.context?.files ?? {
       claude: 'CLAUDE.md',

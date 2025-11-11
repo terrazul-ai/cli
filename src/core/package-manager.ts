@@ -7,6 +7,7 @@ import { satisfies } from 'semver';
 import { DependencyResolver, type ResolvedDependencies } from './dependency-resolver.js';
 import { ErrorCode, TerrazulError } from './errors.js';
 import { LockfileManager, type LockfileData, type LockfilePackage } from './lock-file.js';
+import { SnippetCacheManager } from './snippet-cache.js';
 import { createSymlink } from '../utils/fs.js';
 import { agentModulesPath } from '../utils/path.js';
 
@@ -259,6 +260,22 @@ export class PackageManager {
       ...merged,
       packages: prunedPackages,
     };
+
+    // Invalidate snippet cache for packages with version changes
+    const cacheFilePath = path.join(projectDir, 'agents-cache.toml');
+    const cacheManager = new SnippetCacheManager(cacheFilePath);
+    await cacheManager.read();
+
+    for (const [name, info] of resolved) {
+      const oldVersion = existingLock?.packages[name]?.version;
+      if (oldVersion && oldVersion !== info.version) {
+        // Version changed - clear cache for this package
+        await cacheManager.clearPackage(name);
+        this.ctx.logger.debug(
+          `Cleared snippet cache for ${name} (${oldVersion} -> ${info.version})`,
+        );
+      }
+    }
 
     summary.sort((a, b) => a.name.localeCompare(b.name));
 

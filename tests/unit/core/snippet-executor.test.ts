@@ -44,6 +44,7 @@ describe('snippet executor', () => {
       availableTools: [],
       toolSafeMode: true,
       verbose: false,
+      noCache: true,
       ...overrides,
     };
   }
