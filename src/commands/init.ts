@@ -3,6 +3,9 @@ import path from 'node:path';
 
 import inquirer from 'inquirer';
 
+import { TerrazulError, ErrorCode } from '../core/errors.js';
+import { PackageNameSchema } from '../types/package.js';
+
 import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 
@@ -53,6 +56,15 @@ export function registerInitCommand(
           const base = path.basename(cwd) || 'project';
           name = `@local/${base}`;
         }
+      }
+
+      // Validate package name format
+      const validationResult = PackageNameSchema.safeParse(name);
+      if (!validationResult.success) {
+        throw new TerrazulError(
+          ErrorCode.INVALID_PACKAGE,
+          `Invalid package name "${name}". Package name must be in format @owner/package-name`,
+        );
       }
 
       let hasClaude = false;

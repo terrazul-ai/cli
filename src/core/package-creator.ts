@@ -105,9 +105,42 @@ async function ensureWritableDirectory(targetDir: string): Promise<boolean> {
   }
 }
 
+/**
+ * Extracts a safe directory name from a package name.
+ * This function is tolerant and never throws - it's designed for UI contexts
+ * where the user may be typing an incomplete package name.
+ *
+ * @param packageName - The package name to extract from (may be incomplete)
+ * @returns A safe directory name segment, or 'package' as fallback
+ *
+ * @example
+ * getPackageDirName('@owner/my-pkg') // => 'my-pkg'
+ * getPackageDirName('@owner') // => 'owner' (partial input)
+ * getPackageDirName('owner/pkg') // => 'pkg' (slash extraction)
+ * getPackageDirName('@') // => 'package' (fallback)
+ */
 export function getPackageDirName(packageName: string): string {
+  // Try to extract from properly scoped format @owner/name
   const scopedMatch = packageName.match(/^@[^/]+\/(.+)$/);
-  return scopedMatch ? scopedMatch[1] : packageName;
+  if (scopedMatch && scopedMatch[1]?.trim()) {
+    return scopedMatch[1];
+  }
+
+  // If there's a trailing slash with nothing after it, return default
+  if (packageName.endsWith('/')) {
+    return 'package';
+  }
+
+  // Fallback: if there's a slash, take what's after it
+  const slashIndex = packageName.indexOf('/');
+  if (slashIndex !== -1 && slashIndex < packageName.length - 1) {
+    const segment = packageName.slice(slashIndex + 1).trim();
+    if (segment) return segment;
+  }
+
+  // Final fallback: slugify the input or return default
+  const trimmed = packageName.trim();
+  return trimmed ? slugifySegment(trimmed.replace(/^@/, '')) : 'package';
 }
 
 export function generateManifest(options: CreateOptions): string {

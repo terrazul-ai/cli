@@ -579,7 +579,7 @@ export function ExtractWizard({
                 focus={state.metadataFocus === 0}
                 onChange={(value) => actions.updateOptions({ name: value })}
               />
-              <Text dimColor>Must be a valid scoped or unscoped package name.</Text>
+              <Text dimColor>Must be a valid scoped package name (@owner/package-name).</Text>
             </Box>
             <Box flexDirection="column">
               <Text>Version (semver):</Text>
