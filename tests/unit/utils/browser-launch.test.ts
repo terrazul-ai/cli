@@ -100,4 +100,48 @@ describe('utils/browser', () => {
       expect.stringContaining('Failed to open browser automatically'),
     );
   });
+
+  it('launchBrowser handles asynchronous spawn error events', async () => {
+    platformSpy = vi.spyOn(process, 'platform', 'get').mockReturnValue('linux');
+
+    // Mock child process that emits an error event
+    const mockChild = {
+      pid: undefined,
+      unref: vi.fn(),
+      on: vi.fn(),
+      once: vi.fn(),
+      stdout: null,
+      stderr: null,
+      stdin: null,
+      kill: vi.fn(),
+    };
+
+    spawnMock.mockReturnValueOnce(mockChild as unknown as ReturnType<typeof spawnMock>);
+
+    const warn = vi.fn();
+    const resultPromise = launchBrowser('https://example.com', {
+      logger: {
+        info: vi.fn(),
+        warn,
+        error: vi.fn(),
+        debug: vi.fn(),
+        isVerbose: () => false,
+      },
+    });
+
+    // Simulate async error event (e.g., ENOENT for command not found)
+    const errorHandler = mockChild.on.mock.calls.find((call) => call[0] === 'error')?.[1];
+    expect(errorHandler).toBeDefined();
+    if (errorHandler) {
+      // Emit error immediately (before timeout)
+      errorHandler(new Error('ENOENT: command not found'));
+    }
+
+    const result = await resultPromise;
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error?.message).toContain('ENOENT');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('Failed to open browser'));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('ENOENT'));
+  });
 });

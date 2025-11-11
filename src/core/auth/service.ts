@@ -147,51 +147,6 @@ export class AuthService {
     };
   }
 
-  async getCurrentTokenDetails(
-    token: string,
-  ): Promise<{ id: string; name: string; createdAt: string; expiresAt: string }> {
-    const endpoint = `${this.baseUrl}/auth/v1/tokens`;
-    const res = await fetch(endpoint, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!res.ok) {
-      const error = (await res.json().catch(() => ({}))) as { error?: string; details?: string };
-      throw new TerrazulError(
-        ErrorCode.AUTH_REQUIRED,
-        error.error || `Failed to get token details (HTTP ${res.status})`,
-      );
-    }
-
-    const response = (await res.json()) as {
-      data: Array<{
-        id: string;
-        name: string;
-        created_at: string;
-        expires_at: string;
-        last_used_at: string | null;
-      }>;
-    };
-
-    // The current token should be the most recently used one
-    const currentToken = response.data.find((t) => t.last_used_at !== null) || response.data[0];
-
-    if (!currentToken) {
-      throw new TerrazulError(ErrorCode.AUTH_REQUIRED, 'No token found in response');
-    }
-
-    return {
-      id: currentToken.id,
-      name: currentToken.name,
-      createdAt: currentToken.created_at,
-      expiresAt: currentToken.expires_at,
-    };
-  }
-
   async revokeToken(token: string, tokenId: string): Promise<void> {
     const endpoint = `${this.baseUrl}/auth/v1/tokens/${encodeURIComponent(tokenId)}`;
     const res = await fetch(endpoint, {

@@ -41,12 +41,14 @@ export async function login(opts: LoginOptions = {}): Promise<void> {
     token,
     username: opts.username ?? activeEnv.username,
   };
+  delete nextEnv.tokenId;
   delete nextEnv.tokenCreatedAt;
   delete nextEnv.tokenExpiresAt;
   delete nextEnv.user;
   delete nextEnv.tokenExpiry;
   cfg.environments[activeEnvName] = nextEnv;
   cfg.token = token;
+  delete cfg.tokenId;
   delete cfg.tokenCreatedAt;
   delete cfg.tokenExpiresAt;
   delete cfg.tokenExpiry;

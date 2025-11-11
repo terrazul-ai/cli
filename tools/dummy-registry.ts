@@ -322,12 +322,9 @@ const server = createServer(async (req, res) => {
     const state = crypto.randomBytes(16).toString('hex');
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     respondJson(res, 200, {
-      success: true,
-      data: {
-        state,
-        expiresAt,
-        browserUrl: 'https://login.terrazul.dev/cli/auth',
-      },
+      state,
+      expiresAt,
+      browserUrl: 'https://login.terrazul.dev/cli/auth',
     });
     return;
   }
@@ -344,17 +341,14 @@ const server = createServer(async (req, res) => {
       // ignore parse errors and use default token
     }
     respondJson(res, 200, {
-      success: true,
-      data: {
-        token,
-        tokenId: `tok_${token.slice(-6)}`,
-        createdAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString(),
-        user: {
-          id: 'user_dummy',
-          username: 'dummy-user',
-          email: 'dummy@example.com',
-        },
+      token,
+      tokenId: `tok_${token.slice(-6)}`,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString(),
+      user: {
+        id: 'user_dummy',
+        username: 'dummy-user',
+        email: 'dummy@example.com',
       },
     });
     return;
@@ -372,17 +366,14 @@ const server = createServer(async (req, res) => {
       // ignore parse errors
     }
     respondJson(res, 200, {
-      success: true,
-      data: {
-        token,
-        tokenId: `tok_${token.slice(-6)}`,
-        createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
-        expiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
-        user: {
-          id: 'user_dummy',
-          username: 'dummy-user',
-          email: 'dummy@example.com',
-        },
+      token,
+      tokenId: `tok_${token.slice(-6)}`,
+      createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
+      user: {
+        id: 'user_dummy',
+        username: 'dummy-user',
+        email: 'dummy@example.com',
       },
     });
     return;
@@ -394,8 +385,8 @@ const server = createServer(async (req, res) => {
       res.end();
     } else {
       respondJson(res, 500, {
-        success: false,
-        error: { code: 'SERVER_ERROR', message: 'Random failure' },
+        code: 'SERVER_ERROR',
+        message: 'Random failure',
       });
     }
     return;

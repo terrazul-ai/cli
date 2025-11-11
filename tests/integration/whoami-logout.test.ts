@@ -68,17 +68,15 @@ describe('integration: whoami/logout', () => {
         }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(
-          JSON.stringify({
-            data: [
-              {
-                id: introspectResponse.tokenId,
-                name: 'CLI Token',
-                created_at: introspectResponse.createdAt,
-                expires_at: introspectResponse.expiresAt,
-                last_used_at: new Date().toISOString(),
-              },
-            ],
-          }),
+          JSON.stringify([
+            {
+              id: introspectResponse.tokenId,
+              name: 'CLI Token',
+              created_at: introspectResponse.createdAt,
+              expires_at: introspectResponse.expiresAt,
+              last_used_at: new Date().toISOString(),
+            },
+          ]),
         );
         return;
       }
@@ -87,9 +85,7 @@ describe('integration: whoami/logout', () => {
         deleteCalls.push(req.url);
         if (shouldFailDelete) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(
-            JSON.stringify({ success: false, error: { code: 'SERVER_ERROR', message: 'fail' } }),
-          );
+          res.end(JSON.stringify({ code: 'SERVER_ERROR', message: 'fail' }));
         } else {
           res.writeHead(204);
           res.end();

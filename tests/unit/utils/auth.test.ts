@@ -66,4 +66,41 @@ describe('utils/auth', () => {
       expect(mode).toBe(0o600);
     }
   });
+
+  it('clears stale tokenId when manual login overwrites web-flow token', async () => {
+    // Simulate a web login that stores tokenId
+    await updateConfig({
+      token: 'tz_web_token_123',
+      tokenId: 'tok_web_xyz',
+      tokenExpiry: Math.floor(Date.now() / 1000) + 3600,
+      username: 'webuser',
+      environments: {
+        production: {
+          registry: 'https://api.terrazul.com',
+          token: 'tz_web_token_123',
+          tokenId: 'tok_web_xyz',
+          tokenExpiry: Math.floor(Date.now() / 1000) + 3600,
+          username: 'webuser',
+        },
+      },
+    });
+
+    let cfg = await loadConfig();
+    expect(cfg.tokenId).toBe('tok_web_xyz');
+    expect(cfg.environments.production.tokenId).toBe('tok_web_xyz');
+
+    // Now do a manual login with --token
+    await login({ token: 'tz_pat_manual', username: 'manualuser' });
+
+    cfg = await loadConfig();
+    expect(cfg.token).toBe('tz_pat_manual');
+    expect(cfg.username).toBe('manualuser');
+    // tokenId should be cleared
+    expect(cfg.tokenId).toBeUndefined();
+    expect(cfg.environments.production.tokenId).toBeUndefined();
+    // Old token metadata should also be cleared
+    expect(cfg.tokenExpiry).toBeUndefined();
+    expect(cfg.tokenCreatedAt).toBeUndefined();
+    expect(cfg.tokenExpiresAt).toBeUndefined();
+  });
 });
