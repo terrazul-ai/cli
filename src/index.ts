@@ -19,6 +19,7 @@ import { registerUnlinkCommand } from './commands/unlink.js';
 import { registerUnyankCommand } from './commands/unyank.js';
 import { registerUpdateCommand } from './commands/update.js';
 import { registerValidateCommand } from './commands/validate.js';
+import { registerWhoamiCommand } from './commands/whoami.js';
 import { registerYankCommand } from './commands/yank.js';
 import { createCLIContext } from './utils/context.js';
 import { getCliVersion } from './utils/version.js';
@@ -53,6 +54,7 @@ function buildProgram(argv: string[]): Command {
   // Top-level auth aliases - might remove auth top level later
   registerLoginCommand(program, createCLIContext);
   registerLogoutCommand(program, createCLIContext);
+  registerWhoamiCommand(program, createCLIContext);
   registerAuthCommand(program, createCLIContext);
 
   program.showHelpAfterError();

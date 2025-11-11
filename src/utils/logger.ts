@@ -10,26 +10,48 @@ export interface Logger {
 
 export interface LoggerOptions {
   verbose?: boolean;
+  accessibility?: {
+    largeText?: boolean;
+    audioFeedback?: boolean;
+  };
 }
 
 export function createLogger(opts: LoggerOptions = {}): Logger {
   const verbose = Boolean(opts.verbose);
+  const accessibility = opts.accessibility ?? { largeText: false, audioFeedback: false };
+
+  const formatMessage = (msg: string): string =>
+    accessibility.largeText ? msg.toUpperCase() : msg;
+  const emitAudio = () => {
+    if (accessibility.audioFeedback) {
+      try {
+        process.stdout.write('\u0007');
+      } catch {
+        // ignore write failures
+      }
+    }
+  };
+
   return {
     info: (msg: string) => {
       // Using console.log for info to ease testing via spies
       // Keep output simple and colored subtly
-      console.log(chalk.cyan('info'), msg);
+      console.log(chalk.cyan('info'), formatMessage(msg));
+      emitAudio();
     },
     warn: (msg: string) => {
-      console.warn(chalk.yellow('warn'), msg);
+      console.warn(chalk.yellow('warn'), formatMessage(msg));
+      emitAudio();
     },
     error: (msg: string | Error) => {
       const text = msg instanceof Error ? `${msg.name}: ${msg.message}` : msg;
-      console.error(chalk.red('error'), text);
+      console.error(chalk.red('error'), formatMessage(text));
+      emitAudio();
     },
     debug: (msg: string) => {
       if (verbose) {
-        console.log(chalk.gray('debug'), msg);
+        console.log(chalk.gray('debug'), formatMessage(msg));
+        emitAudio();
       }
     },
     isVerbose: () => verbose,

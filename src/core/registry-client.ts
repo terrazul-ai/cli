@@ -9,27 +9,7 @@ import { ErrorCode, TerrazulError } from './errors.js';
 import { buildPackageApiPath, splitPackageName } from '../utils/package.js';
 import { getCliVersion } from '../utils/version.js';
 
-import type { APIErrorResponse, APISuccessResponse } from '../types/api.js';
-
-function isAPIErrorResponse(x: unknown): x is APIErrorResponse {
-  return (
-    typeof x === 'object' &&
-    x !== null &&
-    'success' in x &&
-    (x as { success?: unknown }).success === false &&
-    'error' in x
-  );
-}
-
-function isAPISuccessResponse<T>(x: unknown): x is APISuccessResponse<T> {
-  return (
-    typeof x === 'object' &&
-    x !== null &&
-    'success' in x &&
-    (x as { success?: unknown }).success === true &&
-    'data' in x
-  );
-}
+import type { APIError } from '../types/api.js';
 
 export interface PackageInfo {
   name: string;
@@ -261,8 +241,8 @@ export class RegistryClient {
       if (contentType.includes('application/json')) {
         const text = await response.text();
         const json = text ? JSON.parse(text) : undefined;
-        if (json && isAPIErrorResponse(json)) {
-          throw this.mapApiError(json);
+        if (json && typeof json === 'object' && 'code' in json && 'message' in json) {
+          throw this.mapApiError(json as APIError);
         }
         const message =
           json && typeof json === 'object' && 'error' in json
@@ -279,9 +259,6 @@ export class RegistryClient {
     if (contentType.includes('application/json')) {
       const text = await response.text();
       const json = text ? JSON.parse(text) : undefined;
-      if (json && isAPISuccessResponse<TarballInfo>(json)) {
-        return json.data;
-      }
       if (json && typeof json === 'object' && 'url' in json) {
         return json as TarballInfo;
       }
@@ -468,9 +445,11 @@ export class RegistryClient {
 
       if (!response.ok) {
         if (json) {
-          if (isAPIErrorResponse(json)) {
-            throw this.mapApiError(json);
+          // Check for standard API error format { code, message }
+          if (typeof json === 'object' && 'code' in json && 'message' in json) {
+            throw this.mapApiError(json as APIError);
           }
+          // Fallback error handling for non-standard formats
           const message = String(
             typeof json.error === 'string'
               ? json.error
@@ -492,10 +471,7 @@ export class RegistryClient {
         );
       }
 
-      if (json && isAPISuccessResponse<T>(json)) {
-        return json.data;
-      }
-
+      // Success: return bare response
       if (json !== undefined) {
         return json as T;
       }
@@ -513,9 +489,9 @@ export class RegistryClient {
     }
   }
 
-  private mapApiError(error: APIErrorResponse): TerrazulError {
-    const errorCode = error.error?.code || 'UNKNOWN_ERROR';
-    const message = error.error?.message || 'Unknown error occurred';
+  private mapApiError(error: APIError): TerrazulError {
+    const errorCode = error.code || 'UNKNOWN_ERROR';
+    const message = error.message || 'Unknown error occurred';
     const codeMap: Record<string, ErrorCode> = {
       PACKAGE_NOT_FOUND: ErrorCode.PACKAGE_NOT_FOUND,
       VERSION_NOT_FOUND: ErrorCode.VERSION_NOT_FOUND,
