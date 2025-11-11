@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.12.0](https://github.com/terrazul-ai/tz/compare/v0.11.0...v0.12.0) (2025-11-11)
+
+
+### Features
+
+* **auth:** Web login ([#39](https://github.com/terrazul-ai/tz/issues/39)) ([bdd2cbd](https://github.com/terrazul-ai/tz/commit/bdd2cbdac0b8d69f67515ce265366225ae8a12c3))
+* **core:** add snippet response caching  ([#41](https://github.com/terrazul-ai/tz/issues/41)) ([d5f3c80](https://github.com/terrazul-ai/tz/commit/d5f3c8041a0be4425f6d12e7258cbba94cd8fe7b))
+
+
+### Bug Fixes
+
+* **auth:** prevent XSS in login error HTML responses ([#40](https://github.com/terrazul-ai/tz/issues/40)) ([1c9469d](https://github.com/terrazul-ai/tz/commit/1c9469d04868a54a5949712179876131d84ee50f))
+* **release:** update bootstrap-sha to skip workflow commit ([6008697](https://github.com/terrazul-ai/tz/commit/6008697917bbd156f3f19d7ccb47bf5183f4a3bb))
+* **release:** update bootstrap-sha to valid commit ([f16bbac](https://github.com/terrazul-ai/tz/commit/f16bbac2d007933e7eacffecc6c45c46106f1e7d))
+
 ## [0.11.0](https://github.com/terrazul-ai/cli/compare/v0.10.1...v0.11.0) (2025-10-30)
 
 
