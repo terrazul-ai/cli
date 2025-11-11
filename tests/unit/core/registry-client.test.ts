@@ -6,6 +6,7 @@ import { RegistryClient } from '../../../src/core/registry-client';
 describe('core/registry-client', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('allows http loopback hosts', () => {
@@ -43,17 +44,14 @@ describe('core/registry-client', () => {
         Promise.resolve(
           new Response(
             JSON.stringify({
-              success: true,
-              data: {
-                name: '@acme/pkg',
-                versions: {
-                  '1.0.0': {
-                    version: '1.0.0',
-                    dependencies: {},
-                    compatibility: {},
-                    published_at: publishedSeconds,
-                    yanked: false,
-                  },
+              name: '@acme/pkg',
+              versions: {
+                '1.0.0': {
+                  version: '1.0.0',
+                  dependencies: {},
+                  compatibility: {},
+                  published_at: publishedSeconds,
+                  yanked: false,
                 },
               },
             }),

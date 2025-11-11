@@ -7,8 +7,10 @@ import {
   normalizeConfig,
   saveConfig,
   updateConfig,
+  type SaveConfigOptions,
 } from './config.js';
 import { createLogger } from './logger.js';
+import { createTelemetry, type Telemetry } from './telemetry.js';
 import { RegistryClient } from '../core/registry-client.js';
 import { StorageManager } from '../core/storage.js';
 import { DEFAULT_ENVIRONMENTS } from '../types/config.js';
@@ -34,8 +36,8 @@ export interface ResolverStub {
 
 export interface ConfigAPI {
   load: () => Promise<UserConfig>;
-  save: (cfg: UserConfig) => Promise<void>;
-  update: (patch: Partial<UserConfig>) => Promise<UserConfig>;
+  save: (cfg: UserConfig, opts?: SaveConfigOptions) => Promise<void>;
+  update: (patch: Partial<UserConfig>, opts?: SaveConfigOptions) => Promise<UserConfig>;
   path: () => string;
   getToken: (cfg?: UserConfig) => string | undefined;
 }
@@ -46,41 +48,52 @@ export interface CLIContext {
   registry: RegistryClient;
   storage: StorageManager;
   resolver: ResolverStub;
+  telemetry: Telemetry;
 }
 
 export function createCLIContext(opts: CreateContextOptions = {}): CLIContext {
-  const logger = createLogger({ verbose: opts.verbose });
-
-  // Read config synchronously to derive registry and token; fall back to defaults
-  let initialRegistry: string = DEFAULT_ENVIRONMENTS.production.registry;
-  let initialToken: string | undefined;
-  try {
-    const cfgPath = getConfigPath();
-    if (existsSync(cfgPath)) {
+  let parsedConfig: UserConfig | undefined;
+  const cfgPath = getConfigPath();
+  if (existsSync(cfgPath)) {
+    try {
       const raw = readFileSync(cfgPath, 'utf8');
-      const parsed = normalizeConfig(JSON.parse(raw));
-      const activeEnv = parsed.environments?.[parsed.environment];
-      if (activeEnv?.registry) {
-        initialRegistry = activeEnv.registry;
-      } else if (parsed.registry) {
-        initialRegistry = parsed.registry;
-      }
-      initialToken = getEffectiveToken(parsed);
-    } else {
-      initialToken = getEffectiveToken();
+      parsedConfig = normalizeConfig(JSON.parse(raw));
+    } catch {
+      parsedConfig = undefined;
     }
-    // Allow env override for convenience in tests
-    if (process.env.TERRAZUL_REGISTRY) {
-      initialRegistry = process.env.TERRAZUL_REGISTRY;
-    }
-  } catch {
-    initialToken = getEffectiveToken();
   }
+
+  let initialRegistry: string = DEFAULT_ENVIRONMENTS.production.registry;
+  if (parsedConfig) {
+    const activeEnv = parsedConfig.environments?.[parsedConfig.environment];
+    if (activeEnv?.registry) {
+      initialRegistry = activeEnv.registry;
+    } else if (parsedConfig.registry) {
+      initialRegistry = parsedConfig.registry;
+    }
+  }
+
+  if (process.env.TERRAZUL_REGISTRY) {
+    initialRegistry = process.env.TERRAZUL_REGISTRY;
+  }
+
+  const initialToken = getEffectiveToken(parsedConfig);
+
+  const logger = createLogger({
+    verbose: opts.verbose,
+    accessibility: parsedConfig?.accessibility,
+  });
+
+  const telemetry = createTelemetry(parsedConfig?.telemetry ?? false, (message) => {
+    if (logger.isVerbose()) {
+      logger.debug(message);
+    }
+  });
 
   const configAPI: ConfigAPI = {
     load: () => loadConfig(),
-    save: (cfg) => saveConfig(cfg),
-    update: (patch) => updateConfig(patch),
+    save: (cfg, saveOpts) => saveConfig(cfg, saveOpts),
+    update: (patch, saveOpts) => updateConfig(patch, saveOpts),
     path: () => getConfigPath(),
     getToken: (cfg?: UserConfig) => getEffectiveToken(cfg),
   };
@@ -99,5 +112,5 @@ export function createCLIContext(opts: CreateContextOptions = {}): CLIContext {
     },
   };
 
-  return { logger, config: configAPI, registry, storage, resolver };
+  return { logger, config: configAPI, registry, storage, resolver, telemetry };
 }

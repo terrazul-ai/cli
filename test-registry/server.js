@@ -260,6 +260,88 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (method === 'POST' && pathname === '/auth/v1/cli/initiate') {
+    const state = crypto.randomBytes(16).toString('hex');
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    respond(res, 200, {
+      success: true,
+      data: {
+        state,
+        expiresAt,
+        browserUrl: 'https://login.terrazul.dev/cli/auth',
+      },
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/auth/v1/cli/complete') {
+    const body = await collectBody(req);
+    let token = 'tz_cli_dummy_token';
+    try {
+      const parsed = JSON.parse(body.toString('utf8'));
+      if (parsed.token && typeof parsed.token === 'string') {
+        token = parsed.token;
+      }
+    } catch {
+      // ignore parsing issues, fall back to default token
+    }
+    respond(res, 200, {
+      success: true,
+      data: {
+        token,
+        tokenId: `tok_${token.slice(-6)}`,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 90 * 24 * 3600 * 1000).toISOString(),
+        user: {
+          id: 'user_dummy',
+          username: 'dummy-user',
+          email: 'dummy@example.com',
+        },
+      },
+    });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/auth/v1/cli/introspect') {
+    const body = await collectBody(req);
+    let token = 'tz_cli_dummy_token';
+    try {
+      const parsed = JSON.parse(body.toString('utf8'));
+      if (parsed.token && typeof parsed.token === 'string') {
+        token = parsed.token;
+      }
+    } catch {
+      /* ignore */
+    }
+    respond(res, 200, {
+      success: true,
+      data: {
+        token,
+        tokenId: `tok_${token.slice(-6)}`,
+        createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
+        expiresAt: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
+        user: {
+          id: 'user_dummy',
+          username: 'dummy-user',
+          email: 'dummy@example.com',
+        },
+      },
+    });
+    return;
+  }
+
+  if (method === 'DELETE' && pathname.startsWith('/auth/v1/tokens/')) {
+    if (process.env.DUMMY_REVOKE_FAIL === '1') {
+      respond(res, 500, { success: false, error: { code: 'SERVER_ERROR', message: 'fail' } });
+    } else {
+      res.writeHead(204, {
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end();
+    }
+    return;
+  }
+
   let match = pathname.match(/^\/packages\/v1\/([^/]+)\/([^/]+)$/);
   if (method === 'GET' && match) {
     const { owner, pkgName, key } = parseSegments(match[1], match[2]);
@@ -358,8 +440,8 @@ const server = http.createServer(async (req, res) => {
     const prefix = `${owner}-`;
     const pkgName = slug.startsWith(prefix) ? slug.slice(prefix.length) : slug;
     const version = decodeURIComponent(match[3]);
-    const slug = `${owner}-${pkgName}`;
-    const filename = `${slug.replaceAll(/[^\w.-]/g, '_')}-${version}.tgz`;
+    const fullSlug = `${owner}-${pkgName}`;
+    const filename = `${fullSlug.replaceAll(/[^\w.-]/g, '_')}-${version}.tgz`;
     const publishedPath = path.join(STORAGE_DIR, filename);
     if (fs.existsSync(publishedPath)) {
       serveTarball(res, fs.readFileSync(publishedPath));

@@ -1,16 +1,8 @@
-export interface APISuccessResponse<T> {
-  success: true;
-  data: T;
-  meta?: Record<string, unknown>;
+/**
+ * Standard API error response structure.
+ * Returned with non-2xx HTTP status codes.
+ */
+export interface APIError {
+  code: string;
+  message: string;
 }
-
-export interface APIErrorResponse {
-  success: false;
-  error: {
-    code: string;
-    message: string;
-  };
-  meta?: Record<string, unknown>;
-}
-
-export type APIResponse<T> = APISuccessResponse<T> | APIErrorResponse;
