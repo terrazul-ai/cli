@@ -73,7 +73,7 @@ async function runAskUser(
 ): Promise<SnippetValue> {
   // Check persistent cache first (unless --no-cache)
   if (!options.noCache && options.cacheManager && options.packageName && options.packageVersion) {
-    const cacheKey = generateSnippetId(snippet);
+    const cacheKey = await generateSnippetId(snippet);
     const cached = options.cacheManager.getSnippet(
       options.packageName,
       options.packageVersion,
@@ -112,7 +112,7 @@ async function runAskUser(
 
   // Store to persistent cache
   if (options.cacheManager && options.packageName && options.packageVersion) {
-    const cacheKey = generateSnippetId(snippet);
+    const cacheKey = await generateSnippetId(snippet);
     await options.cacheManager.setSnippet(options.packageName, options.packageVersion, {
       id: cacheKey,
       type: 'askUser',
@@ -134,7 +134,7 @@ async function runAskAgent(
 ): Promise<SnippetValue> {
   // Check persistent cache first (unless --no-cache)
   if (!options.noCache && options.cacheManager && options.packageName && options.packageVersion) {
-    const persistentCacheKey = generateSnippetId(snippet);
+    const persistentCacheKey = await generateSnippetId(snippet, options.packageDir);
     const persistentCached = options.cacheManager.getSnippet(
       options.packageName,
       options.packageVersion,
@@ -233,7 +233,7 @@ async function runAskAgent(
 
   // Store to persistent cache
   if (options.cacheManager && options.packageName && options.packageVersion) {
-    const persistentCacheKey = generateSnippetId(snippet);
+    const persistentCacheKey = await generateSnippetId(snippet, options.packageDir);
     await options.cacheManager.setSnippet(options.packageName, options.packageVersion, {
       id: persistentCacheKey,
       type: 'askAgent',

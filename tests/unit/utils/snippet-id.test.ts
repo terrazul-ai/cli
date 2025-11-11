@@ -1,11 +1,26 @@
-import { describe, it, expect } from 'vitest';
+import { writeFile, mkdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import { generateSnippetId } from '../../../src/utils/snippet-parser';
 
 import type { ParsedAskUserSnippet, ParsedAskAgentSnippet } from '../../../src/types/snippet';
 
 describe('utils/snippet-parser/generateSnippetId', () => {
-  it('generates consistent ID for same askUser snippet', () => {
+  let testDir: string;
+
+  beforeEach(async () => {
+    testDir = path.join(tmpdir(), `tz-snippet-id-test-${Date.now()}`);
+    await mkdir(testDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    await rm(testDir, { recursive: true, force: true });
+  });
+
+  it('generates consistent ID for same askUser snippet', async () => {
     const snippet1: ParsedAskUserSnippet = {
       id: '',
       type: 'askUser',
@@ -26,14 +41,14 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       options: {},
     };
 
-    const id1 = generateSnippetId(snippet1);
-    const id2 = generateSnippetId(snippet2);
+    const id1 = await generateSnippetId(snippet1);
+    const id2 = await generateSnippetId(snippet2);
 
     expect(id1).toBe(id2);
     expect(id1).toMatch(/^snippet_[\da-f]{8}$/);
   });
 
-  it('generates different IDs for different questions', () => {
+  it('generates different IDs for different questions', async () => {
     const snippet1: ParsedAskUserSnippet = {
       id: '',
       type: 'askUser',
@@ -54,13 +69,13 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       options: {},
     };
 
-    const id1 = generateSnippetId(snippet1);
-    const id2 = generateSnippetId(snippet2);
+    const id1 = await generateSnippetId(snippet1);
+    const id2 = await generateSnippetId(snippet2);
 
     expect(id1).not.toBe(id2);
   });
 
-  it('generates same ID regardless of variable name', () => {
+  it('generates same ID regardless of variable name', async () => {
     const snippet1: ParsedAskUserSnippet = {
       id: '',
       type: 'askUser',
@@ -83,13 +98,13 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       varName: 'y',
     };
 
-    const id1 = generateSnippetId(snippet1);
-    const id2 = generateSnippetId(snippet2);
+    const id1 = await generateSnippetId(snippet1);
+    const id2 = await generateSnippetId(snippet2);
 
     expect(id1).toBe(id2);
   });
 
-  it('generates different IDs for different options', () => {
+  it('generates different IDs for different options', async () => {
     const snippet1: ParsedAskUserSnippet = {
       id: '',
       type: 'askUser',
@@ -110,13 +125,13 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       options: { default: 'B' },
     };
 
-    const id1 = generateSnippetId(snippet1);
-    const id2 = generateSnippetId(snippet2);
+    const id1 = await generateSnippetId(snippet1);
+    const id2 = await generateSnippetId(snippet2);
 
     expect(id1).not.toBe(id2);
   });
 
-  it('generates consistent ID for askAgent snippets', () => {
+  it('generates consistent ID for askAgent snippets', async () => {
     const snippet1: ParsedAskAgentSnippet = {
       id: '',
       type: 'askAgent',
@@ -137,14 +152,14 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       options: {},
     };
 
-    const id1 = generateSnippetId(snippet1);
-    const id2 = generateSnippetId(snippet2);
+    const id1 = await generateSnippetId(snippet1);
+    const id2 = await generateSnippetId(snippet2);
 
     expect(id1).toBe(id2);
     expect(id1).toMatch(/^snippet_[\da-f]{8}$/);
   });
 
-  it('generates different IDs for file-based vs text prompts', () => {
+  it('generates different IDs for file-based vs text prompts', async () => {
     const snippet1: ParsedAskAgentSnippet = {
       id: '',
       type: 'askAgent',
@@ -165,13 +180,13 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       options: {},
     };
 
-    const id1 = generateSnippetId(snippet1);
-    const id2 = generateSnippetId(snippet2);
+    const id1 = await generateSnippetId(snippet1);
+    const id2 = await generateSnippetId(snippet2);
 
     expect(id1).not.toBe(id2);
   });
 
-  it('generates different IDs for different askAgent options', () => {
+  it('generates different IDs for different askAgent options', async () => {
     const snippet1: ParsedAskAgentSnippet = {
       id: '',
       type: 'askAgent',
@@ -192,13 +207,13 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       options: { tool: 'codex' },
     };
 
-    const id1 = generateSnippetId(snippet1);
-    const id2 = generateSnippetId(snippet2);
+    const id1 = await generateSnippetId(snippet1);
+    const id2 = await generateSnippetId(snippet2);
 
     expect(id1).not.toBe(id2);
   });
 
-  it('generates consistent IDs across askUser and askAgent types', () => {
+  it('generates consistent IDs across askUser and askAgent types', async () => {
     // These should have different IDs because they're different types
     const askUserSnippet: ParsedAskUserSnippet = {
       id: '',
@@ -220,9 +235,92 @@ describe('utils/snippet-parser/generateSnippetId', () => {
       options: {},
     };
 
-    const id1 = generateSnippetId(askUserSnippet);
-    const id2 = generateSnippetId(askAgentSnippet);
+    const id1 = await generateSnippetId(askUserSnippet);
+    const id2 = await generateSnippetId(askAgentSnippet);
 
     expect(id1).not.toBe(id2);
+  });
+
+  // New tests for file-based prompt content hashing
+  it('generates different IDs when file content changes', async () => {
+    // Create a file with initial content
+    const promptFile = path.join(testDir, 'prompt.txt');
+    await writeFile(promptFile, 'Initial prompt content', 'utf8');
+
+    const snippet1: ParsedAskAgentSnippet = {
+      id: '',
+      type: 'askAgent',
+      raw: '{{ askAgent("./prompt.txt") }}',
+      startIndex: 0,
+      endIndex: 30,
+      prompt: { kind: 'file', value: './prompt.txt' },
+      options: {},
+    };
+
+    const id1 = await generateSnippetId(snippet1, testDir);
+
+    // Modify file content
+    await writeFile(promptFile, 'Modified prompt content', 'utf8');
+
+    const id2 = await generateSnippetId(snippet1, testDir);
+
+    // IDs should be different because file content changed
+    expect(id1).not.toBe(id2);
+  });
+
+  it('generates same ID for same file with unchanged content', async () => {
+    const content = 'Same prompt content';
+
+    // Create a file
+    const promptFile = path.join(testDir, 'prompt.txt');
+    await writeFile(promptFile, content, 'utf8');
+
+    const snippet: ParsedAskAgentSnippet = {
+      id: '',
+      type: 'askAgent',
+      raw: '{{ askAgent("./prompt.txt") }}',
+      startIndex: 0,
+      endIndex: 30,
+      prompt: { kind: 'file', value: './prompt.txt' },
+      options: {},
+    };
+
+    const id1 = await generateSnippetId(snippet, testDir);
+    const id2 = await generateSnippetId(snippet, testDir);
+
+    // IDs should be same because file content hasn't changed
+    expect(id1).toBe(id2);
+  });
+
+  it('falls back to path-only when file does not exist', async () => {
+    const snippet: ParsedAskAgentSnippet = {
+      id: '',
+      type: 'askAgent',
+      raw: '{{ askAgent("./nonexistent.txt") }}',
+      startIndex: 0,
+      endIndex: 35,
+      prompt: { kind: 'file', value: './nonexistent.txt' },
+      options: {},
+    };
+
+    // Should not throw, should fall back to path-only hash
+    const id = await generateSnippetId(snippet, testDir);
+    expect(id).toMatch(/^snippet_[\da-f]{8}$/);
+  });
+
+  it('uses path-only when packageDir is not provided', async () => {
+    const snippet: ParsedAskAgentSnippet = {
+      id: '',
+      type: 'askAgent',
+      raw: '{{ askAgent("./prompt.txt") }}',
+      startIndex: 0,
+      endIndex: 30,
+      prompt: { kind: 'file', value: './prompt.txt' },
+      options: {},
+    };
+
+    // Without packageDir, should fall back to path-only
+    const id = await generateSnippetId(snippet);
+    expect(id).toMatch(/^snippet_[\da-f]{8}$/);
   });
 });

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 import YAML from 'yaml';
 
+import { safeResolveWithin } from '../core/destinations.js';
 import { ErrorCode, TerrazulError } from '../core/errors.js';
 import {
   type AskAgentOptions,
@@ -20,8 +22,12 @@ const VALID_VAR_NAME = /^\w+$/;
 /**
  * Generate a stable content-based ID for a snippet
  * The ID is based on the snippet content (prompt + options), not the variable name
+ * For file-based prompts, includes hash of file contents to detect changes
  */
-export function generateSnippetId(snippet: ParsedSnippet): string {
+export async function generateSnippetId(
+  snippet: ParsedSnippet,
+  packageDir?: string,
+): Promise<string> {
   // Build a source string from the snippet content
   let source: string;
 
@@ -30,7 +36,24 @@ export function generateSnippetId(snippet: ParsedSnippet): string {
     source = `askUser:${snippet.question}:${JSON.stringify(snippet.options)}`;
   } else {
     // For askAgent: hash prompt kind + value + options (excluding varName)
-    const promptPart = `${snippet.prompt.kind}:${snippet.prompt.value}`;
+    let promptPart: string;
+
+    if (snippet.prompt.kind === 'file' && packageDir) {
+      // Read file contents and hash them to detect changes
+      try {
+        const target = safeResolveWithin(packageDir, snippet.prompt.value);
+        const contents = await readFile(target, 'utf8');
+        const contentHash = createHash('sha256').update(contents).digest('hex').slice(0, 16);
+        promptPart = `file:${snippet.prompt.value}:${contentHash}`;
+      } catch {
+        // Fallback to path-only if file read fails (shouldn't happen in practice)
+        promptPart = `file:${snippet.prompt.value}`;
+      }
+    } else {
+      // For text prompts or when packageDir is not available
+      promptPart = `${snippet.prompt.kind}:${snippet.prompt.value}`;
+    }
+
     source = `askAgent:${promptPart}:${JSON.stringify(snippet.options)}`;
   }
 
