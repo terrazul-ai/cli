@@ -1,3 +1,6 @@
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
+
 import { buildPublishPlan, createTarball } from '../core/publisher.js';
 
 import type { CLIContext } from '../utils/context.js';
@@ -28,6 +31,33 @@ export function registerPublishCommand(
         // Build tarball
         const tarball = await createTarball(root, plan.files);
 
+        // Read README if present
+        let readme: string | undefined;
+        try {
+          const readmePath = path.join(root, 'README.md');
+          readme = await fs.readFile(readmePath, 'utf8');
+
+          // Validate README size (1MB max)
+          const maxSize = 1024 * 1024;
+          if (Buffer.byteLength(readme, 'utf8') > maxSize) {
+            throw new Error(`README.md exceeds maximum size of 1MB`);
+          }
+
+          if (g.verbose) {
+            ctx.logger.info(`Including README.md (${Buffer.byteLength(readme, 'utf8')} bytes)`);
+          }
+        } catch (error) {
+          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+            // README not found, continue without it
+            if (g.verbose) {
+              ctx.logger.info('No README.md found, publishing without it');
+            }
+          } else {
+            // Re-throw other errors (like size limit)
+            throw error;
+          }
+        }
+
         // Read full manifest for metadata
         const { readManifest } = await import('../utils/manifest.js');
         const manifest = await readManifest(root);
@@ -49,7 +79,7 @@ export function registerPublishCommand(
           is_private: manifest.package.is_private ?? false,
         };
 
-        const res = await ctx.registry.publishPackage(plan.name, tarball, metadata);
+        const res = await ctx.registry.publishPackage(plan.name, tarball, metadata, readme);
         ctx.logger.info(`Published ${plan.name}@${res.version}`);
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
