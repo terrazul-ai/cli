@@ -19,7 +19,7 @@ import { fileURLToPath } from 'url';
 import os from 'os';
 import crypto from 'crypto';
 import * as tar from 'tar';
-import Busboy from 'busboy';
+import busboy from 'busboy';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -162,17 +162,17 @@ function handlePublish(
   }
 
   // Use busboy to parse multipart form data
-  const busboy = Busboy({ headers: req.headers });
+  const bb = busboy({ headers: req.headers });
   let metadataJson: string | null = null;
   let tarballData: Buffer | null = null;
 
-  busboy.on('field', (name, value) => {
+  bb.on('field', (name: string, value: string) => {
     if (name === 'metadata') {
       metadataJson = value;
     }
   });
 
-  busboy.on('file', (name, file, info) => {
+  bb.on('file', (name: string, file: NodeJS.ReadableStream, _info: busboy.FileInfo) => {
     if (name === 'tarball') {
       const chunks: Buffer[] = [];
       file.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -184,7 +184,7 @@ function handlePublish(
     }
   });
 
-  busboy.on('finish', () => {
+  bb.on('finish', () => {
     if (!metadataJson || !tarballData) {
       respondJson(res, 400, { error: 'Missing metadata or tarball part' });
       return;
@@ -224,11 +224,11 @@ function handlePublish(
     });
   });
 
-  busboy.on('error', (err: Error) => {
+  bb.on('error', (err: Error) => {
     respondJson(res, 400, { error: `Multipart parsing error: ${err.message}` });
   });
 
-  req.pipe(busboy);
+  req.pipe(bb);
 }
 
 async function ensureTarball(owner: string, pkgName: string, version: string): Promise<Buffer> {

@@ -1,6 +1,9 @@
+import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import os from 'node:os';
 import readline from 'node:readline';
+
+import { encode } from 'he';
 
 import { LoginStateManager } from './state-manager.js';
 import { validatePAT } from '../../utils/auth.js';
@@ -24,7 +27,7 @@ const SUCCESS_HTML = `<!doctype html>
       p { font-size: 1rem; line-height: 1.5; }
       .success { color: #34d399; font-weight: 600; font-size: 1.125rem; }
     </style>
-    <script>
+    <script nonce="{{nonce}}">
       window.addEventListener('load', () => {
         try {
           const url = new URL(window.location.href);
@@ -57,7 +60,7 @@ const ERROR_HTML = (message: string) => `<!doctype html>
   <body>
     <div class="card">
       <h1>Authentication Error</h1>
-      <p>${message}</p>
+      <p>${encode(message)}</p>
     </div>
   </body>
 </html>`;
@@ -96,9 +99,19 @@ function parsePort(info: AddressInfo | string | null): number {
   return info.port;
 }
 
-function respond(res: ServerResponse, status: number, body: string): void {
-  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(body);
+function respond(res: ServerResponse, status: number, body: string, nonce?: string): void {
+  const csp = nonce
+    ? `default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}'`
+    : `default-src 'none'; style-src 'unsafe-inline'`;
+
+  res.writeHead(status, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Content-Security-Policy': csp,
+  });
+
+  // Replace nonce placeholder in body if nonce is provided
+  const finalBody = nonce ? body.replaceAll('{{nonce}}', nonce) : body;
+  res.end(finalBody);
 }
 
 function createSignalHandler(
@@ -290,7 +303,9 @@ export async function runInteractiveLogin(opts: InteractiveLoginOptions): Promis
       }
       try {
         const result = await finalize(token, 'callback');
-        respond(res, 200, SUCCESS_HTML);
+        // Generate cryptographic nonce for CSP
+        const nonce = randomBytes(16).toString('base64');
+        respond(res, 200, SUCCESS_HTML, nonce);
         callbacks.resolve(result);
       } catch (error) {
         const message =

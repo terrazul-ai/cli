@@ -168,6 +168,25 @@ describe('integration: login interactive foundation', () => {
     const html = await callbackRes.text();
     expect(html).toMatch(/authentication successful/i);
 
+    // Verify CSP header includes nonce for success response
+    const cspHeader = callbackRes.headers.get('content-security-policy');
+    expect(cspHeader).toContain("script-src 'nonce-");
+    expect(cspHeader).toContain("default-src 'none'");
+    expect(cspHeader).toContain("style-src 'unsafe-inline'");
+
+    // Verify script tag has matching nonce attribute
+    const cspNonceMatch = cspHeader?.match(/nonce-([\d+/=A-Za-z]+)/);
+    expect(cspNonceMatch).toBeTruthy();
+    const cspNonce = cspNonceMatch?.[1];
+
+    const htmlNonceMatch = html.match(/nonce="([\d+/=A-Za-z]+)"/);
+    expect(htmlNonceMatch).toBeTruthy();
+    const htmlNonce = htmlNonceMatch?.[1];
+
+    // Nonce in CSP must match nonce in HTML
+    expect(cspNonce).toBe(htmlNonce);
+    expect(cspNonce).toBeTruthy();
+
     await parsePromise;
 
     expect(completionCalls).toBe(1);

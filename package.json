@@ -59,6 +59,7 @@
     "cli-truncate": "^4.0.0",
     "commander": "^12.1.0",
     "handlebars": "^4.7.8",
+    "he": "^1.2.0",
     "ink": "^4.4.1",
     "ink-text-input": "^5.0.1",
     "inquirer": "^9.3.6",
@@ -71,6 +72,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/busboy": "^1.5.4",
+    "@types/he": "^1.2.3",
     "@types/inquirer": "^9.0.9",
     "@types/node": "^18.0.0",
     "@types/react": "^18.3.3",
