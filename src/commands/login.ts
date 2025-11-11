@@ -30,12 +30,6 @@ export function registerLoginCommand(
 Examples:
   tz login
   tz login --token tz_example --username alice
-
-Accessibility:
-  Configure ~/.terrazul/config.json [accessibility] to enable large text or audio feedback.
-
-Telemetry:
-  Set "telemetry": true in config to emit login flow events (no token values recorded).
 `,
     )
     .action(async (options: { token?: string; username?: string }) => {
