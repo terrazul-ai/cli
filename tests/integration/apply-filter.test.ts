@@ -75,7 +75,7 @@ describe('integration: apply filter by package', () => {
   it('applies only the selected package', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
     // apply only @a/one
-    await run('node', [cli, 'apply', '@a/one'], { cwd: tmpProj, env });
+    await run('node', [cli, 'apply', '@a/one', '--no-cache'], { cwd: tmpProj, env });
     const one = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
     expect(one).toContain('One');
     const twoExists = await fs.stat(path.join(tmpProj, '.claude', 'CLAUDE.md')).catch(() => null);

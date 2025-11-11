@@ -139,7 +139,10 @@ template = "ignored"
       CLAUDE_STUB_COUNTER: counterPath,
       CLAUDE_STUB_OUTPUTS: 'First result|Second result',
     };
-    const { stdout } = await run('node', [cli, 'apply', '--dry-run'], { cwd: tmpProj, env });
+    const { stdout } = await run('node', [cli, 'apply', '--dry-run', '--no-cache'], {
+      cwd: tmpProj,
+      env,
+    });
     expect(stdout).toMatch(/apply \(dry-run\): would write \d+ files/);
 
     const rawLog = await fs.readFile(logPath, 'utf8');
@@ -160,7 +163,7 @@ template = "ignored"
       CLAUDE_STUB_COUNTER: counterPath,
       CLAUDE_STUB_OUTPUTS: 'Alpha|Preview result',
     };
-    await run('node', [cli, 'apply'], { cwd: tmpProj, env });
+    await run('node', [cli, 'apply', '--no-cache'], { cwd: tmpProj, env });
     const { stdout } = await run('node', [cli, 'run'], { cwd: tmpProj, env });
     expect(stdout).toMatch(/run: previewed \d+ files/);
     expect(stdout).toContain('Preview result');
@@ -177,7 +180,10 @@ template = "ignored"
       CLAUDE_STUB_OUTPUTS: 'Result',
       CLAUDE_STUB_ARG_LOG: argLogPath,
     };
-    await run('node', [cli, 'apply', '--dry-run', '--no-tool-safe-mode'], { cwd: tmpProj, env });
+    await run('node', [cli, 'apply', '--dry-run', '--no-tool-safe-mode', '--no-cache'], {
+      cwd: tmpProj,
+      env,
+    });
     const rawArgs = JSON.parse(await fs.readFile(argLogPath, 'utf8')) as string[];
     expect(rawArgs).not.toContain('--permission-mode');
     expect(rawArgs).not.toContain('--max-turns');

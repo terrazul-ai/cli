@@ -71,7 +71,10 @@ describe('integration: apply with profiles', () => {
 
   it('applies only packages included in the selected profile', async () => {
     const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
-    await run('node', [cli, 'apply', '--profile', 'focus', '--force'], { cwd: tmpProj, env });
+    await run('node', [cli, 'apply', '--profile', 'focus', '--force', '--no-cache'], {
+      cwd: tmpProj,
+      env,
+    });
 
     const claude = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
     expect(claude.trim()).toBe('# Profile One');
@@ -88,7 +91,7 @@ describe('integration: apply with profiles', () => {
     );
 
     await expect(
-      run('node', [cli, 'apply', '--profile', 'missing'], { cwd: tmpProj, env }),
+      run('node', [cli, 'apply', '--profile', 'missing', '--no-cache'], { cwd: tmpProj, env }),
     ).rejects.toThrow();
   });
 });

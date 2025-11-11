@@ -82,6 +82,7 @@ Summary: {{ vars.summary.result }}`;
       force: true,
       packageName: '@test/demo',
       tool: 'claude',
+      noCache: true,
     });
 
     expect(res.written).toHaveLength(1);
@@ -101,6 +102,7 @@ Summary: {{ vars.summary.result }}`;
         force: true,
         packageName: '@test/demo',
         tool: 'claude',
+        noCache: true,
       }),
     ).rejects.toMatchObject({
       code: ErrorCode.TOOL_EXECUTION_FAILED,
@@ -115,6 +117,7 @@ Summary: {{ vars.summary.result }}`;
       force: true,
       packageName: '@test/demo',
       tool: 'claude',
+      noCache: true,
     });
 
     expect(promptMock).toHaveBeenCalledTimes(1);

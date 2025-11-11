@@ -146,7 +146,10 @@ describe('integration: apply --dry-run', () => {
       cwd: tmpProj,
       env,
     });
-    const { stdout } = await run('node', [cli, 'apply', '--dry-run'], { cwd: tmpProj, env });
+    const { stdout } = await run('node', [cli, 'apply', '--dry-run', '--no-cache'], {
+      cwd: tmpProj,
+      env,
+    });
     expect(stdout).toMatch(/apply \(dry-run\): would write \d+ files/);
     // Ensure no files written
     expect(await pathExists(path.join(tmpProj, 'CLAUDE.md'))).toBe(false);

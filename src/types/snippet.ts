@@ -87,6 +87,17 @@ export interface ExecuteSnippetsOptions {
   dryRun?: boolean;
   report?: (event: SnippetEvent) => void;
   baseContext?: TemplateContext;
+  // Snippet caching options
+  cacheManager?: SnippetCacheManager;
+  packageName?: string;
+  packageVersion?: string;
+  noCache?: boolean;
+}
+
+// Forward declaration to avoid circular dependency
+export interface SnippetCacheManager {
+  getSnippet(packageName: string, version: string, snippetId: string): CachedSnippet | null;
+  setSnippet(packageName: string, version: string, snippet: CachedSnippet): Promise<void>;
 }
 
 export interface PreprocessOptions extends ExecuteSnippetsOptions {}
@@ -101,4 +112,30 @@ export interface PreprocessResult {
   parsed: ParsedSnippet[];
   execution: SnippetExecutionContext;
   renderContext: RenderableSnippetContext;
+}
+
+// Snippet caching types
+export interface CachedSnippet {
+  id: string;
+  type: SnippetType;
+  promptExcerpt: string;
+  value: string; // JSON stringified
+  timestamp: string; // ISO 8601
+  tool?: ToolType; // For askAgent snippets
+}
+
+export interface PackageSnippetCache {
+  version: string;
+  snippets: CachedSnippet[];
+}
+
+export interface SnippetCacheMetadata {
+  generatedAt: string;
+  cliVersion: string;
+}
+
+export interface SnippetCache {
+  version: number;
+  packages: Record<string, PackageSnippetCache>;
+  metadata: SnippetCacheMetadata;
 }

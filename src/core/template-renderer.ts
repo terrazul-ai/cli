@@ -3,6 +3,7 @@ import path from 'node:path';
 
 import { ensureFileDestination, resolveWritePath, safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
+import { SnippetCacheManager } from './snippet-cache.js';
 import { loadConfig, getProfileTools, selectPrimaryTool } from '../utils/config.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
@@ -373,6 +374,9 @@ export interface ApplyOptions {
   verbose?: boolean;
   onTemplateStart?: (info: TemplateProgress) => void;
   onSnippetEvent?: (progress: SnippetProgress) => void;
+  // Snippet caching options
+  noCache?: boolean;
+  cacheFilePath?: string;
 }
 
 export async function planAndRender(
@@ -446,6 +450,18 @@ export async function planAndRender(
       );
     }
     filtered = pkgs.filter((pkg) => allowed.has(pkg.name));
+  }
+
+  // Initialize snippet cache manager (unless explicitly disabled)
+  let cacheManager: SnippetCacheManager | undefined;
+  if (opts.noCache !== true) {
+    const cacheFilePath = opts.cacheFilePath ?? path.join(projectRoot, 'agents-cache.toml');
+    cacheManager = new SnippetCacheManager(cacheFilePath);
+    await cacheManager.read();
+
+    // Prune stale cache entries (packages no longer installed)
+    const installedPackageNames = pkgs.map((p) => p.name);
+    await cacheManager.prune(installedPackageNames);
   }
 
   const written: string[] = [];
@@ -532,6 +548,10 @@ export async function planAndRender(
         continue;
       }
 
+      // Get package version from manifest
+      const pkgManifest = await readManifest(p.root);
+      const pkgVersion = pkgManifest?.package?.version ?? '0.0.0';
+
       const renderResult = await renderTemplateWithSnippets(item.abs, ctx, {
         preprocess: {
           projectDir: projectRoot,
@@ -542,6 +562,10 @@ export async function planAndRender(
           verbose: opts.verbose ?? false,
           dryRun: opts.dryRun ?? false,
           report: reporter,
+          cacheManager,
+          packageName: p.name,
+          packageVersion: pkgVersion,
+          noCache: opts.noCache ?? false,
         },
       });
 
