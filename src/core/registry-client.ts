@@ -288,6 +288,7 @@ export class RegistryClient {
     packageName: string,
     tarball: Buffer,
     metadata: Record<string, unknown>,
+    readme?: string,
   ): Promise<{ message: string; version: string }> {
     if (!this.token) {
       throw new TerrazulError(ErrorCode.AUTH_REQUIRED, 'Authentication required for publishing');
@@ -300,6 +301,11 @@ export class RegistryClient {
 
     formData.append('tarball', tarballBlob, sanitizedFile);
     formData.append('metadata', JSON.stringify(metadata));
+
+    // Add README if provided
+    if (readme !== undefined) {
+      formData.append('readme', readme);
+    }
 
     return await this.request<{ message: string; version: string }>(
       'POST',
