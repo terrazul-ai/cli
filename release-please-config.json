@@ -6,7 +6,7 @@
     ".": {
       "path": ".",
       "release-type": "node",
-      "package-name": "@terrazul/cli",
+      "package-name": "@terrazul/tz",
       "include-component-in-tag": false,
       "initial-version": "0.0.1"
     }

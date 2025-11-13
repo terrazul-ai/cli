@@ -18,7 +18,7 @@ import { SEA_TARGETS, archiveNameForTarget } from '../src/runtime/targets';
 
 export type { SeaManifest } from '../src/types/sea-manifest';
 
-const DEFAULT_RELEASE_BASE = 'https://github.com/terrazul-ai/cli/releases/download';
+const DEFAULT_RELEASE_BASE = 'https://github.com/terrazul-ai/tz/releases/download';
 
 export interface BuildSeaManifestOptions {
   cliVersion: string;
@@ -43,7 +43,7 @@ async function computeSha256(filePath: string): Promise<string> {
 function resolveBaseUrl({ baseUrl, releaseTag, cliVersion }: BuildSeaManifestOptions): string {
   if (baseUrl) return baseUrl;
   if (releaseTag) return `${DEFAULT_RELEASE_BASE}/${releaseTag}`;
-  return `${DEFAULT_RELEASE_BASE}/cli-v${cliVersion}`;
+  return `${DEFAULT_RELEASE_BASE}/tz-v${cliVersion}`;
 }
 
 function getSeaDir(distDir: string): string {

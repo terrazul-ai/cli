@@ -1,8 +1,8 @@
 <h1 align="center">Terrazul CLI (`tz`)</h1>
 
-<p align="center"><code>npm i -g @terrazul/cli</code></p>
+<p align="center"><code>npm i -g @terrazul/tz</code></p>
 
-<p align="center"><strong>Terrazul CLI</strong> is the package manager for AI agent configurations. Ship reproducible Claude Code, Cursor, Gemini, and MCP setups with deterministic installs, secure packaging, and profile-aware rendering.</p>
+<p align="center"><strong>Terrazul CLI</strong> is the package manager for AI agent configurations. Easily build, run and share agent configurations for Claude Code, Codex and Gemini CLI.</p>
 
 ---
 
@@ -13,28 +13,25 @@
 #### pnpm / npm (when published)
 
 ```shell
-pnpm i -g @terrazul/cli
+pnpm i -g @terrazul/tz
 # or
-npm i -g @terrazul/cli
+npm i -g @terrazul/tz
 ```
 
 ---
 
 ## Why Terrazul CLI
 
-- **Deterministic installs**: SAT-based resolver + content-addressable store deliver reproducible `agents-lock.toml` snapshots.
-- **Multi-tool ready**: Generates Claude Code, Cursor, Gemini, and MCP wiring with a single install step.
-- **Secure-by-default**: Rejects path traversal, strips exec bits, and keeps yanked versions out of fresh resolutions.
+- **Production ready**: Run battle tested agentic configurations that adapt to your projects with context-aware rendering.
+- **Multi-tool support**: Generates Claude Code, Codex and Gemini CLI, with a single install step.
 - **Offline-first**: Local cache mirrors upstream packages so rebuilds succeed without a network connection.
-- **Profile-aware**: `tz add --profile focus` keeps workspace manifests scoped to targeted workflows.
-- **Team-friendly**: Environment switching, staging tokens, and deterministic outputs keep collaborators in sync.
+- **Team-friendly**: Adopt consistent AI workflows across your team by publishing private packages.
 
 ---
 
 ## Key Concepts & Files
 
 - `agents.toml`: Project manifest with dependencies, compatibility rules, and profiles.
-- `agents-lock.toml`: Deterministic dependency graph with integrity hashes and yanked metadata.
 - `agent_modules/`: Extracted package payloads linked into local tool directories.
 - `~/.terrazul/cache/` and `~/.terrazul/store/`: Content-addressable caches for fast reinstalls.
 - `TERRAZUL.md`: Human-readable snapshot of the active manifest, regenerated on every install/update.
@@ -158,11 +155,11 @@ pnpm run sea:install -- --as tz --dest /usr/local/bin
 
   ```shell
   pnpm tsx tools/verify-sea-package.ts \
-    --release-version 0.0.0-dev \
-    --run-id <gha-run-id> \
-    --workflow-url https://github.com/terrazul-ai/terrazul/actions/runs/<gha-run-id> \
-    --gh $(pwd)/path/to/gh-stub-or-binary \
-    --node20 $(nvm which 20)
+	--release-version 0.0.0-dev \
+	--run-id <gha-run-id> \
+	--workflow-url https://github.com/terrazul-ai/terrazul/actions/runs/<gha-run-id> \
+	--gh $(pwd)/path/to/gh-stub-or-binary \
+	--node20 $(nvm which 20)
   ```
 
   Use `--keep-stage` to inspect the staged package directory and `--skip-launch` if the current platform binary is unavailable.
