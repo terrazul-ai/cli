@@ -509,6 +509,20 @@ export async function planAndRender(
     if (exp?.cursor) toRender.push(...collectFromExports(p.root, 'cursor', exp.cursor));
     if (exp?.copilot) toRender.push(...collectFromExports(p.root, 'copilot', exp.copilot));
 
+    // Deduplicate templates by absolute path to prevent rendering the same file multiple times
+    const seen = new Map<string, { abs: string; relUnderTemplates: string; tool: ToolType }>();
+    for (const item of toRender) {
+      if (!seen.has(item.abs)) {
+        seen.set(item.abs, item);
+        if (opts.verbose) {
+          console.log(`[template-renderer] Collecting template: ${item.abs} (${item.tool})`);
+        }
+      } else if (opts.verbose) {
+        console.log(`[template-renderer] Skipping duplicate template: ${item.abs} (${item.tool})`);
+      }
+    }
+    const uniqueToRender = [...seen.values()];
+
     // Build context once per package
     const ctx: RenderContext = {
       project: { root: projectRoot, name: projectName, version: projectVersion },
@@ -518,11 +532,15 @@ export async function planAndRender(
       files: filesMap,
     };
 
-    for (const item of toRender) {
+    for (const item of uniqueToRender) {
       const rel = item.relUnderTemplates.replaceAll('\\', '/');
       let dest = computeDestForRel(projectRoot, filesMap, item.tool, rel);
       dest = await ensureFileDestination(dest, item.tool, projectRoot);
       const destDir = path.dirname(dest);
+
+      if (opts.verbose) {
+        console.log(`[template-renderer] Rendering template: ${item.abs} -> ${dest}`);
+      }
 
       opts.onTemplateStart?.({ templateRel: rel, dest, pkgName: p.name });
 

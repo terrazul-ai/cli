@@ -531,6 +531,16 @@ function normalizeAskAgentOptions(raw: Record<string, unknown>): AskAgentOptions
       options.timeoutMs = value;
       continue;
     }
+    if (key === 'systemPrompt') {
+      if (typeof value !== 'string') {
+        throw new TerrazulError(
+          ErrorCode.INVALID_ARGUMENT,
+          'askAgent systemPrompt option must be a string',
+        );
+      }
+      options.systemPrompt = value;
+      continue;
+    }
     throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, `Unsupported askAgent option '${key}'.`);
   }
   return options;

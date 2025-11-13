@@ -30,11 +30,15 @@ interface CacheEntry {
 
 type CacheKey = string;
 
+const DEFAULT_CONTEXT_EXTRACTION_SYSTEM_PROMPT =
+  'You are a context extraction agent. Your job is to understand, synthesize and extract context from existing projects. Your responses should only include what is asked, and should not include any dialog such as "I\'m now ready to..", "Looking at", etc. Instead, you should ONLY respond with the answers to the questions asked based on your research';
+
 export async function executeSnippets(
   snippets: ParsedSnippet[],
   options: ExecuteSnippetsOptions,
 ): Promise<SnippetExecutionContext> {
   const context: SnippetExecutionContext = { snippets: {}, vars: {} };
+  // Create new in-memory caches for within-command deduplication
   const cache = new Map<CacheKey, CacheEntry>();
   const promptCache = new Map<string, string>();
 
@@ -161,10 +165,20 @@ async function runAskAgent(
   const toolSpec = resolveToolSpec(snippet, options);
   const safeMode = snippet.options.safeMode ?? options.toolSafeMode ?? true;
   const timeoutMs = snippet.options.timeoutMs;
-  const cacheKey = buildCacheKey(toolSpec, snippet, finalPrompt, safeMode, timeoutMs);
+
+  // Determine system prompt: use snippet option if provided, otherwise use default
+  const systemPrompt =
+    snippet.options.systemPrompt === undefined
+      ? DEFAULT_CONTEXT_EXTRACTION_SYSTEM_PROMPT
+      : snippet.options.systemPrompt;
+
+  const cacheKey = buildCacheKey(toolSpec, snippet, finalPrompt, safeMode, timeoutMs, systemPrompt);
 
   const cached = cache.get(cacheKey);
   if (cached) {
+    if (options.verbose) {
+      console.log(`[snippet-executor] Cache hit for snippet ${snippet.id}`);
+    }
     options.report?.({
       type: 'askAgent:end',
       snippet,
@@ -182,6 +196,7 @@ async function runAskAgent(
       cwd: options.projectDir,
       safeMode,
       timeoutMs,
+      systemPrompt,
     });
   } catch (error) {
     const snippetError = toSnippetError(error);
@@ -299,7 +314,8 @@ function buildCacheKey(
   snippet: ParsedAskAgentSnippet,
   prompt: string,
   safeMode: boolean,
-  timeoutMs?: number,
+  timeoutMs: number | undefined,
+  systemPrompt: string,
 ): CacheKey {
   const schemaRef = snippet.options.schema
     ? `${snippet.options.schema.file}::${snippet.options.schema.exportName ?? 'default'}`
@@ -314,6 +330,7 @@ function buildCacheKey(
     safeMode,
     timeoutMs: timeoutMs ?? null,
     schema: schemaRef,
+    systemPrompt,
   });
 }
 

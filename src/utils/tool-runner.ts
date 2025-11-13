@@ -11,6 +11,7 @@ export interface InvokeToolOptions {
   safeMode?: boolean;
   timeoutMs?: number;
   env?: Record<string, string>;
+  systemPrompt?: string;
 }
 
 export interface ToolExecution {
@@ -132,6 +133,15 @@ export async function invokeTool(options: InvokeToolOptions): Promise<ToolExecut
   appendArgs(args, REQUIRED_ARGS[options.tool.type]);
   if (options.tool.model && options.tool.model !== 'default') {
     appendArgs(args, ['--model', options.tool.model]);
+  }
+
+  // Add system prompt for Claude only
+  if (
+    options.tool.type === 'claude' &&
+    options.systemPrompt !== undefined &&
+    options.systemPrompt !== null
+  ) {
+    args.push('--append-system-prompt', options.systemPrompt);
   }
 
   const env = expandEnvVars(options.tool.env);
