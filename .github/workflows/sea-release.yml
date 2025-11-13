@@ -250,12 +250,8 @@ jobs:
                 VERSION="${TAG#alpha-v}"
                 CHANNEL="alpha"
                 ;;
-              cli-v*)
-                VERSION="${TAG#cli-v}"
-                CHANNEL="stable"
-                ;;
-              terrazul-cli-v*)
-                VERSION="${TAG#terrazul-cli-v}"
+              tz-v*)
+                VERSION="${TAG#tz-v}"
                 CHANNEL="stable"
                 ;;
               v*)
@@ -442,8 +438,7 @@ jobs:
       github.event_name == 'release' && (
         startsWith(github.event.release.tag_name, 'v') ||
         startsWith(github.event.release.tag_name, 'sea-v') ||
-        startsWith(github.event.release.tag_name, 'cli-v') ||
-        startsWith(github.event.release.tag_name, 'terrazul-cli-v')
+        startsWith(github.event.release.tag_name, 'tz-v')
       )
     permissions:
       contents: read
@@ -466,4 +461,4 @@ jobs:
         run: npm install -g npm@latest
 
       - name: Publish package
-        run: npm publish "dist/npm/$NPM_TARBALL" --access public
+        run: npm publish "dist/npm/$NPM_TARBALL" --access public --provenance

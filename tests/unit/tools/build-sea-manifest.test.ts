@@ -48,7 +48,7 @@ describe('buildSeaManifest', () => {
     const manifestPath = path.join(distDir, 'manifest.json');
     const manifestFromDisk = JSON.parse(await fs.readFile(manifestPath, 'utf8')) as SeaManifest;
 
-    const expectedBaseUrl = 'https://github.com/terrazul-ai/cli/releases/download/cli-v0.3.1';
+    const expectedBaseUrl = 'https://github.com/terrazul-ai/tz/releases/download/tz-v0.3.1';
 
     expect(manifestFromDisk).toEqual(manifest);
     expect(manifest.schemaVersion).toBe(1);
