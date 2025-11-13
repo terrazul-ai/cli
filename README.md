@@ -155,11 +155,11 @@ pnpm run sea:install -- --as tz --dest /usr/local/bin
 
   ```shell
   pnpm tsx tools/verify-sea-package.ts \
-	--release-version 0.0.0-dev \
-	--run-id <gha-run-id> \
-	--workflow-url https://github.com/terrazul-ai/terrazul/actions/runs/<gha-run-id> \
-	--gh $(pwd)/path/to/gh-stub-or-binary \
-	--node20 $(nvm which 20)
+  --release-version 0.0.0-dev \
+  --run-id <gha-run-id> \
+  --workflow-url https://github.com/terrazul-ai/terrazul/actions/runs/<gha-run-id> \
+  --gh $(pwd)/path/to/gh-stub-or-binary \
+  --node20 $(nvm which 20)
   ```
 
   Use `--keep-stage` to inspect the staged package directory and `--skip-launch` if the current platform binary is unavailable.
