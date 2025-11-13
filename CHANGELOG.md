@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/terrazul-ai/tz/compare/v0.12.0...v0.13.0) (2025-11-13)
+
+
+### Features
+
+* **publish:** send README as separate form field during package publish ([#45](https://github.com/terrazul-ai/tz/issues/45)) ([f6d1bf7](https://github.com/terrazul-ai/tz/commit/f6d1bf77b9cddb66a40dd6f6956d1a3cf459c681))
+
 ## [0.12.0](https://github.com/terrazul-ai/tz/compare/v0.11.0...v0.12.0) (2025-11-11)
 
 

@@ -1,6 +1,6 @@
 {
   "name": "@terrazul/tz",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Terrazul CLI (tz): package manager for AI agent configuration bundles",
   "repository": {
     "type": "git",
