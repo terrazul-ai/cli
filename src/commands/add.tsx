@@ -20,11 +20,35 @@ import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 import type { Instance } from 'ink';
 
-function parseSpec(spec?: string): { name: string; range: string } | null {
+/**
+ * parseSpec extracts package name and version range from a spec string.
+ * Supports three formats:
+ * 1. @owner/pkg@1.0.0 → { name: '@owner/pkg', range: '1.0.0' }
+ * 2. @owner/pkg@latest → { name: '@owner/pkg', range: 'latest' }
+ * 3. @owner/pkg → { name: '@owner/pkg', range: null }
+ */
+export function parseSpec(spec?: string): { name: string; range: string | null } | null {
   if (!spec) return null;
-  const m = spec.match(/^(@[^@]+?)@([^@]+)$/) || spec.match(/^([^@]+)@([^@]+)$/);
-  if (!m) return null;
-  return { name: m[1], range: m[2] };
+
+  // Match scoped packages: @scope/name[@version]
+  const scopedMatch = spec.match(/^(@[^@]+\/[^@]+)(?:@(.+))?$/);
+  if (scopedMatch) {
+    return {
+      name: scopedMatch[1],
+      range: scopedMatch[2] || null,
+    };
+  }
+
+  // Match unscoped packages: name[@version]
+  const unscopedMatch = spec.match(/^([^@]+)(?:@(.+))?$/);
+  if (unscopedMatch) {
+    return {
+      name: unscopedMatch[1],
+      range: unscopedMatch[2] || null,
+    };
+  }
+
+  return null;
 }
 
 // Compute a safe link path in agent_modules for the package name.
@@ -68,17 +92,59 @@ export function registerAddCommand(
         logger: ctx.logger,
       });
       try {
-        // If exact version specified, ensure not yanked
-        const versionsInfo = await ctx.registry.getPackageVersions(parsed.name);
-        const exact = versionsInfo.versions[parsed.range];
-        if (exact && exact.yanked) {
-          throw new TerrazulError(
-            ErrorCode.VERSION_YANKED,
-            `Version ${parsed.range} of ${parsed.name} is yanked`,
-          );
+        // Determine the version range to use
+        let rangeToResolve: string;
+
+        if (parsed.range === null || parsed.range === 'latest') {
+          // Fetch package info to get the latest version
+          const packageInfo = await ctx.registry.getPackageInfo(parsed.name);
+          const latestVersion = packageInfo.latest;
+
+          // Check if latest version is yanked
+          const versionsInfo = await ctx.registry.getPackageVersions(parsed.name);
+          const latestVersionInfo = versionsInfo.versions[latestVersion];
+
+          if (latestVersionInfo && latestVersionInfo.yanked) {
+            throw new TerrazulError(
+              ErrorCode.VERSION_YANKED,
+              `Latest version ${latestVersion} of ${parsed.name} is yanked${
+                latestVersionInfo.yankedReason ? `: ${latestVersionInfo.yankedReason}` : ''
+              }`,
+            );
+          }
+
+          // If no version specified (range === null), check if package is already installed
+          if (parsed.range === null) {
+            // Check if package exists in lockfile
+            const existingPackage = existingLock?.packages[parsed.name];
+            if (existingPackage) {
+              ctx.logger.info(`${parsed.name}@${existingPackage.version} is already installed`);
+              process.exitCode = 0;
+              return;
+            }
+          }
+
+          // Use caret range for flexibility (^X.Y.Z)
+          rangeToResolve = `^${latestVersion}`;
+          ctx.logger.info(`Installing ${parsed.name}@${latestVersion} ...`);
+        } else {
+          // Explicit version specified, use as-is
+          rangeToResolve = parsed.range;
+
+          // If exact version specified, ensure not yanked
+          const versionsInfo = await ctx.registry.getPackageVersions(parsed.name);
+          const exact = versionsInfo.versions[parsed.range];
+          if (exact && exact.yanked) {
+            throw new TerrazulError(
+              ErrorCode.VERSION_YANKED,
+              `Version ${parsed.range} of ${parsed.name} is yanked`,
+            );
+          }
         }
 
-        const { resolved, warnings } = await resolver.resolve({ [parsed.name]: parsed.range });
+        const { resolved, warnings } = await resolver.resolve({
+          [parsed.name]: rangeToResolve,
+        });
         for (const w of warnings) ctx.logger.warn(w);
 
         const updates: Record<
