@@ -20,20 +20,317 @@ import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
 import type { Instance } from 'ink';
 
-function parseSpec(spec?: string): { name: string; range: string } | null {
+/**
+ * parseSpec extracts package name and version range from a spec string.
+ * Supports three formats:
+ * 1. @owner/pkg@1.0.0 → { name: '@owner/pkg', range: '1.0.0' }
+ * 2. @owner/pkg@latest → { name: '@owner/pkg', range: 'latest' }
+ * 3. @owner/pkg → { name: '@owner/pkg', range: null }
+ */
+export function parseSpec(spec?: string): { name: string; range: string | null } | null {
   if (!spec) return null;
-  const m = spec.match(/^(@[^@]+?)@([^@]+)$/) || spec.match(/^([^@]+)@([^@]+)$/);
-  if (!m) return null;
-  return { name: m[1], range: m[2] };
+
+  // Match scoped packages: @scope/name[@version]
+  const scopedMatch = spec.match(/^(@[^@]+\/[^@]+)(?:@(.+))?$/);
+  if (scopedMatch) {
+    return {
+      name: scopedMatch[1],
+      range: scopedMatch[2] || null,
+    };
+  }
+
+  // Match unscoped packages: name[@version]
+  const unscopedMatch = spec.match(/^([^@]+)(?:@(.+))?$/);
+  if (unscopedMatch) {
+    return {
+      name: unscopedMatch[1],
+      range: unscopedMatch[2] || null,
+    };
+  }
+
+  return null;
 }
 
-// Compute a safe link path in agent_modules for the package name.
+/**
+ * Compute a safe link path in agent_modules for the package name.
+ */
 function getSafeLinkPath(projectDir: string, pkgName: string): string {
   try {
     return agentModulesPath(projectDir, pkgName);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     throw new TerrazulError(ErrorCode.SECURITY_VIOLATION, msg);
+  }
+}
+
+/**
+ * Resolves the version range to use for installation.
+ * Handles three cases:
+ * 1. Explicit version: use as-is and check if yanked
+ * 2. @latest tag: fetch latest and proceed
+ * 3. null (no version): fetch latest, check if already installed
+ */
+async function resolveVersionRange(
+  parsed: { name: string; range: string | null },
+  ctx: CLIContext,
+  existingLock: ReturnType<typeof LockfileManager.read>,
+): Promise<{ rangeToResolve: string; shouldSkip: boolean }> {
+  // Case 1: Explicit version specified
+  if (parsed.range !== null && parsed.range !== 'latest') {
+    const versionsInfo = await ctx.registry.getPackageVersions(parsed.name);
+    const exact = versionsInfo.versions[parsed.range];
+    if (exact && exact.yanked) {
+      throw new TerrazulError(
+        ErrorCode.VERSION_YANKED,
+        `Version ${parsed.range} of ${parsed.name} is yanked`,
+      );
+    }
+    return { rangeToResolve: parsed.range, shouldSkip: false };
+  }
+
+  // Case 2 & 3: Fetch latest version for null or 'latest'
+  const packageInfo = await ctx.registry.getPackageInfo(parsed.name);
+  const latestVersion = packageInfo.latest;
+
+  // Check if latest version is yanked
+  const versionsInfo = await ctx.registry.getPackageVersions(parsed.name);
+  const latestVersionInfo = versionsInfo.versions[latestVersion];
+
+  if (latestVersionInfo && latestVersionInfo.yanked) {
+    throw new TerrazulError(
+      ErrorCode.VERSION_YANKED,
+      `Latest version ${latestVersion} of ${parsed.name} is yanked${
+        latestVersionInfo.yankedReason ? `: ${latestVersionInfo.yankedReason}` : ''
+      }`,
+    );
+  }
+
+  // Case 3: No version specified - check if already installed
+  if (parsed.range === null) {
+    const existingPackage = existingLock?.packages[parsed.name];
+    if (existingPackage) {
+      ctx.logger.info(`${parsed.name}@${existingPackage.version} is already installed`);
+      return { rangeToResolve: '', shouldSkip: true };
+    }
+  }
+
+  // Use caret range for flexibility (^X.Y.Z)
+  ctx.logger.info(`Installing ${parsed.name}@${latestVersion} ...`);
+  return { rangeToResolve: `^${latestVersion}`, shouldSkip: false };
+}
+
+/**
+ * Downloads and installs a single package.
+ */
+async function installPackage(
+  pkgName: string,
+  info: { version: string; dependencies: Record<string, string> },
+  ctx: CLIContext,
+  projectDir: string,
+): Promise<{
+  integrity: string;
+  tarInfo: { url: string };
+}> {
+  ctx.logger.info(`Adding ${pkgName}@${info.version} ...`);
+
+  // Download tarball
+  const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
+  const tarball = await ctx.registry.downloadTarball(tarInfo.url);
+  ctx.storage.store(tarball);
+
+  // Extract to temporary file
+  const tmpFile = path.join(
+    os.tmpdir(),
+    `tz-${Date.now()}-${Math.random().toString(16).slice(2)}.tgz`,
+  );
+  await fs.writeFile(tmpFile, tarball);
+  try {
+    await ctx.storage.extractTarball(tmpFile, pkgName, info.version);
+  } finally {
+    try {
+      await fs.rm(tmpFile, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  // Create symlink
+  const storePath = ctx.storage.getPackagePath(pkgName, info.version);
+  const linkPath = getSafeLinkPath(projectDir, pkgName);
+  ensureDir(path.dirname(linkPath));
+  await createSymlink(storePath, linkPath);
+
+  // Compute integrity hash
+  const integrity = LockfileManager.createIntegrityHash(tarball);
+
+  return { integrity, tarInfo };
+}
+
+/**
+ * Creates the Ink spinner renderer for askAgent operations.
+ */
+function createSpinnerRenderer(
+  activeTasks: Map<string, AskAgentTask>,
+  isTTY: boolean,
+): {
+  render: () => void;
+  getInstance: () => Instance | null;
+  setInstance: (instance: Instance | null) => void;
+} {
+  let inkInstance: Instance | null = null;
+
+  return {
+    render: () => {
+      if (!isTTY) return;
+
+      const tasks = Array.from(activeTasks.values());
+      if (tasks.length === 0) {
+        if (inkInstance !== null) {
+          inkInstance.unmount();
+          inkInstance = null;
+        }
+        return;
+      }
+
+      if (inkInstance !== null) {
+        inkInstance.rerender(<AskAgentSpinner tasks={tasks} />);
+      } else {
+        inkInstance = render(<AskAgentSpinner tasks={tasks} />, {
+          stdout: process.stdout,
+          stdin: process.stdin,
+          exitOnCtrlC: false,
+        });
+      }
+    },
+    getInstance: () => inkInstance,
+    setInstance: (instance: Instance | null) => {
+      inkInstance = instance;
+    },
+  };
+}
+
+/**
+ * Creates the snippet event handler for askAgent operations.
+ */
+function createSnippetEventHandler(
+  activeTasks: Map<string, AskAgentTask>,
+  renderSpinner: () => void,
+  ctx: CLIContext,
+  isTTY: boolean,
+): (progress: SnippetProgress) => void {
+  return ({ event }: SnippetProgress): void => {
+    switch (event.type) {
+      case 'askAgent:start': {
+        const taskId = event.snippet.id;
+
+        // Skip duplicate tasks
+        if (activeTasks.has(taskId)) {
+          if (ctx.logger.isVerbose()) {
+            ctx.logger.info(`[add] Skipping duplicate askAgent task: ${taskId}`);
+          }
+          return;
+        }
+
+        const task: AskAgentTask = {
+          id: taskId,
+          title: 'Processing...',
+          status: 'running',
+        };
+
+        activeTasks.set(taskId, task);
+
+        if (isTTY) {
+          renderSpinner();
+
+          // Generate summary asynchronously
+          void generateAskAgentSummary(event.prompt).then((summary) => {
+            const existingTask = activeTasks.get(taskId);
+            if (existingTask && existingTask.status === 'running') {
+              existingTask.title = summary;
+              renderSpinner();
+            }
+          });
+        } else {
+          ctx.logger.info('Running askAgent snippet...');
+        }
+        break;
+      }
+      case 'askAgent:end': {
+        const taskId = event.snippet.id;
+        const task = activeTasks.get(taskId);
+
+        if (task) {
+          task.status = 'complete';
+          if (isTTY) {
+            renderSpinner();
+          } else {
+            ctx.logger.info('askAgent complete.');
+          }
+        } else if (!isTTY) {
+          ctx.logger.info('askAgent complete.');
+        }
+        break;
+      }
+      case 'askAgent:error': {
+        const taskId = event.snippet.id;
+
+        if (taskId) {
+          const task = activeTasks.get(taskId);
+          if (task) {
+            task.status = 'error';
+            task.error = event.error.message;
+            if (isTTY) {
+              renderSpinner();
+            } else {
+              ctx.logger.warn(`askAgent failed: ${event.error.message}`);
+            }
+          }
+        } else if (!isTTY) {
+          ctx.logger.warn(`askAgent failed: ${event.error.message}`);
+        }
+        break;
+      }
+      default: {
+        break;
+      }
+    }
+  };
+}
+
+/**
+ * Renders templates for added packages using the apply system.
+ */
+async function renderTemplatesForPackages(
+  addedNames: string[],
+  projectDir: string,
+  ctx: CLIContext,
+  options: { force: boolean; dryRun: boolean },
+): Promise<void> {
+  const activeTasks = new Map<string, AskAgentTask>();
+  const isTTY = process.stdout.isTTY ?? false;
+
+  const spinner = createSpinnerRenderer(activeTasks, isTTY);
+  const onSnippetEvent = createSnippetEventHandler(activeTasks, spinner.render, ctx, isTTY);
+
+  const agentModulesRoot = path.join(projectDir, 'agent_modules');
+  for (const name of addedNames) {
+    const res = await planAndRender(projectDir, agentModulesRoot, {
+      packageName: name,
+      force: options.force,
+      dryRun: options.dryRun,
+      onSnippetEvent,
+    });
+    ctx.logger.info(`apply: wrote ${res.written.length} files for ${name}`);
+    if (res.backedUp.length > 0) {
+      for (const b of res.backedUp) ctx.logger.info(`backup: ${b}`);
+    }
+    for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
+  }
+
+  // Clean up Ink instance
+  const instance = spinner.getInstance();
+  if (instance !== null) {
+    instance.unmount();
   }
 }
 
@@ -67,52 +364,32 @@ export function registerAddCommand(
         lockfile: existingLock,
         logger: ctx.logger,
       });
+
       try {
-        // If exact version specified, ensure not yanked
-        const versionsInfo = await ctx.registry.getPackageVersions(parsed.name);
-        const exact = versionsInfo.versions[parsed.range];
-        if (exact && exact.yanked) {
-          throw new TerrazulError(
-            ErrorCode.VERSION_YANKED,
-            `Version ${parsed.range} of ${parsed.name} is yanked`,
-          );
+        // Step 1: Resolve version range
+        const { rangeToResolve, shouldSkip } = await resolveVersionRange(parsed, ctx, existingLock);
+
+        if (shouldSkip) {
+          process.exitCode = 0;
+          return;
         }
 
-        const { resolved, warnings } = await resolver.resolve({ [parsed.name]: parsed.range });
+        // Step 2: Resolve dependencies
+        const { resolved, warnings } = await resolver.resolve({
+          [parsed.name]: rangeToResolve,
+        });
         for (const w of warnings) ctx.logger.warn(w);
 
+        // Step 3: Install packages
         const updates: Record<
           string,
           ReturnType<typeof LockfileManager.merge>['packages'][string]
         > = {};
         const addedNames: string[] = [];
+
         for (const [pkgName, info] of resolved) {
-          ctx.logger.info(`Adding ${pkgName}@${info.version} ...`);
-          const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
-          const tarball = await ctx.registry.downloadTarball(tarInfo.url);
-          ctx.storage.store(tarball);
+          const { integrity, tarInfo } = await installPackage(pkgName, info, ctx, projectDir);
 
-          const tmpFile = path.join(
-            os.tmpdir(),
-            `tz-${Date.now()}-${Math.random().toString(16).slice(2)}.tgz`,
-          );
-          await fs.writeFile(tmpFile, tarball);
-          try {
-            await ctx.storage.extractTarball(tmpFile, pkgName, info.version);
-          } finally {
-            try {
-              await fs.rm(tmpFile, { force: true });
-            } catch {
-              /* ignore */
-            }
-          }
-
-          const storePath = ctx.storage.getPackagePath(pkgName, info.version);
-          const linkPath = getSafeLinkPath(projectDir, pkgName);
-          ensureDir(path.dirname(linkPath));
-          await createSymlink(storePath, linkPath);
-
-          const integrity = LockfileManager.createIntegrityHash(tarball);
           updates[pkgName] = {
             version: info.version,
             resolved: tarInfo.url,
@@ -123,10 +400,12 @@ export function registerAddCommand(
           addedNames.push(pkgName);
         }
 
+        // Step 4: Update lockfile
         const updated = LockfileManager.merge(existingLock, updates);
         LockfileManager.write(updated, projectDir);
         ctx.logger.info('Add complete');
 
+        // Step 5: Add to profile if requested
         if (profileName) {
           const added = await addPackageToProfile(projectDir, profileName, parsed.name);
           if (added) {
@@ -138,143 +417,13 @@ export function registerAddCommand(
           }
         }
 
-        // Optionally render templates after add
+        // Step 6: Render templates if enabled
         const applyEnabled = raw['apply'] !== false; // --no-apply sets apply=false
         if (applyEnabled) {
-          // Task management for Ink spinner
-          const activeTasks = new Map<string, AskAgentTask>();
-          let inkInstance: Instance | null = null;
-          const isTTY = process.stdout.isTTY ?? false;
-
-          const renderSpinner = (): void => {
-            if (!isTTY) return;
-
-            const tasks = Array.from(activeTasks.values());
-            if (tasks.length === 0) {
-              if (inkInstance !== null) {
-                const instance: Instance = inkInstance;
-                instance.unmount();
-                inkInstance = null;
-              }
-              return;
-            }
-
-            if (inkInstance !== null) {
-              inkInstance.rerender(<AskAgentSpinner tasks={tasks} />);
-            } else {
-              inkInstance = render(<AskAgentSpinner tasks={tasks} />, {
-                stdout: process.stdout,
-                stdin: process.stdin,
-                exitOnCtrlC: false,
-              });
-            }
-          };
-
-          const onSnippetEvent = ({ event }: SnippetProgress): void => {
-            switch (event.type) {
-              case 'askAgent:start': {
-                // Use stable task ID based on snippet ID to prevent duplicates
-                const taskId = event.snippet.id;
-
-                // If this task already exists, skip creating a duplicate
-                if (activeTasks.has(taskId)) {
-                  if (ctx.logger.isVerbose()) {
-                    ctx.logger.info(`[add] Skipping duplicate askAgent task: ${taskId}`);
-                  }
-                  return;
-                }
-
-                const task: AskAgentTask = {
-                  id: taskId,
-                  title: 'Processing...',
-                  status: 'running',
-                };
-
-                activeTasks.set(taskId, task);
-
-                if (isTTY) {
-                  renderSpinner();
-
-                  // Generate summary asynchronously and update when ready
-                  void generateAskAgentSummary(event.prompt).then((summary) => {
-                    const existingTask = activeTasks.get(taskId);
-                    if (existingTask && existingTask.status === 'running') {
-                      existingTask.title = summary;
-                      renderSpinner();
-                    }
-                  });
-                } else {
-                  // Non-TTY: just log the start
-                  ctx.logger.info('Running askAgent snippet...');
-                }
-                break;
-              }
-              case 'askAgent:end': {
-                // Use same stable task ID to find the exact task
-                const taskId = event.snippet.id;
-                const task = activeTasks.get(taskId);
-
-                if (task) {
-                  task.status = 'complete';
-                  if (isTTY) {
-                    renderSpinner();
-                    // Keep completed task visible to show progress
-                  } else {
-                    ctx.logger.info('askAgent complete.');
-                  }
-                } else if (!isTTY) {
-                  ctx.logger.info('askAgent complete.');
-                }
-                break;
-              }
-              case 'askAgent:error': {
-                // Use same stable task ID to find the exact task
-                const taskId = event.snippet.id;
-
-                if (taskId) {
-                  const task = activeTasks.get(taskId);
-                  if (task) {
-                    task.status = 'error';
-                    task.error = event.error.message;
-                    if (isTTY) {
-                      renderSpinner();
-                      // Keep error visible to show what failed
-                    } else {
-                      ctx.logger.warn(`askAgent failed: ${event.error.message}`);
-                    }
-                  }
-                } else if (!isTTY) {
-                  ctx.logger.warn(`askAgent failed: ${event.error.message}`);
-                }
-                break;
-              }
-              default: {
-                break;
-              }
-            }
-          };
-
-          const agentModulesRoot = path.join(projectDir, 'agent_modules');
-          for (const name of addedNames) {
-            const res = await planAndRender(projectDir, agentModulesRoot, {
-              packageName: name,
-              force: Boolean(raw['applyForce']),
-              dryRun: false,
-              onSnippetEvent,
-            });
-            ctx.logger.info(`apply: wrote ${res.written.length} files for ${name}`);
-            if (res.backedUp.length > 0) {
-              for (const b of res.backedUp) ctx.logger.info(`backup: ${b}`);
-            }
-            for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
-          }
-
-          // Clean up Ink instance
-          if (inkInstance !== null) {
-            const instance: Instance = inkInstance;
-            instance.unmount();
-            inkInstance = null;
-          }
+          await renderTemplatesForPackages(addedNames, projectDir, ctx, {
+            force: Boolean(raw['applyForce']),
+            dryRun: false,
+          });
         }
       } catch (error) {
         const err = error as TerrazulError | Error;
