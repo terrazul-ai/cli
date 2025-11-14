@@ -359,7 +359,7 @@ Commands that call `planAndRender` (`apply`, `run`, `add`) show an Ink spinner d
 - `tz link [@user/package]` – Register local package for development (like `npm link`)
 - `tz unlink [package]` – Remove local development link, restore to published version
 - `tz validate [--offline]` – Validate package structure, manifest, and dependencies
-- `tz run -- [args...]` – Aggregate MCP server configs and spawn Claude Code with `--mcp-config`; accepts `--profile <name>` to limit rendering to a single manifest profile before launch.
+- `tz run [@owner/package@version] [--force] [--profile <name>]` – Auto-install package if needed, render templates (skip if files exist unless --force), and launch Claude Code with aggregated MCP config. Use `--profile <name>` to limit rendering to a single manifest profile.
 - `tz auth login|logout` – Store/clear tokens, 0600 perms
 - `tz login` / `tz logout` – Top-level aliases for auth commands
 
@@ -537,6 +537,66 @@ tz extract --from .claude --out ../my-package --name @user/pkg --pkg-version 0.1
 
 ---
 
+### `tz run [@owner/package@version]`
+
+**Purpose**: Install (if needed), render templates, and execute with Claude Code integration.
+
+**Syntax**
+
+```
+tz run [@owner/package@version] [--force] [--profile <name>] [--tool <tool>] [--no-tool-safe-mode]
+```
+
+**Behavior**
+
+1. **Auto-install**: If a package spec is provided and the package is not in `agent_modules/`, automatically install it:
+   - Resolves dependencies using SAT solver
+   - Downloads tarballs from registry
+   - Extracts to store and creates symlinks
+   - Updates lockfile and manifest
+
+2. **Smart rendering**: Renders templates from the specified package (or all packages if no spec provided):
+   - **Skip mode** (default): Skips rendering if output files already exist
+   - **Force mode** (`--force`): Re-renders all templates even if files exist
+   - Respects snippet cache to avoid re-prompting for askUser/askAgent
+   - Uses Ink spinner for live askAgent progress feedback
+
+3. **Profile support**: Use `--profile <name>` to limit rendering to packages in a specific manifest profile
+
+4. **Claude Code integration** (planned): After rendering completes:
+   - Aggregates MCP server configs from rendered packages
+   - Generates temporary MCP config file
+   - Spawns Claude Code with `--mcp-config` flag
+   - Forwards additional args after `--`
+
+**Examples**
+
+```bash
+# Run all installed packages (render and execute)
+tz run
+
+# Run specific package (auto-install if needed, then render and execute)
+tz run @terrazul/starter@^1.1.0
+
+# Run specific package with force re-rendering
+tz run @terrazul/starter --force
+
+# Run only packages in "focus" profile
+tz run --profile focus
+```
+
+**Acceptance Criteria**
+
+- Auto-installs package if spec provided and not present in `agent_modules/`
+- Skips rendering by default if output files exist; re-renders with `--force`
+- Updates lockfile and manifest when auto-installing
+- Shows Ink spinner for askAgent operations with live summaries
+- Respects snippet cache for askUser/askAgent responses
+- Profile support limits rendering to specified manifest profile
+- (Future) Claude Code integration aggregates MCP configs and spawns process
+
+---
+
 ## 13) Security Considerations
 
 - **Package validation**: block executable code or strip exec bits by policy
@@ -576,10 +636,10 @@ We aim for **high coverage** on core logic and **deterministic** integration/e2e
 - **Commands/init**: manifest + `.gitignore`; compatibility when `.claude/` exists
 - **Commands/install**: explicit spec & manifest; integrity mismatch abort; idempotency; parallel cap
 - **Commands/update**: dry‑run plan; atomic swap; respect semver/yanked
+- **Commands/run**: auto-install if missing; skip rendering if files exist; force re-render with --force; profile support; specific package vs all packages
 - **Publish**: structure validation; executable policy enforcement
 - **Yank/Unyank**: visibility flip; lock allows old version with warning
-- **Integrations/Claude**: links & MCP merge; idempotent
-- **Run**: spawns mock Claude with `--mcp-config` and forwards args
+- **Integrations/Claude**: MCP config aggregation; duplicate server detection; malformed config handling
 - **Security**: HTTPS‑only (except localhost), tarbomb prevention
 - **Perf**: parallel installs within target (skippable on CI if flaky)
 
