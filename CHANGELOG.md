@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.0](https://github.com/terrazul-ai/tz/compare/v0.13.0...v0.14.0) (2025-11-14)
+
+
+### Features
+
+* Provides visual feedback when askAgent is running ([#46](https://github.com/terrazul-ai/tz/issues/46)) ([ebc4588](https://github.com/terrazul-ai/tz/commit/ebc4588ddc30daad912a3bff248c6a135d03b01c))
+* We need to always scope packages by owner ([#42](https://github.com/terrazul-ai/tz/issues/42)) ([3f45513](https://github.com/terrazul-ai/tz/commit/3f45513760c2567fac1875d2d37489a02d9a897e))
+
 ## [0.13.0](https://github.com/terrazul-ai/tz/compare/v0.12.0...v0.13.0) (2025-11-13)
 
 
