@@ -21,7 +21,7 @@ describe('loadProjectConfig', () => {
   it('returns manifest data with dependencies', async () => {
     const manifest = `
 [package]
-name = "demo"
+name = "@demo/package"
 version = "0.0.1"
 
 [dependencies]
@@ -31,7 +31,7 @@ version = "0.0.1"
     await fs.writeFile(path.join(dir, 'agents.toml'), manifest, 'utf8');
 
     const result = await loadProjectConfig(dir);
-    expect(result.manifest.package?.name).toBe('demo');
+    expect(result.manifest.package?.name).toBe('@demo/package');
     expect(result.dependencies).toEqual({
       '@scope/pkg': '^1.0.0',
       '@scope/extra': '~2.1.0',
@@ -47,7 +47,7 @@ version = "0.0.1"
   it('throws descriptive error when manifest invalid', async () => {
     const bad = `
 [package]
-name = "demo"
+name = "@demo/package"
 
 [dependencies]
 foo = 123

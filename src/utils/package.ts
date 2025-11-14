@@ -1,4 +1,5 @@
 import { TerrazulError, ErrorCode } from '../core/errors.js';
+import { PackageNameSchema } from '../types/package.js';
 
 export interface PackagePath {
   owner: string;
@@ -10,27 +11,30 @@ export function splitPackageName(fullName: string): PackagePath {
   if (!fullName || typeof fullName !== 'string') {
     throw new TerrazulError(ErrorCode.INVALID_PACKAGE, 'Package name is required');
   }
+
   const trimmed = fullName.trim();
-  const slash = trimmed.indexOf('/');
-  if (slash <= 0 || slash === trimmed.length - 1) {
+
+  // Normalize: add @ prefix if missing but otherwise looks like owner/name
+  const normalized = trimmed.startsWith('@') ? trimmed : `@${trimmed}`;
+
+  // Validate using centralized schema
+  const result = PackageNameSchema.safeParse(normalized);
+  if (!result.success) {
     throw new TerrazulError(
       ErrorCode.INVALID_PACKAGE,
       `Package name "${trimmed}" must include an owner segment like @owner/name`,
     );
   }
-  const ownerSegment = trimmed.slice(0, slash);
-  const packageSegment = trimmed.slice(slash + 1);
-  const owner = ownerSegment.startsWith('@') ? ownerSegment.slice(1) : ownerSegment;
-  if (!owner || !packageSegment) {
-    throw new TerrazulError(
-      ErrorCode.INVALID_PACKAGE,
-      `Package name "${trimmed}" must include an owner segment like @owner/name`,
-    );
-  }
+
+  // Parse the validated name
+  const slashIndex = normalized.indexOf('/');
+  const owner = normalized.slice(1, slashIndex); // Remove @ and get owner
+  const name = normalized.slice(slashIndex + 1);
+
   return {
     owner,
-    name: packageSegment,
-    fullName: trimmed.startsWith('@') ? trimmed : `@${owner}/${packageSegment}`,
+    name,
+    fullName: normalized,
   };
 }
 

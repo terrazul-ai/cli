@@ -27,29 +27,45 @@ export function resolveWithin(baseDir: string, ...parts: string[]): string {
 
 /**
  * Validate a package name segment (scope or name) for use as a path segment.
+ * Enforces the same rules as PackageNameSchema: lowercase alphanumeric, hyphens, and underscores only.
+ * Rejects dot segments, slashes, uppercase letters, whitespace, and other special characters.
  */
 export function isSafePkgSegment(seg: string): boolean {
   if (!seg || seg === '.' || seg === '..') return false;
   if (seg.includes('/') || seg.includes('\\')) return false;
-  return true;
+
+  // Enforce PackageNameSchema rules: only lowercase letters, digits, hyphens, and underscores
+  // Regex: /^[\d_a-z-]+$/
+  const validPattern = /^[\d_a-z-]+$/;
+  return validPattern.test(seg);
 }
 
 /**
- * Parse and validate package name. Supports '@scope/name' or 'name'.
+ * Parse and validate package name. Only scoped packages (@scope/name) are accepted.
+ * Enforces the same strict rules as PackageNameSchema:
+ * - Both scope and name must contain only lowercase letters, digits, hyphens, and underscores
+ * - No uppercase letters, whitespace, or other special characters allowed
+ * - Rejects path traversal attempts (., .., /, \)
+ *
+ * @param pkg - Package name to parse (must be in format @owner/package-name)
+ * @returns Object with scope (including @) and name components
+ * @throws Error if package name is invalid or unsafe
  */
-export function parseSafePackageName(pkg: string): { scope?: string; name: string } {
-  if (pkg.startsWith('@')) {
-    const parts = pkg.split('/');
-    if (parts.length !== 2) throw new Error(`Invalid scoped package: ${pkg}`);
-    const [scope, name] = parts;
-    if (!scope.startsWith('@')) throw new Error(`Invalid scope: ${scope}`);
-    if (!isSafePkgSegment(scope.slice(1)) || !isSafePkgSegment(name)) {
-      throw new Error(`Unsafe package name: ${pkg}`);
-    }
-    return { scope, name };
+export function parseSafePackageName(pkg: string): { scope: string; name: string } {
+  if (!pkg.startsWith('@')) {
+    throw new Error(`Package name "${pkg}" must be scoped in format @owner/package-name`);
   }
-  if (!isSafePkgSegment(pkg)) throw new Error(`Unsafe package name: ${pkg}`);
-  return { name: pkg };
+
+  const parts = pkg.split('/');
+  if (parts.length !== 2) throw new Error(`Invalid scoped package: ${pkg}`);
+
+  const [scope, name] = parts;
+  if (!scope.startsWith('@')) throw new Error(`Invalid scope: ${scope}`);
+  if (!isSafePkgSegment(scope.slice(1)) || !isSafePkgSegment(name)) {
+    throw new Error(`Unsafe package name: ${pkg}`);
+  }
+
+  return { scope, name };
 }
 
 /**
@@ -58,7 +74,5 @@ export function parseSafePackageName(pkg: string): { scope?: string; name: strin
 export function agentModulesPath(projectDir: string, pkgName: string): string {
   const base = path.join(projectDir, 'agent_modules');
   const parsed = parseSafePackageName(pkgName);
-  return parsed.scope
-    ? resolveWithin(base, parsed.scope, parsed.name)
-    : resolveWithin(base, parsed.name);
+  return resolveWithin(base, parsed.scope, parsed.name);
 }

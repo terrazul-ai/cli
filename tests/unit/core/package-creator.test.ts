@@ -157,9 +157,34 @@ describe('createPackageScaffold', () => {
 });
 
 describe('helper utilities', () => {
-  it('derives directory names from package names', () => {
+  it('derives directory names from scoped package names', () => {
     expect(getPackageDirName('@alice/my-agents')).toBe('my-agents');
+    expect(getPackageDirName('@owner/package-name')).toBe('package-name');
+    expect(getPackageDirName('@demo/test-pkg')).toBe('test-pkg');
+  });
+
+  it('tolerates invalid package names and returns safe fallbacks', () => {
+    // Partial scoped names (wizard typing scenarios)
+    expect(getPackageDirName('@')).toBe('package');
+    expect(getPackageDirName('@owner')).toBe('owner');
+    expect(getPackageDirName('@owner/')).toBe('package');
+
+    // Unscoped names
     expect(getPackageDirName('plain-name')).toBe('plain-name');
+    expect(getPackageDirName('package')).toBe('package');
+
+    // Names with slash but not properly scoped
+    expect(getPackageDirName('owner/pkg')).toBe('pkg');
+
+    // Empty or whitespace
+    expect(getPackageDirName('')).toBe('package');
+    expect(getPackageDirName('   ')).toBe('package');
+
+    // Additional edge cases for PR #42
+    expect(getPackageDirName('@o')).toBe('o');
+    expect(getPackageDirName('@Owner/Package')).toBe('Package'); // uppercase still returns the segment
+    expect(getPackageDirName('@owner//pkg')).toBe('/pkg'); // double slash returns the segment after first slash
+    expect(getPackageDirName('owner//pkg')).toBe('/pkg'); // double slash without @ also returns segment after slash
   });
 
   it('generates manifest text with selected tools and metadata', () => {

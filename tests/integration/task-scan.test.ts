@@ -28,16 +28,16 @@ name = "@a/p1"
 "ctx.generate" = "tasks/ctx.yaml"
 `,
       'agent_modules/@a/p1/tasks/ctx.yaml': 'version: v1\npipeline: []\n',
-      // unscoped package with exports only
-      'agent_modules/u2/agents.toml': `
+      // scoped package with exports only
+      'agent_modules/@b/u2/agents.toml': `
 [package]
-name = "u2"
+name = "@b/u2"
 
 [exports]
   [exports.codex]
   template = "templates/A.hbs"
 `,
-      'agent_modules/u2/templates/A.hbs': '# AGENTS\n',
+      'agent_modules/@b/u2/templates/A.hbs': '# AGENTS\n',
     });
 
     const found = await findTask(proj, 'ctx.generate');
@@ -49,8 +49,8 @@ name = "u2"
     const assets = await findAssets(proj);
     // Should include only packages with known templates
     const names = assets.map((x) => x.pkg);
-    expect(names).toContain('u2');
-    const u2 = assets.find((a) => a.pkg === 'u2');
+    expect(names).toContain('@b/u2');
+    const u2 = assets.find((a) => a.pkg === '@b/u2');
     expect(u2?.templates.codex).toBe('templates/A.hbs');
   });
 });

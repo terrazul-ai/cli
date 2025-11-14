@@ -4,6 +4,8 @@ import path from 'node:path';
 import * as TOML from '@iarna/toml';
 import { z } from 'zod';
 
+import { PackageNameSchema } from '../types/package.js';
+
 export type ToolName = 'claude' | 'codex' | 'cursor' | 'copilot';
 
 export interface ExportEntry {
@@ -49,7 +51,7 @@ const ExportEntrySchema = z
 const ManifestSchema = z.object({
   package: z
     .object({
-      name: z.string().min(1).optional(),
+      name: PackageNameSchema.optional(),
       version: z.string().min(1).optional(),
       description: z.string().optional(),
       homepage: z.string().optional(),
