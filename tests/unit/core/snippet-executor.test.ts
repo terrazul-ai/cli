@@ -359,4 +359,76 @@ describe('snippet executor', () => {
     const context = await executeSnippets(snippets, makeOptions());
     expect(context.snippets.snippet_0.value).toEqual({ summary: 'Structured' });
   });
+
+  describe('system prompt support', () => {
+    it('passes default context extraction system prompt when not specified', async () => {
+      invokeToolMock.mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Result',
+        stderr: '',
+      });
+      const snippets = parseSnippets("{{ askAgent('Summarize') }}");
+      await executeSnippets(snippets, makeOptions());
+      const call = invokeToolMock.mock.calls[0]?.[0];
+      expect(call?.systemPrompt).toContain('You are a context extraction agent');
+      expect(call?.systemPrompt).toContain('synthesize and extract context');
+      expect(call?.systemPrompt).toContain('should not include any dialog');
+    });
+
+    it('uses custom system prompt when provided in snippet options', async () => {
+      invokeToolMock.mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Result',
+        stderr: '',
+      });
+      const snippets = parseSnippets(
+        "{{ askAgent('Summarize', { systemPrompt: 'You are a helpful assistant.' }) }}",
+      );
+      await executeSnippets(snippets, makeOptions());
+      const call = invokeToolMock.mock.calls[0]?.[0];
+      expect(call?.systemPrompt).toBe('You are a helpful assistant.');
+    });
+
+    it('allows empty string system prompt to disable default', async () => {
+      invokeToolMock.mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Result',
+        stderr: '',
+      });
+      const snippets = parseSnippets("{{ askAgent('Summarize', { systemPrompt: '' }) }}");
+      await executeSnippets(snippets, makeOptions());
+      const call = invokeToolMock.mock.calls[0]?.[0];
+      expect(call?.systemPrompt).toBe('');
+    });
+
+    it('includes system prompt in cache key for askAgent snippets', async () => {
+      invokeToolMock
+        .mockResolvedValueOnce({
+          command: 'claude',
+          args: [],
+          stdout: 'First',
+          stderr: '',
+        })
+        .mockResolvedValueOnce({
+          command: 'claude',
+          args: [],
+          stdout: 'Second',
+          stderr: '',
+        });
+
+      const snippets = parseSnippets(`
+        {{ askAgent('Same prompt', { systemPrompt: 'First system prompt' }) }}
+        {{ askAgent('Same prompt', { systemPrompt: 'Second system prompt' }) }}
+      `);
+      const context = await executeSnippets(snippets, makeOptions());
+
+      // Different system prompts should result in different cache keys, so invokeTool is called twice
+      expect(invokeToolMock).toHaveBeenCalledTimes(2);
+      expect(context.snippets.snippet_0.value).toBe('First');
+      expect(context.snippets.snippet_1.value).toBe('Second');
+    });
+  });
 });

@@ -19,6 +19,7 @@ export interface AskAgentOptions {
   schema?: SchemaReference;
   safeMode?: boolean;
   timeoutMs?: number;
+  systemPrompt?: string;
 }
 
 export type PromptSourceKind = 'file' | 'text';
@@ -76,6 +77,10 @@ export type SnippetEvent =
       prompt: string;
       error: SnippetExecutionError;
     };
+
+export interface SnippetCacheEntry {
+  value: SnippetValue;
+}
 
 export interface ExecuteSnippetsOptions {
   projectDir: string;

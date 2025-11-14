@@ -195,4 +195,82 @@ describe('tool-runner', () => {
       invokeTool({ tool: { type: 'claude', command: 'claude' }, prompt: 'Hi', cwd: '/tmp' }),
     ).rejects.toMatchObject({ code: 'TOOL_EXECUTION_FAILED' });
   });
+
+  describe('system prompt support', () => {
+    it('passes system prompt to claude via --append-system-prompt flag', async () => {
+      const spy = vi.spyOn(proc, 'runCommand').mockResolvedValue({
+        stdout: '{"result":"ok"}',
+        stderr: '',
+        exitCode: 0,
+      } as RunResult);
+
+      await invokeTool({
+        tool: { type: 'claude', command: 'claude' },
+        prompt: 'Explain this code',
+        cwd: '/tmp/project',
+        systemPrompt: 'You are a context extraction agent.',
+      });
+
+      const args = spy.mock.calls[0]?.[1] ?? [];
+      expect(args).toContain('--append-system-prompt');
+      const promptIndex = args.indexOf('--append-system-prompt');
+      expect(args[promptIndex + 1]).toBe('You are a context extraction agent.');
+    });
+
+    it('skips --append-system-prompt when systemPrompt is undefined', async () => {
+      const spy = vi.spyOn(proc, 'runCommand').mockResolvedValue({
+        stdout: '{"result":"ok"}',
+        stderr: '',
+        exitCode: 0,
+      } as RunResult);
+
+      await invokeTool({
+        tool: { type: 'claude', command: 'claude' },
+        prompt: 'Explain',
+        cwd: '/tmp/project',
+      });
+
+      const args = spy.mock.calls[0]?.[1] ?? [];
+      expect(args).not.toContain('--append-system-prompt');
+    });
+
+    it('passes empty string system prompt when explicitly provided', async () => {
+      const spy = vi.spyOn(proc, 'runCommand').mockResolvedValue({
+        stdout: '{"result":"ok"}',
+        stderr: '',
+        exitCode: 0,
+      } as RunResult);
+
+      await invokeTool({
+        tool: { type: 'claude', command: 'claude' },
+        prompt: 'Explain',
+        cwd: '/tmp/project',
+        systemPrompt: '',
+      });
+
+      const args = spy.mock.calls[0]?.[1] ?? [];
+      expect(args).toContain('--append-system-prompt');
+      const promptIndex = args.indexOf('--append-system-prompt');
+      expect(args[promptIndex + 1]).toBe('');
+    });
+
+    it('does not pass system prompt to non-claude tools', async () => {
+      const spy = vi.spyOn(proc, 'runCommand').mockResolvedValue({
+        stdout: '{"result":"ok"}',
+        stderr: '',
+        exitCode: 0,
+      } as RunResult);
+
+      await invokeTool({
+        tool: { type: 'codex', command: 'codex', args: ['exec'] },
+        prompt: 'Explain',
+        cwd: '/tmp/project',
+        systemPrompt: 'You are a context extraction agent.',
+      });
+
+      const args = spy.mock.calls[0]?.[1] ?? [];
+      expect(args).not.toContain('--append-system-prompt');
+      expect(args).not.toContain('You are a context extraction agent.');
+    });
+  });
 });

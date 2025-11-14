@@ -2,6 +2,9 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import React from 'react';
+import { render } from 'ink';
+
 import { DependencyResolver } from '../core/dependency-resolver.js';
 import { ErrorCode, TerrazulError } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
@@ -9,9 +12,13 @@ import { planAndRender } from '../core/template-renderer.js';
 import { createSymlink, ensureDir } from '../utils/fs.js';
 import { addPackageToProfile } from '../utils/manifest.js';
 import { agentModulesPath } from '../utils/path.js';
+import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
+import { AskAgentSpinner, type AskAgentTask } from '../ui/apply/AskAgentSpinner.js';
 
+import type { SnippetProgress } from '../core/template-renderer.js';
 import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
+import type { Instance } from 'ink';
 
 function parseSpec(spec?: string): { name: string; range: string } | null {
   if (!spec) return null;
@@ -134,18 +141,139 @@ export function registerAddCommand(
         // Optionally render templates after add
         const applyEnabled = raw['apply'] !== false; // --no-apply sets apply=false
         if (applyEnabled) {
+          // Task management for Ink spinner
+          const activeTasks = new Map<string, AskAgentTask>();
+          let inkInstance: Instance | null = null;
+          const isTTY = process.stdout.isTTY ?? false;
+
+          const renderSpinner = (): void => {
+            if (!isTTY) return;
+
+            const tasks = Array.from(activeTasks.values());
+            if (tasks.length === 0) {
+              if (inkInstance !== null) {
+                const instance: Instance = inkInstance;
+                instance.unmount();
+                inkInstance = null;
+              }
+              return;
+            }
+
+            if (inkInstance !== null) {
+              inkInstance.rerender(<AskAgentSpinner tasks={tasks} />);
+            } else {
+              inkInstance = render(<AskAgentSpinner tasks={tasks} />, {
+                stdout: process.stdout,
+                stdin: process.stdin,
+                exitOnCtrlC: false,
+              });
+            }
+          };
+
+          const onSnippetEvent = ({ event }: SnippetProgress): void => {
+            switch (event.type) {
+              case 'askAgent:start': {
+                // Use stable task ID based on snippet ID to prevent duplicates
+                const taskId = event.snippet.id;
+
+                // If this task already exists, skip creating a duplicate
+                if (activeTasks.has(taskId)) {
+                  if (ctx.logger.isVerbose()) {
+                    ctx.logger.info(`[add] Skipping duplicate askAgent task: ${taskId}`);
+                  }
+                  return;
+                }
+
+                const task: AskAgentTask = {
+                  id: taskId,
+                  title: 'Processing...',
+                  status: 'running',
+                };
+
+                activeTasks.set(taskId, task);
+
+                if (isTTY) {
+                  renderSpinner();
+
+                  // Generate summary asynchronously and update when ready
+                  void generateAskAgentSummary(event.prompt).then((summary) => {
+                    const existingTask = activeTasks.get(taskId);
+                    if (existingTask && existingTask.status === 'running') {
+                      existingTask.title = summary;
+                      renderSpinner();
+                    }
+                  });
+                } else {
+                  // Non-TTY: just log the start
+                  ctx.logger.info('Running askAgent snippet...');
+                }
+                break;
+              }
+              case 'askAgent:end': {
+                // Use same stable task ID to find the exact task
+                const taskId = event.snippet.id;
+                const task = activeTasks.get(taskId);
+
+                if (task) {
+                  task.status = 'complete';
+                  if (isTTY) {
+                    renderSpinner();
+                    // Keep completed task visible to show progress
+                  } else {
+                    ctx.logger.info('askAgent complete.');
+                  }
+                } else if (!isTTY) {
+                  ctx.logger.info('askAgent complete.');
+                }
+                break;
+              }
+              case 'askAgent:error': {
+                // Use same stable task ID to find the exact task
+                const taskId = event.snippet.id;
+
+                if (taskId) {
+                  const task = activeTasks.get(taskId);
+                  if (task) {
+                    task.status = 'error';
+                    task.error = event.error.message;
+                    if (isTTY) {
+                      renderSpinner();
+                      // Keep error visible to show what failed
+                    } else {
+                      ctx.logger.warn(`askAgent failed: ${event.error.message}`);
+                    }
+                  }
+                } else if (!isTTY) {
+                  ctx.logger.warn(`askAgent failed: ${event.error.message}`);
+                }
+                break;
+              }
+              default: {
+                break;
+              }
+            }
+          };
+
           const agentModulesRoot = path.join(projectDir, 'agent_modules');
           for (const name of addedNames) {
             const res = await planAndRender(projectDir, agentModulesRoot, {
               packageName: name,
               force: Boolean(raw['applyForce']),
               dryRun: false,
+              onSnippetEvent,
             });
             ctx.logger.info(`apply: wrote ${res.written.length} files for ${name}`);
             if (res.backedUp.length > 0) {
               for (const b of res.backedUp) ctx.logger.info(`backup: ${b}`);
             }
             for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
+          }
+
+          // Clean up Ink instance
+          if (inkInstance !== null) {
+            const instance: Instance = inkInstance;
+            instance.unmount();
+            inkInstance = null;
           }
         }
       } catch (error) {
