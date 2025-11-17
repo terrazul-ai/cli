@@ -1,14 +1,13 @@
-import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { DependencyResolver } from '../core/dependency-resolver.js';
-import { TerrazulError, ErrorCode } from '../core/errors.js';
+import { TerrazulError } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
+import { PackageManager } from '../core/package-manager.js';
 import { planAndRender } from '../core/template-renderer.js';
-import { createSymlink, ensureDir } from '../utils/fs.js';
+import { injectTZMdReference } from '../utils/context-file-injector.js';
 import { readManifest } from '../utils/manifest.js';
-import { agentModulesPath } from '../utils/path.js';
+import { regenerateTZMdFromAgentModules } from '../utils/tz-md-generator.js';
 
 import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
@@ -32,15 +31,6 @@ export function registerUpdateCommand(
         const progOpts = program.opts<{ verbose?: boolean }>();
         const ctx = createCtx({ verbose: progOpts.verbose });
         const projectDir = process.cwd();
-
-        const getSafeLinkPath = (pkgName: string): string => {
-          try {
-            return agentModulesPath(projectDir, pkgName);
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            throw new TerrazulError(ErrorCode.SECURITY_VIOLATION, msg);
-          }
-        };
 
         const lockfile = LockfileManager.read(projectDir);
         if (!lockfile) {
@@ -118,33 +108,20 @@ export function registerUpdateCommand(
             ReturnType<typeof LockfileManager.merge>['packages'][string]
           > = {};
           const changed: string[] = [];
+          const packageManager = new PackageManager(ctx);
+
           for (const [pkgName, info] of resolved) {
             const current = lockfile.packages[pkgName]?.version;
             if (current === info.version) continue; // skip unchanged
             ctx.logger.info(`Updating ${pkgName} to ${info.version}`);
-            const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
-            const tarball = await ctx.registry.downloadTarball(tarInfo.url);
-            ctx.storage.store(tarball);
-            const tmpFile = path.join(
-              os.tmpdir(),
-              `tz-${Date.now()}-${Math.random().toString(16).slice(2)}.tgz`,
-            );
-            await fs.writeFile(tmpFile, tarball);
-            try {
-              await ctx.storage.extractTarball(tmpFile, pkgName, info.version);
-            } finally {
-              try {
-                await fs.rm(tmpFile, { force: true });
-              } catch {
-                /* ignore */
-              }
-            }
-            const storePath = ctx.storage.getPackagePath(pkgName, info.version);
-            const linkPath = getSafeLinkPath(pkgName);
-            ensureDir(path.dirname(linkPath));
-            await createSymlink(storePath, linkPath);
 
-            const integrity = LockfileManager.createIntegrityHash(tarball);
+            const { integrity } = await packageManager.installSinglePackage(
+              projectDir,
+              pkgName,
+              info.version,
+            );
+
+            const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
             updates[pkgName] = {
               version: info.version,
               resolved: tarInfo.url,
@@ -171,6 +148,24 @@ export function registerUpdateCommand(
               });
               ctx.logger.info(`apply: wrote ${res.written.length} files for ${name}`);
               for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
+            }
+
+            // Regenerate TZ.md from all packages (including unchanged ones)
+            await regenerateTZMdFromAgentModules(projectDir);
+            ctx.logger.info('Regenerated .terrazul/TZ.md');
+
+            // Inject @-mention of TZ.md into CLAUDE.md and AGENTS.md
+            const claudeMd = path.join(projectDir, 'CLAUDE.md');
+            const agentsMd = path.join(projectDir, 'AGENTS.md');
+
+            const claudeResult = await injectTZMdReference(claudeMd, projectDir);
+            if (claudeResult.modified) {
+              ctx.logger.info('Injected TZ.md reference into CLAUDE.md');
+            }
+
+            const agentsResult = await injectTZMdReference(agentsMd, projectDir);
+            if (agentsResult.modified) {
+              ctx.logger.info('Injected TZ.md reference into AGENTS.md');
             }
           }
         } catch (error) {

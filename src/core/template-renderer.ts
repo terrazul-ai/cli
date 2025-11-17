@@ -3,7 +3,9 @@ import path from 'node:path';
 
 import { ensureFileDestination, resolveWritePath, safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
+import { LockfileManager } from './lock-file.js';
 import { SnippetCacheManager } from './snippet-cache.js';
+import { StorageManager } from './storage.js';
 import { loadConfig, getProfileTools, selectPrimaryTool } from '../utils/config.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
@@ -49,6 +51,8 @@ export interface RenderResult {
   skipped: Array<{ dest: string; reason: string; code: SkipReasonCode }>;
   backedUp: string[];
   snippets: Array<{ source: string; dest: string; output: string; preprocess: PreprocessResult }>;
+  // Mapping of package name to array of rendered file paths
+  packageFiles?: Map<string, string[]>;
 }
 
 export interface TemplateProgress {
@@ -187,9 +191,18 @@ function computeDestForRel(
   filesMap: RenderContext['files'],
   tool: ToolType,
   relUnderTemplates: string,
+  packageRoot?: string,
 ): string {
   const rel = relUnderTemplates.replaceAll('\\', '/');
 
+  // If packageRoot is provided, render directly to package directory
+  // The package directory contains only rendered files
+  if (packageRoot) {
+    const cleaned = rel.endsWith('.hbs') ? rel.slice(0, -4) : rel;
+    return safeResolveWithin(packageRoot, String(cleaned));
+  }
+
+  // Original behavior: render to project root
   if (tool === 'codex' && rel === 'AGENTS.md.hbs') {
     return resolveWritePath({
       projectDir: projectRoot,
@@ -377,6 +390,10 @@ export interface ApplyOptions {
   // Snippet caching options
   noCache?: boolean;
   cacheFilePath?: string;
+  // Isolated rendering: render to agent_modules/<pkg>/rendered/ instead of project root
+  isolated?: boolean;
+  // Custom store directory (for testing)
+  storeDir?: string;
 }
 
 export async function planAndRender(
@@ -397,8 +414,11 @@ export async function planAndRender(
     copilot: contextFilesRaw?.copilot ?? '.github/copilot-instructions.md',
   };
 
-  // Discover installed packages
-  const pkgs: Array<{ name: string; root: string }> = [];
+  // Discover installed packages and get their store paths from lockfile
+  const lockfile = LockfileManager.read(projectRoot);
+  const storage = new StorageManager(opts.storeDir ? { storeDir: opts.storeDir } : {});
+
+  const pkgs: Array<{ name: string; root: string; storePath: string }> = [];
   const level1 = await fs.readdir(agentModulesRoot).catch(() => [] as string[]);
   for (const d1 of level1) {
     const abs = path.join(agentModulesRoot, d1);
@@ -409,10 +429,21 @@ export async function planAndRender(
       for (const d2 of nested) {
         const abs2 = path.join(abs, d2);
         const st2 = await fs.stat(abs2).catch(() => null);
-        if (st2 && st2.isDirectory()) pkgs.push({ name: `${d1}/${d2}`, root: abs2 });
+        if (st2 && st2.isDirectory()) {
+          const pkgName = `${d1}/${d2}`;
+          const lockEntry = lockfile?.packages[pkgName];
+          if (lockEntry) {
+            const storePath = storage.getPackagePath(pkgName, lockEntry.version);
+            pkgs.push({ name: pkgName, root: abs2, storePath });
+          }
+        }
       }
     } else {
-      pkgs.push({ name: d1, root: abs });
+      const lockEntry = lockfile?.packages[d1];
+      if (lockEntry) {
+        const storePath = storage.getPackagePath(d1, lockEntry.version);
+        pkgs.push({ name: d1, root: abs, storePath });
+      }
     }
   }
   pkgs.sort((a, b) => a.name.localeCompare(b.name));
@@ -476,6 +507,7 @@ export async function planAndRender(
     preprocess: PreprocessResult;
   }> = [];
   const snippetFailures: SnippetFailureDetail[] = [];
+  const packageFiles = new Map<string, string[]>();
 
   async function backupExistingFile(target: string): Promise<void> {
     if (opts.dryRun) return;
@@ -499,15 +531,16 @@ export async function planAndRender(
   }
 
   for (const p of filtered) {
-    const m = await readManifest(p.root);
+    // Read manifest and templates from store path (read-only)
+    const m = await readManifest(p.storePath);
     const exp = (m?.exports ?? {}) as Partial<
       Record<'claude' | 'codex' | 'cursor' | 'copilot', ExportEntry>
     >;
     const toRender: Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> = [];
-    if (exp?.claude) toRender.push(...collectFromExports(p.root, 'claude', exp.claude));
-    if (exp?.codex) toRender.push(...collectFromExports(p.root, 'codex', exp.codex));
-    if (exp?.cursor) toRender.push(...collectFromExports(p.root, 'cursor', exp.cursor));
-    if (exp?.copilot) toRender.push(...collectFromExports(p.root, 'copilot', exp.copilot));
+    if (exp?.claude) toRender.push(...collectFromExports(p.storePath, 'claude', exp.claude));
+    if (exp?.codex) toRender.push(...collectFromExports(p.storePath, 'codex', exp.codex));
+    if (exp?.cursor) toRender.push(...collectFromExports(p.storePath, 'cursor', exp.cursor));
+    if (exp?.copilot) toRender.push(...collectFromExports(p.storePath, 'copilot', exp.copilot));
 
     // Deduplicate templates by absolute path to prevent rendering the same file multiple times
     const seen = new Map<string, { abs: string; relUnderTemplates: string; tool: ToolType }>();
@@ -534,7 +567,14 @@ export async function planAndRender(
 
     for (const item of uniqueToRender) {
       const rel = item.relUnderTemplates.replaceAll('\\', '/');
-      let dest = computeDestForRel(projectRoot, filesMap, item.tool, rel);
+      // Pass package root for isolated rendering when opts.isolated is true
+      let dest = computeDestForRel(
+        projectRoot,
+        filesMap,
+        item.tool,
+        rel,
+        opts.isolated ? p.root : undefined,
+      );
       dest = await ensureFileDestination(dest, item.tool, projectRoot);
       const destDir = path.dirname(dest);
 
@@ -627,6 +667,12 @@ export async function planAndRender(
         await fs.writeFile(dest, renderResult.output, 'utf8');
       }
       written.push(dest);
+
+      // Track files per package for TZ.md generation
+      if (!packageFiles.has(p.name)) {
+        packageFiles.set(p.name, []);
+      }
+      packageFiles.get(p.name)!.push(dest);
     }
   }
 
@@ -638,5 +684,5 @@ export async function planAndRender(
     );
   }
 
-  return { written, skipped, backedUp, snippets: snippetExecutions };
+  return { written, skipped, backedUp, snippets: snippetExecutions, packageFiles };
 }

@@ -8,6 +8,7 @@ import { render } from 'ink';
 import { DependencyResolver } from '../core/dependency-resolver.js';
 import { ErrorCode, TerrazulError } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
+import { PackageManager } from '../core/package-manager.js';
 import { planAndRender } from '../core/template-renderer.js';
 import {
   aggregateMCPConfigs,
@@ -15,11 +16,13 @@ import {
   cleanupMCPConfig,
   spawnClaudeCode,
 } from '../integrations/claude-code.js';
-import { ensureDir, createSymlink } from '../utils/fs.js';
+import { ensureDir } from '../utils/fs.js';
 import { readManifest } from '../utils/manifest.js';
 import { agentModulesPath } from '../utils/path.js';
 import { normalizeToolOption } from '../utils/tool-options.js';
 import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
+import { generateTZMd, type PackageInfo } from '../utils/tz-md-generator.js';
+import { injectTZMdReference } from '../utils/context-file-injector.js';
 import { AskAgentSpinner, type AskAgentTask } from '../ui/apply/AskAgentSpinner.js';
 
 import type { SnippetProgress } from '../core/template-renderer.js';
@@ -125,34 +128,18 @@ async function autoInstallPackage(
 
   // Install each resolved package
   const updates: Record<string, ReturnType<typeof LockfileManager.merge>['packages'][string]> = {};
+  const packageManager = new PackageManager(ctx);
 
   for (const [pkgName, info] of resolved) {
     ctx.logger.info(`Installing ${pkgName}@${info.version} ...`);
-    const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
-    const tarball = await ctx.registry.downloadTarball(tarInfo.url);
-    ctx.storage.store(tarball);
 
-    const tmpFile = path.join(
-      os.tmpdir(),
-      `tz-run-${Date.now()}-${Math.random().toString(16).slice(2)}.tgz`,
+    const { integrity } = await packageManager.installSinglePackage(
+      projectRoot,
+      pkgName,
+      info.version,
     );
-    await fs.writeFile(tmpFile, tarball);
-    try {
-      await ctx.storage.extractTarball(tmpFile, pkgName, info.version);
-    } finally {
-      try {
-        await fs.rm(tmpFile, { force: true });
-      } catch {
-        /* ignore */
-      }
-    }
 
-    const storePath = ctx.storage.getPackagePath(pkgName, info.version);
-    const linkPath = agentModulesPath(projectRoot, pkgName);
-    await ensureDir(path.dirname(linkPath));
-    await createSymlink(storePath, linkPath);
-
-    const integrity = LockfileManager.createIntegrityHash(tarball);
+    const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
     updates[pkgName] = {
       version: info.version,
       resolved: tarInfo.url,
@@ -412,7 +399,7 @@ export function registerRunCommand(
           // Create spinner manager for askAgent progress
           const spinner = createSpinnerManager(ctx);
 
-          // Render templates
+          // Render templates (with isolated mode to render to agent_modules/<pkg>/rendered/)
           const result = await planAndRender(projectRoot, agentModulesRoot, {
             dryRun: false,
             force,
@@ -428,6 +415,40 @@ export function registerRunCommand(
           spinner.cleanup();
           reportRenderResults(ctx.logger, result);
 
+          // Generate TZ.md from rendered packages
+          if (result.packageFiles && result.packageFiles.size > 0) {
+            // Build PackageInfo array from packageFiles
+            const packageInfos: PackageInfo[] = [];
+            for (const [pkgName, files] of result.packageFiles) {
+              if (files.length > 0) {
+                const pkgRoot = agentModulesPath(projectRoot, pkgName);
+                const manifest = await readManifest(pkgRoot);
+                packageInfos.push({
+                  name: pkgName,
+                  version: manifest?.package?.version,
+                  root: pkgRoot,
+                });
+              }
+            }
+
+            await generateTZMd(projectRoot, result.packageFiles, packageInfos);
+            ctx.logger.info('Generated .terrazul/TZ.md with package context');
+
+            // Inject @-mention of TZ.md into CLAUDE.md and AGENTS.md
+            const claudeMd = path.join(projectRoot, 'CLAUDE.md');
+            const agentsMd = path.join(projectRoot, 'AGENTS.md');
+
+            const claudeResult = await injectTZMdReference(claudeMd, projectRoot);
+            if (claudeResult.modified) {
+              ctx.logger.info('Injected TZ.md reference into CLAUDE.md');
+            }
+
+            const agentsResult = await injectTZMdReference(agentsMd, projectRoot);
+            if (agentsResult.modified) {
+              ctx.logger.info('Injected TZ.md reference into AGENTS.md');
+            }
+          }
+
           // Discover packages for MCP config aggregation
           const packages = await discoverPackagesForMCP(projectRoot, packageName, profileName);
 
@@ -439,11 +460,23 @@ export function registerRunCommand(
 
           // Generate temporary MCP config file
           const terrazulDir = path.join(projectRoot, '.terrazul');
-          await ensureDir(terrazulDir);
+          ensureDir(terrazulDir);
           const mcpConfigPath = path.join(terrazulDir, 'mcp-config.json');
 
           try {
             await generateMCPConfigFile(mcpConfigPath, mcpConfig);
+
+            // Skip spawning Claude Code in non-interactive environments (tests, CI)
+            const skipSpawn = process.env.TZ_SKIP_SPAWN === 'true' || !process.stdout.isTTY;
+
+            if (skipSpawn) {
+              const serverCount = Object.keys(mcpConfig.mcpServers).length;
+              ctx.logger.info(
+                `Rendered templates with ${serverCount} MCP server(s). Skipping Claude Code launch (non-interactive).`,
+              );
+              await cleanupMCPConfig(mcpConfigPath);
+              return;
+            }
 
             const serverCount = Object.keys(mcpConfig.mcpServers).length;
             if (serverCount > 0) {

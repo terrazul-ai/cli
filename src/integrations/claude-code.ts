@@ -4,7 +4,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 import { ErrorCode, TerrazulError } from '../core/errors.js';
-import { agentModulesPath } from '../utils/path.js';
+import { LockfileManager } from '../core/lock-file.js';
+import { StorageManager } from '../core/storage.js';
 
 const exec = promisify(execCallback);
 
@@ -37,15 +38,24 @@ export async function detectClaudeCLI(): Promise<boolean> {
 export async function aggregateMCPConfigs(
   projectRoot: string,
   packageNames: string[],
+  options?: { storeDir?: string },
 ): Promise<MCPConfig> {
   const aggregated: MCPConfig = {
     mcpServers: {},
   };
 
+  // Read lockfile to get store paths
+  const lockfile = LockfileManager.read(projectRoot);
+  const storage = new StorageManager(options?.storeDir ? { storeDir: options.storeDir } : {});
+
   for (const pkgName of packageNames) {
     try {
-      const pkgPath = agentModulesPath(projectRoot, pkgName);
-      const mcpConfigPath = path.join(pkgPath, 'mcp-config.json');
+      // Get store path for this package (MCP config lives in store, not agent_modules)
+      const lockEntry = lockfile?.packages[pkgName];
+      if (!lockEntry) continue;
+
+      const storePath = storage.getPackagePath(pkgName, lockEntry.version);
+      const mcpConfigPath = path.join(storePath, 'mcp-config.json');
 
       // Check if MCP config exists
       try {
