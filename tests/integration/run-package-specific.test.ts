@@ -136,7 +136,7 @@ describe('tz run @owner/package', () => {
   });
 
   it('auto-installs package if not present', async () => {
-    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
+    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, TZ_SKIP_SPAWN: 'true' };
     await run('node', [cli, 'init', '--name', '@e2e/run-auto-install'], { cwd: tmpProj, env });
 
     // Run specific package without installing first
@@ -145,7 +145,7 @@ describe('tz run @owner/package', () => {
     // Verify package was installed
     const starterLink = path.join(tmpProj, 'agent_modules', '@terrazul', 'starter');
     const stats = await fs.lstat(starterLink);
-    expect(stats.isSymbolicLink()).toBe(true);
+    expect(stats.isDirectory()).toBe(true);
 
     // Verify lockfile was created
     const lock = await fs.readFile(path.join(tmpProj, 'agents-lock.toml'), 'utf8');
@@ -153,7 +153,7 @@ describe('tz run @owner/package', () => {
   });
 
   it('skips rendering if files already exist', async () => {
-    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
+    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, TZ_SKIP_SPAWN: 'true' };
     await run('node', [cli, 'init', '--name', '@e2e/run-skip-render'], { cwd: tmpProj, env });
 
     // Install and render first time
@@ -191,7 +191,7 @@ version = "0.1.0"
   });
 
   it('re-renders with --force flag', async () => {
-    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
+    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, TZ_SKIP_SPAWN: 'true' };
     await run('node', [cli, 'init', '--name', '@e2e/run-force-render'], { cwd: tmpProj, env });
 
     const manifest = `
@@ -223,7 +223,7 @@ version = "0.1.0"
   });
 
   it('runs only specified package, not others', async () => {
-    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
+    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, TZ_SKIP_SPAWN: 'true' };
     await run('node', [cli, 'init', '--name', '@e2e/run-specific'], { cwd: tmpProj, env });
 
     // Install multiple packages
@@ -257,7 +257,7 @@ version = "0.1.0"
   });
 
   it('runs all packages when no package specified', async () => {
-    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
+    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, TZ_SKIP_SPAWN: 'true' };
     await run('node', [cli, 'init', '--name', '@e2e/run-all'], { cwd: tmpProj, env });
 
     const manifest = `
@@ -285,7 +285,7 @@ version = "0.1.0"
   });
 
   it('handles package not in registry gracefully', async () => {
-    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome };
+    const env = { ...process.env, HOME: tmpHome, USERPROFILE: tmpHome, TZ_SKIP_SPAWN: 'true' };
     await run('node', [cli, 'init', '--name', '@e2e/run-not-found'], { cwd: tmpProj, env });
 
     // Try to run a package that doesn't exist

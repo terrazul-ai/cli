@@ -159,7 +159,7 @@ describe('integration: update flags', () => {
     });
     // Create conflicting file
     await fs.writeFile(path.join(tmpProj, 'CLAUDE.md'), 'ORIGINAL', 'utf8');
-    await run('node', [cli, 'update', '--apply-force'], { cwd: tmpProj, env });
+    await run('node', [cli, 'apply', '--force'], { cwd: tmpProj, env });
     const md = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
     expect(md).toMatch(/Hello/);
     expect(md).not.toContain('ORIGINAL');

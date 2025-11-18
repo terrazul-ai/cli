@@ -149,6 +149,11 @@ describe('E2E: add → auto-apply', () => {
     ];
     for (const f of outFiles) {
       const st = await fs.stat(f).catch(() => null);
+      if (!st) {
+        console.error(`Missing file: ${f}`);
+        const allFiles = await fs.readdir(tmpProj, { recursive: true });
+        console.error('All files:', allFiles);
+      }
       expect(st && st.isFile()).toBe(true);
     }
     const md = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');

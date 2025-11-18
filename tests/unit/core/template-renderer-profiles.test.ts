@@ -21,10 +21,16 @@ async function write(file: string, data: string): Promise<void> {
 describe('core/template-renderer profiles', () => {
   let projectRoot = '';
   let agentModulesRoot = '';
+  let fakeHomeDir = '';
+  let storeRoot = '';
   const alphaOutput = () => path.join(projectRoot, 'ALPHA.md');
   const betaOutput = () => path.join(projectRoot, 'BETA.md');
 
   beforeAll(async () => {
+    // Setup fake home directory
+    fakeHomeDir = await mkdtemp('tz-tr-prof-home');
+    storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+
     projectRoot = await mkdtemp('tz-tr-prof-proj');
     agentModulesRoot = path.join(projectRoot, 'agent_modules');
 
@@ -33,24 +39,56 @@ describe('core/template-renderer profiles', () => {
       `\n[package]\nname = "@demo/app"\nversion = "0.2.0"\n\n[profiles]\nfocus = ["@demo/beta"]\n`,
     );
 
-    const alphaRoot = path.join(agentModulesRoot, '@demo', 'alpha');
-    const betaRoot = path.join(agentModulesRoot, '@demo', 'beta');
+    // Create store structure with templates
+    const alphaStoreRoot = path.join(storeRoot, '@demo', 'alpha', '1.0.0');
+    const betaStoreRoot = path.join(storeRoot, '@demo', 'beta', '1.0.0');
 
     await write(
-      path.join(alphaRoot, 'agents.toml'),
+      path.join(alphaStoreRoot, 'agents.toml'),
       `\n[package]\nname = "@demo/alpha"\nversion = "1.0.0"\n\n[exports.codex]\ntemplate = "templates/ALPHA.md.hbs"\n`,
     );
-    await write(path.join(alphaRoot, 'templates', 'ALPHA.md.hbs'), 'Alpha payload');
+    await write(path.join(alphaStoreRoot, 'templates', 'ALPHA.md.hbs'), 'Alpha payload');
 
     await write(
-      path.join(betaRoot, 'agents.toml'),
+      path.join(betaStoreRoot, 'agents.toml'),
       `\n[package]\nname = "@demo/beta"\nversion = "1.0.0"\n\n[exports.codex]\ntemplate = "templates/BETA.md.hbs"\n`,
     );
-    await write(path.join(betaRoot, 'templates', 'BETA.md.hbs'), 'Beta payload');
+    await write(path.join(betaStoreRoot, 'templates', 'BETA.md.hbs'), 'Beta payload');
+
+    // Create empty directories in agent_modules
+    const alphaRoot = path.join(agentModulesRoot, '@demo', 'alpha');
+    const betaRoot = path.join(agentModulesRoot, '@demo', 'beta');
+    await fs.mkdir(alphaRoot, { recursive: true });
+    await fs.mkdir(betaRoot, { recursive: true });
+
+    // Create lockfile
+    const lockfile = `
+version = 1
+
+[packages."@demo/alpha"]
+version = "1.0.0"
+resolved = "http://localhost/alpha"
+integrity = "sha256-test1"
+dependencies = { }
+
+[packages."@demo/beta"]
+version = "1.0.0"
+resolved = "http://localhost/beta"
+integrity = "sha256-test2"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+    await write(path.join(projectRoot, 'agents-lock.toml'), lockfile.trim());
   });
 
   afterAll(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+    if (fakeHomeDir) {
+      await fs.rm(fakeHomeDir, { recursive: true, force: true }).catch(() => {});
+    }
   });
 
   beforeEach(async () => {
@@ -62,6 +100,7 @@ describe('core/template-renderer profiles', () => {
     const res = await planAndRender(projectRoot, agentModulesRoot, {
       profileName: 'focus',
       force: true,
+      storeDir: storeRoot,
     });
 
     const alphaExists = await fs.stat(alphaOutput()).catch(() => null);
@@ -82,6 +121,7 @@ describe('core/template-renderer profiles', () => {
     await expect(
       planAndRender(projectRoot, agentModulesRoot, {
         profileName: 'missing',
+        storeDir: storeRoot,
       }),
     ).rejects.toMatchObject({ code: ErrorCode.INVALID_ARGUMENT } satisfies Partial<TerrazulError>);
   });

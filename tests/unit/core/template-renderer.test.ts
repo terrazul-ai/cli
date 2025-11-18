@@ -40,25 +40,48 @@ describe('core/template-renderer', () => {
       `\n[package]\nname = "@test/project"\nversion = "0.1.0"\n`,
     );
 
-    // create installed package layout under agent_modules/@scope/name
-    pkgRoot = path.join(agentModules, '@test', 'demo');
-    await fs.mkdir(pkgRoot, { recursive: true });
+    // Create store structure with templates
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const pkgStoreRoot = path.join(storeRoot, '@test', 'demo', '1.2.3');
     await write(
-      path.join(pkgRoot, 'agents.toml'),
+      path.join(pkgStoreRoot, 'agents.toml'),
       `\n[package]\nname = "@test/demo"\nversion = "1.2.3"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n\n[exports.claude]\ntemplate = "templates/CLAUDE.md.hbs"\nsettingsLocal = "templates/claude/settings.local.json.hbs"\nsubagentsDir = "templates/claude/agents"\n\n[exports.copilot]\ntemplate = "templates/COPILOT.md.hbs"\n\n[exports.cursor]\ntemplate = "templates/cursor.rules.mdc.hbs"\n`,
     );
-    await write(path.join(pkgRoot, 'templates', 'AGENTS.md.hbs'), '# Codex for {{project.name}}');
-    await write(path.join(pkgRoot, 'templates', 'CLAUDE.md.hbs'), '# Claude {{pkg.name}}');
     await write(
-      path.join(pkgRoot, 'templates', 'claude', 'settings.local.json.hbs'),
+      path.join(pkgStoreRoot, 'templates', 'AGENTS.md.hbs'),
+      '# Codex for {{project.name}}',
+    );
+    await write(path.join(pkgStoreRoot, 'templates', 'CLAUDE.md.hbs'), '# Claude {{pkg.name}}');
+    await write(
+      path.join(pkgStoreRoot, 'templates', 'claude', 'settings.local.json.hbs'),
       '{ "pkg": "{{pkg.name}}", "when": "{{now}}" }',
     );
     await write(
-      path.join(pkgRoot, 'templates', 'claude', 'agents', 'reviewer.md.hbs'),
+      path.join(pkgStoreRoot, 'templates', 'claude', 'agents', 'reviewer.md.hbs'),
       'agent for {{project.version}}',
     );
-    await write(path.join(pkgRoot, 'templates', 'COPILOT.md.hbs'), 'copilot: {{pkg.version}}');
-    await write(path.join(pkgRoot, 'templates', 'cursor.rules.mdc.hbs'), 'rule: {{env.USER}}');
+    await write(path.join(pkgStoreRoot, 'templates', 'COPILOT.md.hbs'), 'copilot: {{pkg.version}}');
+    await write(path.join(pkgStoreRoot, 'templates', 'cursor.rules.mdc.hbs'), 'rule: {{env.USER}}');
+
+    // Create empty directory in agent_modules (will contain rendered files when isolated=true)
+    pkgRoot = path.join(agentModules, '@test', 'demo');
+    await fs.mkdir(pkgRoot, { recursive: true });
+
+    // Create lockfile
+    const lockfile = `
+version = 1
+
+[packages."@test/demo"]
+version = "1.2.3"
+resolved = "http://localhost/demo"
+integrity = "sha256-test"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+    await write(path.join(projectRoot, 'agents-lock.toml'), lockfile.trim());
   });
 
   afterAll(async () => {
@@ -73,9 +96,11 @@ describe('core/template-renderer', () => {
   });
 
   it('renders templates to expected destinations', async () => {
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
     const res = await planAndRender(projectRoot, agentModules, {
       packageName: '@test/demo',
       noCache: true,
+      storeDir: storeRoot,
     });
     const cfg = await loadConfig();
     const files = cfg.context?.files ?? {
@@ -101,15 +126,18 @@ describe('core/template-renderer', () => {
   });
 
   it('skips existing files unless forced', async () => {
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
     const before = await planAndRender(projectRoot, agentModules, {
       packageName: '@test/demo',
       force: false,
+      storeDir: storeRoot,
     });
     expect(before.skipped.length).toBeGreaterThan(0);
     expect(before.backedUp.length).toBe(0);
     const after = await planAndRender(projectRoot, agentModules, {
       packageName: '@test/demo',
       force: true,
+      storeDir: storeRoot,
     });
     expect(after.written.length).toBeGreaterThan(0);
     expect(after.backedUp.length).toBeGreaterThan(0);

@@ -173,7 +173,7 @@ version = "0.1.0"
     expect(lock).toContain('@terrazul/base');
 
     const stats = await fs.lstat(starterLink);
-    expect(stats.isSymbolicLink()).toBe(true);
+    expect(stats.isDirectory()).toBe(true);
 
     const claude = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
     expect(claude).toContain('Hello');

@@ -167,6 +167,14 @@ function reportRenderResults(
   result: Awaited<ReturnType<typeof planAndRender>>,
 ): void {
   logger.info(`run: wrote ${result.written.length} files`);
+
+  // In verbose mode, show each written file
+  if (logger.isVerbose() && result.written.length > 0) {
+    for (const file of result.written) {
+      logger.verbose(`  rendered: ${file}`);
+    }
+  }
+
   if (result.skipped.length > 0) {
     logger.info(`run: skipped ${result.skipped.length} files (already exist)`);
   }
@@ -380,7 +388,14 @@ export function registerRunCommand(
           if (_pkg) {
             const parsed = parseSpec(_pkg);
             if (!parsed) {
+              // No version specified, treat as package name only
               packageName = _pkg;
+              const installed = await isPackageInstalled(projectRoot, packageName);
+
+              if (!installed) {
+                // Auto-install with latest version
+                await autoInstallPackage(ctx, projectRoot, packageName, '*');
+              }
             } else {
               packageName = parsed.name;
               const installed = await isPackageInstalled(projectRoot, packageName);
@@ -434,6 +449,19 @@ export function registerRunCommand(
             await generateTZMd(projectRoot, result.packageFiles, packageInfos);
             ctx.logger.info('Generated .terrazul/TZ.md with package context');
 
+            // Log @-mentions in verbose mode
+            if (ctx.logger.isVerbose()) {
+              for (const [pkgName, files] of result.packageFiles) {
+                if (files.length > 0) {
+                  ctx.logger.verbose(`  ${pkgName}: ${files.length} file(s) referenced`);
+                  for (const file of files) {
+                    const relPath = path.relative(projectRoot, file);
+                    ctx.logger.verbose(`    @${relPath}`);
+                  }
+                }
+              }
+            }
+
             // Inject @-mention of TZ.md into CLAUDE.md and AGENTS.md
             const claudeMd = path.join(projectRoot, 'CLAUDE.md');
             const agentsMd = path.join(projectRoot, 'AGENTS.md');
@@ -441,11 +469,33 @@ export function registerRunCommand(
             const claudeResult = await injectTZMdReference(claudeMd, projectRoot);
             if (claudeResult.modified) {
               ctx.logger.info('Injected TZ.md reference into CLAUDE.md');
+              if (ctx.logger.isVerbose() && claudeResult.content) {
+                // Show the injected block
+                const lines = claudeResult.content.split('\n');
+                const beginIdx = lines.findIndex((l) => l.includes('terrazul:begin'));
+                if (beginIdx >= 0 && beginIdx + 2 < lines.length) {
+                  ctx.logger.verbose('  Injected content:');
+                  ctx.logger.verbose(`    ${lines[beginIdx]}`);
+                  ctx.logger.verbose(`    ${lines[beginIdx + 1]}`);
+                  ctx.logger.verbose(`    ${lines[beginIdx + 2]}`);
+                }
+              }
             }
 
             const agentsResult = await injectTZMdReference(agentsMd, projectRoot);
             if (agentsResult.modified) {
               ctx.logger.info('Injected TZ.md reference into AGENTS.md');
+              if (ctx.logger.isVerbose() && agentsResult.content) {
+                // Show the injected block
+                const lines = agentsResult.content.split('\n');
+                const beginIdx = lines.findIndex((l) => l.includes('terrazul:begin'));
+                if (beginIdx >= 0 && beginIdx + 2 < lines.length) {
+                  ctx.logger.verbose('  Injected content:');
+                  ctx.logger.verbose(`    ${lines[beginIdx]}`);
+                  ctx.logger.verbose(`    ${lines[beginIdx + 1]}`);
+                  ctx.logger.verbose(`    ${lines[beginIdx + 2]}`);
+                }
+              }
             }
           }
 

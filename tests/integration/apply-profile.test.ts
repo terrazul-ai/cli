@@ -45,23 +45,52 @@ describe('integration: apply with profiles', () => {
     const manifest = `\n[package]\nname = "@demo/app"\nversion = "0.1.0"\n\n[profiles]\nfocus = ["@a/one"]\n`;
     await fs.writeFile(path.join(tmpProj, 'agents.toml'), manifest, 'utf8');
 
-    const pkg1 = path.join(tmpProj, 'agent_modules', '@a', 'one');
-    await fs.mkdir(path.join(pkg1, 'templates', 'claude'), { recursive: true });
+    // Create packages in store with templates
+    const storeRoot = path.join(tmpHome, '.terrazul', 'store');
+    const pkg1Store = path.join(storeRoot, '@a', 'one', '1.0.0');
+    const pkg2Store = path.join(storeRoot, '@b', 'two', '1.0.0');
+    await fs.mkdir(path.join(pkg1Store, 'templates'), { recursive: true });
+    await fs.mkdir(path.join(pkg2Store, 'templates'), { recursive: true });
     await fs.writeFile(
-      path.join(pkg1, 'agents.toml'),
+      path.join(pkg1Store, 'agents.toml'),
       `\n[package]\nname = "@a/one"\nversion = "1.0.0"\n\n[exports.claude]\ntemplate = "templates/CLAUDE.md.hbs"\n`,
       'utf8',
     );
-    await fs.writeFile(path.join(pkg1, 'templates', 'CLAUDE.md.hbs'), '# Profile One', 'utf8');
-
-    const pkg2 = path.join(tmpProj, 'agent_modules', '@b', 'two');
-    await fs.mkdir(path.join(pkg2, 'templates'), { recursive: true });
+    await fs.writeFile(path.join(pkg1Store, 'templates', 'CLAUDE.md.hbs'), '# Profile One', 'utf8');
     await fs.writeFile(
-      path.join(pkg2, 'agents.toml'),
+      path.join(pkg2Store, 'agents.toml'),
       `\n[package]\nname = "@b/two"\nversion = "1.0.0"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n`,
       'utf8',
     );
-    await fs.writeFile(path.join(pkg2, 'templates', 'AGENTS.md.hbs'), '# Profile Two', 'utf8');
+    await fs.writeFile(path.join(pkg2Store, 'templates', 'AGENTS.md.hbs'), '# Profile Two', 'utf8');
+
+    // Create empty directories in agent_modules
+    const pkg1 = path.join(tmpProj, 'agent_modules', '@a', 'one');
+    const pkg2 = path.join(tmpProj, 'agent_modules', '@b', 'two');
+    await fs.mkdir(pkg1, { recursive: true });
+    await fs.mkdir(pkg2, { recursive: true });
+
+    // Create lockfile
+    const lockfile = `
+version = 1
+
+[packages."@a/one"]
+version = "1.0.0"
+resolved = "http://localhost/one"
+integrity = "sha256-test1"
+dependencies = { }
+
+[packages."@b/two"]
+version = "1.0.0"
+resolved = "http://localhost/two"
+integrity = "sha256-test2"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+    await fs.writeFile(path.join(tmpProj, 'agents-lock.toml'), lockfile.trim(), 'utf8');
   });
 
   afterEach(async () => {

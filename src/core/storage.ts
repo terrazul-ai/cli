@@ -18,8 +18,6 @@ import path from 'node:path';
 
 import * as tar from 'tar';
 
-import { PackageNameSchema } from '../types/package.js';
-
 import type { Stats } from 'node:fs';
 
 export interface StorageOptions {
@@ -94,15 +92,8 @@ export class StorageManager {
    * Get the extraction path for a package
    */
   getPackagePath(name: string, version: string): string {
-    // Validate that the package name is in scoped format
-    const validationResult = PackageNameSchema.safeParse(name);
-    if (!validationResult.success) {
-      throw new Error(`Package name must be in format @owner/package-name, got: ${name}`);
-    }
-
-    // Convert scoped package names to safe directory names (@owner/pkg -> @owner_pkg)
-    const safeName = name.replace('/', '_');
-    return path.join(this.storeDir, safeName, version);
+    // Keep scoped package structure: @scope/package/version
+    return path.join(this.storeDir, name, version);
   }
 
   /**

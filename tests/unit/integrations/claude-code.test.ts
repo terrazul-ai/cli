@@ -13,9 +13,17 @@ import {
 
 describe('claude-code integration', () => {
   let tmpDir: string;
+  let fakeHomeDir: string;
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tz-claude-test-'));
+    fakeHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tz-claude-home-'));
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = fakeHomeDir;
+    process.env.USERPROFILE = fakeHomeDir;
   });
 
   afterEach(async () => {
@@ -24,6 +32,15 @@ describe('claude-code integration', () => {
     } catch {
       void 0;
     }
+    try {
+      await fs.rm(fakeHomeDir, { recursive: true, force: true });
+    } catch {
+      void 0;
+    }
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
   });
 
   describe('detectClaudeCLI', () => {
@@ -41,14 +58,15 @@ describe('claude-code integration', () => {
     });
 
     it('aggregates MCP configs from multiple packages', async () => {
-      // Create mock package structure with MCP configs
-      const pkg1Dir = path.join(tmpDir, 'agent_modules', '@test', 'pkg1');
-      const pkg2Dir = path.join(tmpDir, 'agent_modules', '@test', 'pkg2');
+      // Create store structure with MCP configs
+      const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+      const pkg1StoreDir = path.join(storeRoot, '@test', 'pkg1', '1.0.0');
+      const pkg2StoreDir = path.join(storeRoot, '@test', 'pkg2', '2.0.0');
 
-      await fs.mkdir(pkg1Dir, { recursive: true });
-      await fs.mkdir(pkg2Dir, { recursive: true });
+      await fs.mkdir(pkg1StoreDir, { recursive: true });
+      await fs.mkdir(pkg2StoreDir, { recursive: true });
 
-      // Create MCP config files
+      // Create MCP config files in store
       const mcp1 = {
         mcpServers: {
           server1: {
@@ -67,10 +85,34 @@ describe('claude-code integration', () => {
         },
       };
 
-      await fs.writeFile(path.join(pkg1Dir, 'mcp-config.json'), JSON.stringify(mcp1));
-      await fs.writeFile(path.join(pkg2Dir, 'mcp-config.json'), JSON.stringify(mcp2));
+      await fs.writeFile(path.join(pkg1StoreDir, 'mcp-config.json'), JSON.stringify(mcp1));
+      await fs.writeFile(path.join(pkg2StoreDir, 'mcp-config.json'), JSON.stringify(mcp2));
 
-      const config = await aggregateMCPConfigs(tmpDir, ['@test/pkg1', '@test/pkg2']);
+      // Create lockfile
+      const lockfile = `
+version = 1
+
+[packages."@test/pkg1"]
+version = "1.0.0"
+resolved = "http://localhost/pkg1"
+integrity = "sha256-test1"
+dependencies = { }
+
+[packages."@test/pkg2"]
+version = "2.0.0"
+resolved = "http://localhost/pkg2"
+integrity = "sha256-test2"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+      await fs.writeFile(path.join(tmpDir, 'agents-lock.toml'), lockfile.trim());
+
+      const config = await aggregateMCPConfigs(tmpDir, ['@test/pkg1', '@test/pkg2'], {
+        storeDir: storeRoot,
+      });
 
       expect(config.mcpServers).toHaveProperty('server1');
       expect(config.mcpServers).toHaveProperty('server2');
@@ -87,11 +129,13 @@ describe('claude-code integration', () => {
     });
 
     it('throws error on duplicate MCP server names', async () => {
-      const pkg1Dir = path.join(tmpDir, 'agent_modules', '@test', 'pkg1');
-      const pkg2Dir = path.join(tmpDir, 'agent_modules', '@test', 'pkg2');
+      // Create store structure with duplicate MCP server names
+      const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+      const pkg1StoreDir = path.join(storeRoot, '@test', 'pkg1', '1.0.0');
+      const pkg2StoreDir = path.join(storeRoot, '@test', 'pkg2', '2.0.0');
 
-      await fs.mkdir(pkg1Dir, { recursive: true });
-      await fs.mkdir(pkg2Dir, { recursive: true });
+      await fs.mkdir(pkg1StoreDir, { recursive: true });
+      await fs.mkdir(pkg2StoreDir, { recursive: true });
 
       const mcp1 = {
         mcpServers: {
@@ -111,21 +155,63 @@ describe('claude-code integration', () => {
         },
       };
 
-      await fs.writeFile(path.join(pkg1Dir, 'mcp-config.json'), JSON.stringify(mcp1));
-      await fs.writeFile(path.join(pkg2Dir, 'mcp-config.json'), JSON.stringify(mcp2));
+      await fs.writeFile(path.join(pkg1StoreDir, 'mcp-config.json'), JSON.stringify(mcp1));
+      await fs.writeFile(path.join(pkg2StoreDir, 'mcp-config.json'), JSON.stringify(mcp2));
 
-      await expect(aggregateMCPConfigs(tmpDir, ['@test/pkg1', '@test/pkg2'])).rejects.toThrow(
-        /duplicate.*mcp server/i,
-      );
+      // Create lockfile
+      const lockfile = `
+version = 1
+
+[packages."@test/pkg1"]
+version = "1.0.0"
+resolved = "http://localhost/pkg1"
+integrity = "sha256-test1"
+dependencies = { }
+
+[packages."@test/pkg2"]
+version = "2.0.0"
+resolved = "http://localhost/pkg2"
+integrity = "sha256-test2"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+      await fs.writeFile(path.join(tmpDir, 'agents-lock.toml'), lockfile.trim());
+
+      await expect(
+        aggregateMCPConfigs(tmpDir, ['@test/pkg1', '@test/pkg2'], { storeDir: storeRoot }),
+      ).rejects.toThrow(/duplicate.*mcp server/i);
     });
 
     it('handles malformed MCP config gracefully', async () => {
-      const pkgDir = path.join(tmpDir, 'agent_modules', '@test', 'pkg-bad');
-      await fs.mkdir(pkgDir, { recursive: true });
+      // Create store structure with malformed MCP config
+      const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+      const pkgStoreDir = path.join(storeRoot, '@test', 'pkg-bad', '1.0.0');
+      await fs.mkdir(pkgStoreDir, { recursive: true });
 
-      await fs.writeFile(path.join(pkgDir, 'mcp-config.json'), 'invalid json {');
+      await fs.writeFile(path.join(pkgStoreDir, 'mcp-config.json'), 'invalid json {');
 
-      await expect(aggregateMCPConfigs(tmpDir, ['@test/pkg-bad'])).rejects.toThrow();
+      // Create lockfile
+      const lockfile = `
+version = 1
+
+[packages."@test/pkg-bad"]
+version = "1.0.0"
+resolved = "http://localhost/pkg-bad"
+integrity = "sha256-test"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+      await fs.writeFile(path.join(tmpDir, 'agents-lock.toml'), lockfile.trim());
+
+      await expect(
+        aggregateMCPConfigs(tmpDir, ['@test/pkg-bad'], { storeDir: storeRoot }),
+      ).rejects.toThrow();
     });
   });
 

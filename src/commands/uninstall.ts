@@ -1,4 +1,7 @@
+import path from 'node:path';
+
 import { LockfileManager } from '../core/lock-file.js';
+import { injectTZMdReference } from '../utils/context-file-injector.js';
 import { exists, remove } from '../utils/fs.js';
 import {
   readManifest,
@@ -7,6 +10,7 @@ import {
 } from '../utils/manifest.js';
 import { agentModulesPath } from '../utils/path.js';
 import { computeRemovalSet, listDependents } from '../utils/prune.js';
+import { regenerateTZMdFromAgentModules } from '../utils/tz-md-generator.js';
 
 import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
@@ -108,6 +112,24 @@ export function registerUninstallCommand(
           ctx.logger.info(`${pkg} was not installed; nothing to do.`);
         } else {
           ctx.logger.info('Uninstall complete');
+
+          // Regenerate TZ.md from remaining packages
+          await regenerateTZMdFromAgentModules(projectDir);
+          ctx.logger.info('Regenerated .terrazul/TZ.md');
+
+          // Inject @-mention of TZ.md into CLAUDE.md and AGENTS.md
+          const claudeMd = path.join(projectDir, 'CLAUDE.md');
+          const agentsMd = path.join(projectDir, 'AGENTS.md');
+
+          const claudeResult = await injectTZMdReference(claudeMd, projectDir);
+          if (claudeResult.modified) {
+            ctx.logger.info('Injected TZ.md reference into CLAUDE.md');
+          }
+
+          const agentsResult = await injectTZMdReference(agentsMd, projectDir);
+          if (agentsResult.modified) {
+            ctx.logger.info('Injected TZ.md reference into AGENTS.md');
+          }
         }
       } catch (error) {
         ctx.logger.error(error instanceof Error ? error.message : String(error));
