@@ -157,7 +157,6 @@ describe('tz run @owner/package', () => {
     await run('node', [cli, 'init', '--name', '@e2e/run-skip-render'], { cwd: tmpProj, env });
 
     // Install and render first time
-    await run('node', [cli, 'install'], { cwd: tmpProj, env });
     const manifest = `
 [package]
 name = "@e2e/run-skip-render"
@@ -169,10 +168,16 @@ version = "0.1.0"
     await fs.writeFile(path.join(tmpProj, 'agents.toml'), manifest, 'utf8');
     await run('node', [cli, 'install'], { cwd: tmpProj, env });
 
-    // Verify CLAUDE.md was created
-    const claudeMdPath = path.join(tmpProj, 'CLAUDE.md');
-    const firstRender = await fs.readFile(claudeMdPath, 'utf8');
-    const firstStat = await fs.stat(claudeMdPath);
+    // Verify rendered file was created in agent_modules
+    const renderedClaudeMd = path.join(
+      tmpProj,
+      'agent_modules',
+      '@terrazul',
+      'starter',
+      'CLAUDE.md',
+    );
+    const firstRender = await fs.readFile(renderedClaudeMd, 'utf8');
+    const firstStat = await fs.stat(renderedClaudeMd);
     const firstMtime = firstStat.mtimeMs;
 
     // Wait a bit to ensure different mtime if file is rewritten
@@ -181,12 +186,12 @@ version = "0.1.0"
     // Run again - should skip rendering
     await run('node', [cli, 'run', '@terrazul/starter'], { cwd: tmpProj, env });
 
-    // Verify file was NOT rewritten
-    const secondStat = await fs.stat(claudeMdPath);
+    // Verify rendered file was NOT rewritten
+    const secondStat = await fs.stat(renderedClaudeMd);
     const secondMtime = secondStat.mtimeMs;
     expect(secondMtime).toBe(firstMtime);
 
-    const secondRender = await fs.readFile(claudeMdPath, 'utf8');
+    const secondRender = await fs.readFile(renderedClaudeMd, 'utf8');
     expect(secondRender).toBe(firstRender);
   });
 
@@ -205,9 +210,15 @@ version = "0.1.0"
     await fs.writeFile(path.join(tmpProj, 'agents.toml'), manifest, 'utf8');
     await run('node', [cli, 'install'], { cwd: tmpProj, env });
 
-    // Verify CLAUDE.md was created
-    const claudeMdPath = path.join(tmpProj, 'CLAUDE.md');
-    const firstStatResult = await fs.stat(claudeMdPath);
+    // Verify rendered file was created in agent_modules
+    const renderedClaudeMd = path.join(
+      tmpProj,
+      'agent_modules',
+      '@terrazul',
+      'starter',
+      'CLAUDE.md',
+    );
+    const firstStatResult = await fs.stat(renderedClaudeMd);
     const firstMtime = firstStatResult.mtimeMs;
 
     // Wait to ensure different mtime
@@ -216,8 +227,8 @@ version = "0.1.0"
     // Run with --force - should re-render
     await run('node', [cli, 'run', '@terrazul/starter', '--force'], { cwd: tmpProj, env });
 
-    // Verify file WAS rewritten
-    const secondStatResult = await fs.stat(claudeMdPath);
+    // Verify rendered file WAS rewritten
+    const secondStatResult = await fs.stat(renderedClaudeMd);
     const secondMtime = secondStatResult.mtimeMs;
     expect(secondMtime).toBeGreaterThan(firstMtime);
   });
@@ -242,18 +253,32 @@ version = "0.1.0"
     // Run only @terrazul/starter
     await run('node', [cli, 'run', '@terrazul/starter'], { cwd: tmpProj, env });
 
-    // Verify only starter was rendered (has CLAUDE.md export)
-    const claudeMdPath = path.join(tmpProj, 'CLAUDE.md');
-    const exists = await fs
-      .access(claudeMdPath)
+    // Verify only starter was rendered in agent_modules
+    const starterClaudeMd = path.join(
+      tmpProj,
+      'agent_modules',
+      '@terrazul',
+      'starter',
+      'CLAUDE.md',
+    );
+    const starterExists = await fs
+      .access(starterClaudeMd)
       .then(() => true)
       .catch(() => false);
+    expect(starterExists).toBe(true);
 
-    expect(exists).toBe(true);
+    // Verify it contains expected content from starter
+    const starterContent = await fs.readFile(starterClaudeMd, 'utf8');
+    expect(starterContent).toContain('Hello');
 
-    // Verify it's from starter specifically
-    const content = await fs.readFile(claudeMdPath, 'utf8');
-    expect(content).toContain('Hello');
+    // Verify @terrazul/base was NOT rendered (no specific check needed, just that starter was rendered)
+    const baseClaudeMd = path.join(tmpProj, 'agent_modules', '@terrazul', 'base', 'CLAUDE.md');
+    const baseExists = await fs
+      .access(baseClaudeMd)
+      .then(() => true)
+      .catch(() => false);
+    // base should not be rendered since we only ran starter
+    expect(baseExists).toBe(false);
   });
 
   it('runs all packages when no package specified', async () => {

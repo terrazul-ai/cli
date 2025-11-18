@@ -5,9 +5,10 @@ import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import {
-  injectTZMdReference,
-  removeTZMdReference,
-  hasTZMdReference,
+  injectPackageContext,
+  removePackageContext,
+  hasPackageContext,
+  type PackageInfo,
 } from '../../../src/utils/context-file-injector';
 
 async function mkdtemp(prefix: string): Promise<string> {
@@ -30,257 +31,324 @@ describe('utils/context-file-injector', () => {
     await fs.rm(projectRoot, { recursive: true, force: true }).catch(() => {});
   });
 
-  describe('injectTZMdReference', () => {
-    it('injects TZ.md reference into new file', async () => {
+  describe('injectPackageContext', () => {
+    it('injects package context into new file', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
+      const packageFiles = new Map([
+        ['@test/pkg1', [path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
-      const result = await injectTZMdReference(filePath, projectRoot);
+      const result = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
 
       expect(result.modified).toBe(true);
       const content = await fs.readFile(filePath, 'utf8');
       expect(content).toContain('<!-- terrazul:begin -->');
-      expect(content).toContain('@.terrazul/TZ.md');
+      expect(content).toContain('@agent_modules/@test/pkg1/CLAUDE.md');
       expect(content).toContain('<!-- terrazul:end -->');
     });
 
-    it('injects TZ.md reference into existing file with content', async () => {
+    it('injects package context into existing file with content', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
       await write(filePath, '# Existing Content\n\nSome text here.');
 
-      const result = await injectTZMdReference(filePath, projectRoot);
+      const packageFiles = new Map([
+        ['@test/pkg1', [path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
+
+      const result = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
 
       expect(result.modified).toBe(true);
       const content = await fs.readFile(filePath, 'utf8');
       expect(content).toContain('# Existing Content');
-      expect(content).toContain('Some text here.');
-      expect(content).toContain('<!-- terrazul:begin -->');
-      expect(content).toContain('@.terrazul/TZ.md');
-      expect(content).toContain('<!-- terrazul:end -->');
-
-      // Should be at the end
-      const lines = content.split('\n');
-      const lastNonEmpty = lines.findLast((l) => l.trim());
-      expect(lastNonEmpty).toBe('<!-- terrazul:end -->');
+      expect(content).toContain('@agent_modules/@test/pkg1/CLAUDE.md');
     });
 
     it('is idempotent - does not modify if already injected', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
+      const packageFiles = new Map([
+        ['@test/pkg1', [path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
       // First injection
-      const result1 = await injectTZMdReference(filePath, projectRoot);
+      const result1 = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
       expect(result1.modified).toBe(true);
       const content1 = await fs.readFile(filePath, 'utf8');
 
-      // Second injection
-      const result2 = await injectTZMdReference(filePath, projectRoot);
+      // Second injection with same data
+      const result2 = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
       expect(result2.modified).toBe(false);
       const content2 = await fs.readFile(filePath, 'utf8');
 
       expect(content1).toBe(content2);
     });
 
-    it('updates block if markers exist but content is wrong', async () => {
+    it('filters out non-context files (agents/, commands/, MCP configs)', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await write(
-        filePath,
-        '# Content\n\n<!-- terrazul:begin -->\nOld content\n<!-- terrazul:end -->',
-      );
+      const packageFiles = new Map([
+        [
+          '@test/pkg1',
+          [
+            path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md'),
+            path.join(projectRoot, 'agent_modules/@test/pkg1/agents/foo.md'),
+            path.join(projectRoot, 'agent_modules/@test/pkg1/commands/bar.md'),
+            path.join(projectRoot, 'agent_modules/@test/pkg1/mcp-config.json'),
+          ],
+        ],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
-      const result = await injectTZMdReference(filePath, projectRoot);
+      const result = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
 
       expect(result.modified).toBe(true);
       const content = await fs.readFile(filePath, 'utf8');
-      expect(content).toContain('<!-- terrazul:begin -->');
-      expect(content).toContain('@.terrazul/TZ.md');
-      expect(content).toContain('<!-- terrazul:end -->');
-      expect(content).not.toContain('Old content');
-    });
 
-    it('handles partial markers by removing them and re-injecting', async () => {
-      const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await write(filePath, '# Content\n\n<!-- terrazul:begin -->\nIncomplete');
+      // Should include CLAUDE.md
+      expect(content).toContain('@agent_modules/@test/pkg1/CLAUDE.md');
 
-      const result = await injectTZMdReference(filePath, projectRoot);
-
-      expect(result.modified).toBe(true);
-      const content = await fs.readFile(filePath, 'utf8');
-      expect(content).toContain('<!-- terrazul:begin -->');
-      expect(content).toContain('@.terrazul/TZ.md');
-      expect(content).toContain('<!-- terrazul:end -->');
-
-      // Should have both markers now
-      const beginCount = (content.match(/<!-- terrazul:begin -->/g) || []).length;
-      const endCount = (content.match(/<!-- terrazul:end -->/g) || []).length;
-      expect(beginCount).toBe(1);
-      expect(endCount).toBe(1);
+      // Should NOT include other files
+      expect(content).not.toContain('agents/foo.md');
+      expect(content).not.toContain('commands/bar.md');
+      expect(content).not.toContain('mcp-config.json');
     });
 
     it('supports dry run mode', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
+      const packageFiles = new Map([
+        ['@test/pkg1', [path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
-      const result = await injectTZMdReference(filePath, projectRoot, { dryRun: true });
+      const result = await injectPackageContext(filePath, projectRoot, packageFiles, packages, {
+        dryRun: true,
+      });
 
       expect(result.modified).toBe(true);
       expect(result.content).toBeDefined();
-      expect(result.content).toContain('@.terrazul/TZ.md');
+      expect(result.content).toContain('@agent_modules/@test/pkg1/CLAUDE.md');
 
-      // File should not exist
-      const exists = await fs.stat(filePath).catch(() => null);
-      expect(exists).toBeNull();
+      // File should not exist (dry run)
+      const exists = await fs
+        .access(filePath)
+        .then(() => true)
+        .catch(() => false);
+      expect(exists).toBe(false);
     });
 
-    it('creates parent directories if they do not exist', async () => {
-      const filePath = path.join(projectRoot, 'nested', 'dir', 'CLAUDE.md');
+    it('handles multiple packages sorted alphabetically', async () => {
+      const filePath = path.join(projectRoot, 'CLAUDE.md');
+      const packageFiles = new Map([
+        ['@test/zebra', [path.join(projectRoot, 'agent_modules/@test/zebra/CLAUDE.md')]],
+        ['@test/apple', [path.join(projectRoot, 'agent_modules/@test/apple/CLAUDE.md')]],
+        ['@test/middle', [path.join(projectRoot, 'agent_modules/@test/middle/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/zebra',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/zebra'),
+        },
+        {
+          name: '@test/apple',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/apple'),
+        },
+        {
+          name: '@test/middle',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/middle'),
+        },
+      ];
 
-      await injectTZMdReference(filePath, projectRoot);
+      const result = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
 
+      expect(result.modified).toBe(true);
       const content = await fs.readFile(filePath, 'utf8');
-      expect(content).toContain('@.terrazul/TZ.md');
+
+      // Check order (should be alphabetical)
+      const appleIndex = content.indexOf('@agent_modules/@test/apple/CLAUDE.md');
+      const middleIndex = content.indexOf('@agent_modules/@test/middle/CLAUDE.md');
+      const zebraIndex = content.indexOf('@agent_modules/@test/zebra/CLAUDE.md');
+
+      expect(appleIndex).toBeLessThan(middleIndex);
+      expect(middleIndex).toBeLessThan(zebraIndex);
     });
   });
 
-  describe('removeTZMdReference', () => {
-    it('removes TZ.md reference from file', async () => {
+  describe('removePackageContext', () => {
+    it('removes package context from file', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await injectTZMdReference(filePath, projectRoot);
+      const packageFiles = new Map([
+        ['@test/pkg1', [path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
-      const result = await removeTZMdReference(filePath);
+      await injectPackageContext(filePath, projectRoot, packageFiles, packages);
+
+      const result = await removePackageContext(filePath);
 
       expect(result.modified).toBe(true);
       const content = await fs.readFile(filePath, 'utf8');
       expect(content).not.toContain('<!-- terrazul:begin -->');
-      expect(content).not.toContain('@.terrazul/TZ.md');
-      expect(content).not.toContain('<!-- terrazul:end -->');
+      expect(content).not.toContain('@agent_modules/@test/pkg1/CLAUDE.md');
     });
 
-    it('preserves existing content when removing reference', async () => {
+    it('preserves existing content when removing context', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
       await write(filePath, '# Existing Content\n\nSome text here.');
-      await injectTZMdReference(filePath, projectRoot);
 
-      await removeTZMdReference(filePath);
+      const packageFiles = new Map([
+        ['@test/pkg1', [path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
-      const content = await fs.readFile(filePath, 'utf8');
-      expect(content).toContain('# Existing Content');
-      expect(content).toContain('Some text here.');
-      expect(content).not.toContain('<!-- terrazul:begin -->');
-      expect(content).not.toContain('@.terrazul/TZ.md');
-    });
+      await injectPackageContext(filePath, projectRoot, packageFiles, packages);
 
-    it('returns false if file does not exist', async () => {
-      const filePath = path.join(projectRoot, 'nonexistent.md');
-
-      const result = await removeTZMdReference(filePath);
-
-      expect(result.modified).toBe(false);
-    });
-
-    it('returns false if reference is not present', async () => {
-      const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await write(filePath, '# Content without reference');
-
-      const result = await removeTZMdReference(filePath);
-
-      expect(result.modified).toBe(false);
-    });
-
-    it('supports dry run mode', async () => {
-      const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await injectTZMdReference(filePath, projectRoot);
-
-      const result = await removeTZMdReference(filePath, { dryRun: true });
+      const result = await removePackageContext(filePath);
 
       expect(result.modified).toBe(true);
-      expect(result.content).toBeDefined();
-      expect(result.content).not.toContain('@.terrazul/TZ.md');
-
-      // File should still have the reference
       const content = await fs.readFile(filePath, 'utf8');
-      expect(content).toContain('@.terrazul/TZ.md');
+      expect(content).toContain('# Existing Content');
+      expect(content).toContain('Some text here');
+      expect(content).not.toContain('terrazul:begin');
+    });
+
+    it('returns false if no context block is present', async () => {
+      const filePath = path.join(projectRoot, 'CLAUDE.md');
+      await write(filePath, '# Content without terrazul block');
+
+      const result = await removePackageContext(filePath);
+
+      expect(result.modified).toBe(false);
     });
   });
 
-  describe('hasTZMdReference', () => {
-    it('returns true if reference is present', async () => {
+  describe('hasPackageContext', () => {
+    it('returns true if context is present', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await injectTZMdReference(filePath, projectRoot);
+      const packageFiles = new Map([
+        ['@test/pkg1', [path.join(projectRoot, 'agent_modules/@test/pkg1/CLAUDE.md')]],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
-      const result = await hasTZMdReference(filePath);
+      await injectPackageContext(filePath, projectRoot, packageFiles, packages);
+
+      const result = await hasPackageContext(filePath);
 
       expect(result).toBe(true);
     });
 
-    it('returns false if reference is not present', async () => {
+    it('returns false if context is not present', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await write(filePath, '# Content without reference');
+      await write(filePath, '# Content without terrazul block');
 
-      const result = await hasTZMdReference(filePath);
+      const result = await hasPackageContext(filePath);
 
       expect(result).toBe(false);
     });
 
     it('returns false if file does not exist', async () => {
-      const filePath = path.join(projectRoot, 'nonexistent.md');
+      const filePath = path.join(projectRoot, 'NONEXISTENT.md');
 
-      const result = await hasTZMdReference(filePath);
-
-      expect(result).toBe(false);
-    });
-
-    it('returns false if only partial markers exist', async () => {
-      const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await write(filePath, '# Content\n\n<!-- terrazul:begin -->\nIncomplete');
-
-      const result = await hasTZMdReference(filePath);
+      const result = await hasPackageContext(filePath);
 
       expect(result).toBe(false);
     });
   });
 
   describe('edge cases', () => {
-    it('handles empty file correctly', async () => {
+    it('handles empty package files map', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await write(filePath, '');
+      const packageFiles = new Map<string, string[]>();
+      const packages: PackageInfo[] = [];
 
-      const result = await injectTZMdReference(filePath, projectRoot);
+      const result = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
 
       expect(result.modified).toBe(true);
       const content = await fs.readFile(filePath, 'utf8');
-      expect(content).toContain('@.terrazul/TZ.md');
+      expect(content).toContain('<!-- terrazul:begin -->');
+      expect(content).toContain('<!-- terrazul:end -->');
+      // Should have no @-mentions
+      expect(content).not.toContain('@agent_modules');
     });
 
-    it('handles file with only whitespace', async () => {
+    it('handles package with no CLAUDE.md/AGENTS.md files', async () => {
       const filePath = path.join(projectRoot, 'CLAUDE.md');
-      await write(filePath, '   \n\n   \n');
+      const packageFiles = new Map([
+        [
+          '@test/pkg1',
+          [
+            // Only non-context files
+            path.join(projectRoot, 'agent_modules/@test/pkg1/agents/foo.md'),
+            path.join(projectRoot, 'agent_modules/@test/pkg1/commands/bar.md'),
+          ],
+        ],
+      ]);
+      const packages: PackageInfo[] = [
+        {
+          name: '@test/pkg1',
+          version: '1.0.0',
+          root: path.join(projectRoot, 'agent_modules/@test/pkg1'),
+        },
+      ];
 
-      const result = await injectTZMdReference(filePath, projectRoot);
+      const result = await injectPackageContext(filePath, projectRoot, packageFiles, packages);
 
       expect(result.modified).toBe(true);
       const content = await fs.readFile(filePath, 'utf8');
-      expect(content.trim()).toContain('@.terrazul/TZ.md');
-    });
-
-    it('handles multiple injections and removals', async () => {
-      const filePath = path.join(projectRoot, 'CLAUDE.md');
-
-      // Inject
-      await injectTZMdReference(filePath, projectRoot);
-      let hasRef = await hasTZMdReference(filePath);
-      expect(hasRef).toBe(true);
-
-      // Remove
-      await removeTZMdReference(filePath);
-      hasRef = await hasTZMdReference(filePath);
-      expect(hasRef).toBe(false);
-
-      // Inject again
-      await injectTZMdReference(filePath, projectRoot);
-      hasRef = await hasTZMdReference(filePath);
-      expect(hasRef).toBe(true);
-
-      // Should still be idempotent
-      const result = await injectTZMdReference(filePath, projectRoot);
-      expect(result.modified).toBe(false);
+      // Should have markers but no @-mentions
+      expect(content).toContain('<!-- terrazul:begin -->');
+      expect(content).not.toContain('@agent_modules/@test/pkg1');
     });
   });
 });

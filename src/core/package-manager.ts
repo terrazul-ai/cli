@@ -234,8 +234,8 @@ export class PackageManager {
         }
       }
 
-      // Create real directory instead of symlink (for isolated rendering)
-      // The package directory will contain only rendered files
+      // Create real directory in agent_modules
+      // The package directory will contain rendered files
       // Templates are read from the store
       await fs.mkdir(linkPath, { recursive: true });
 
@@ -323,8 +323,8 @@ export class PackageManager {
       tarballBuffer = await this.ctx.registry.downloadTarball(tarInfo.url);
     }
 
-    // Create real directory in agent_modules (for isolated rendering)
-    // The package directory will contain only rendered files
+    // Create real directory in agent_modules
+    // The package directory will contain rendered files
     // Templates are read from the store
     await fs.mkdir(path.dirname(linkPath), { recursive: true });
     await fs.mkdir(linkPath, { recursive: true });

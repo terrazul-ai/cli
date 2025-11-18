@@ -186,6 +186,22 @@ export function registerApplyCommand(
             onSnippetEvent,
           });
 
+          // Inject @-mentions and create symlinks (unless dry-run)
+          if (!opts.dryRun && res.packageFiles) {
+            // Debug: log packageFiles
+            ctx.logger.info(`[DEBUG] packageFiles size: ${res.packageFiles.size}`);
+            for (const [pkg, files] of res.packageFiles) {
+              ctx.logger.info(`[DEBUG]   ${pkg}: ${files.length} files`);
+            }
+
+            const { executePostRenderTasks } = await import('../utils/post-render-tasks.js');
+            await executePostRenderTasks(projectRoot, res.packageFiles, ctx.logger);
+          } else {
+            ctx.logger.info(
+              `[DEBUG] Not calling executePostRenderTasks: dryRun=${opts.dryRun}, packageFiles=${res.packageFiles ? 'exists' : 'undefined'}`,
+            );
+          }
+
           // Clean up Ink instance
           if (inkInstance !== null) {
             const instance: Instance = inkInstance;

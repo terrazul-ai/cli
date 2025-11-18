@@ -1,3 +1,4 @@
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
 import { DependencyResolver } from '../core/dependency-resolver.js';
@@ -5,12 +6,107 @@ import { TerrazulError } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
 import { PackageManager } from '../core/package-manager.js';
 import { planAndRender } from '../core/template-renderer.js';
-import { injectTZMdReference } from '../utils/context-file-injector.js';
+import { type PackageInfo } from '../utils/context-file-injector.js';
 import { readManifest } from '../utils/manifest.js';
-import { regenerateTZMdFromAgentModules } from '../utils/tz-md-generator.js';
 
 import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
+
+/**
+ * Helper to scan agent_modules and build packageFiles map for context injection
+ */
+async function collectPackageFilesFromAgentModules(projectRoot: string): Promise<{
+  packageFiles: Map<string, string[]>;
+  packageInfos: PackageInfo[];
+}> {
+  const agentModules = path.join(projectRoot, 'agent_modules');
+  const packageFiles = new Map<string, string[]>();
+  const packageInfos: PackageInfo[] = [];
+
+  try {
+    const entries = await fs.readdir(agentModules, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      // Handle scoped packages (e.g., @scope/)
+      if (entry.name.startsWith('@')) {
+        const scopeDir = path.join(agentModules, entry.name);
+        const pkgs = await fs.readdir(scopeDir, { withFileTypes: true });
+
+        for (const pkg of pkgs) {
+          if (!pkg.isDirectory()) continue;
+
+          const pkgName = `${entry.name}/${pkg.name}`;
+          const pkgRoot = path.join(scopeDir, pkg.name);
+
+          // Collect rendered files recursively
+          const files = await collectFilesRecursively(pkgRoot);
+          if (files.length > 0) {
+            packageFiles.set(pkgName, files);
+
+            // Read manifest for version info
+            const manifest = await readManifest(pkgRoot);
+            packageInfos.push({
+              name: pkgName,
+              version: manifest?.package?.version,
+              root: pkgRoot,
+            });
+          }
+        }
+      } else {
+        // Unscoped package
+        const pkgName = entry.name;
+        const pkgRoot = path.join(agentModules, pkgName);
+
+        // Collect rendered files recursively
+        const files = await collectFilesRecursively(pkgRoot);
+        if (files.length > 0) {
+          packageFiles.set(pkgName, files);
+
+          // Read manifest for version info
+          const manifest = await readManifest(pkgRoot);
+          packageInfos.push({
+            name: pkgName,
+            version: manifest?.package?.version,
+            root: pkgRoot,
+          });
+        }
+      }
+    }
+  } catch {
+    // agent_modules doesn't exist or can't be read
+  }
+
+  return { packageFiles, packageInfos };
+}
+
+/**
+ * Recursively collect files from a directory
+ */
+async function collectFilesRecursively(dir: string): Promise<string[]> {
+  const files: string[] = [];
+
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        // Recursively collect files from subdirectories
+        const subFiles = await collectFilesRecursively(fullPath);
+        files.push(...subFiles);
+      } else if (entry.isFile()) {
+        files.push(fullPath);
+      }
+    }
+  } catch {
+    // Directory doesn't exist or can't be read
+  }
+
+  return files;
+}
 
 export function registerUpdateCommand(
   program: Command,
@@ -150,23 +246,13 @@ export function registerUpdateCommand(
               for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
             }
 
-            // Regenerate TZ.md from all packages (including unchanged ones)
-            await regenerateTZMdFromAgentModules(projectDir);
-            ctx.logger.info('Regenerated .terrazul/TZ.md');
+            // Inject package context from all packages (including unchanged ones)
+            const { packageFiles, packageInfos } =
+              await collectPackageFilesFromAgentModules(projectDir);
 
-            // Inject @-mention of TZ.md into CLAUDE.md and AGENTS.md
-            const claudeMd = path.join(projectDir, 'CLAUDE.md');
-            const agentsMd = path.join(projectDir, 'AGENTS.md');
-
-            const claudeResult = await injectTZMdReference(claudeMd, projectDir);
-            if (claudeResult.modified) {
-              ctx.logger.info('Injected TZ.md reference into CLAUDE.md');
-            }
-
-            const agentsResult = await injectTZMdReference(agentsMd, projectDir);
-            if (agentsResult.modified) {
-              ctx.logger.info('Injected TZ.md reference into AGENTS.md');
-            }
+            // Inject @-mentions and create symlinks
+            const { executePostRenderTasks } = await import('../utils/post-render-tasks.js');
+            await executePostRenderTasks(projectDir, packageFiles, ctx.logger, packageInfos);
           }
         } catch (error) {
           const err = error as TerrazulError | Error;

@@ -105,9 +105,17 @@ cli_version = "0.1.0"
       env,
     });
 
-    const claude = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
+    // Check that @a/one was rendered (it's in the profile)
+    const claude = await fs.readFile(
+      path.join(tmpProj, 'agent_modules', '@a', 'one', 'CLAUDE.md'),
+      'utf8',
+    );
     expect(claude.trim()).toBe('# Profile One');
-    const agentsExists = await fs.stat(path.join(tmpProj, 'AGENTS.md')).catch(() => null);
+
+    // Check that @b/two was NOT rendered (it's not in the profile)
+    const agentsExists = await fs
+      .stat(path.join(tmpProj, 'agent_modules', '@b', 'two', 'AGENTS.md'))
+      .catch(() => null);
     expect(agentsExists).toBeNull();
   });
 

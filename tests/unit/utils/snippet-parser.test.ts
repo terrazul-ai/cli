@@ -152,4 +152,62 @@ describe('snippet parser', () => {
     const tpl = '{{ askUser }}';
     expect(() => parseSnippets(tpl)).toThrow(/Malformed snippet/);
   });
+
+  // Backtick string tests
+  it('parses askUser with backtick strings', () => {
+    const tpl = '{{ askUser(`What is your name?`) }}';
+    const [snippet] = parseSnippets(tpl);
+    expect(snippet.type).toBe('askUser');
+    expect(snippet.question).toBe('What is your name?');
+  });
+
+  it('parses askAgent with backtick strings', () => {
+    const tpl = '{{ askAgent(`Summarize this repo`) }}';
+    const [snippet] = parseSnippets(tpl);
+    if (snippet.type !== 'askAgent') throw new Error('expected askAgent snippet');
+    expect(snippet.prompt.kind).toBe('text');
+    expect(snippet.prompt.value).toBe('Summarize this repo');
+  });
+
+  it('parses multi-line backtick strings', () => {
+    const tpl = `{{ askAgent(\`Determine how to run, test,
+lint, and format the code locally.\`) }}`;
+    const [snippet] = parseSnippets(tpl);
+    if (snippet.type !== 'askAgent') throw new Error('expected askAgent snippet');
+    expect(snippet.prompt.kind).toBe('text');
+    expect(snippet.prompt.value).toBe(
+      'Determine how to run, test,\nlint, and format the code locally.',
+    );
+  });
+
+  it('parses escaped backticks in backtick strings', () => {
+    const tpl = '{{ askUser(`Use \\`backticks\\` here`) }}';
+    const [snippet] = parseSnippets(tpl);
+    expect(snippet.type).toBe('askUser');
+    expect(snippet.question).toBe('Use `backticks` here');
+  });
+
+  it('parses backtick strings with single quotes inside', () => {
+    const tpl = '{{ askUser(`What is your name?`) }}';
+    const [snippet] = parseSnippets(tpl);
+    expect(snippet.type).toBe('askUser');
+    expect(snippet.question).toBe('What is your name?');
+  });
+
+  it('parses backtick strings with options', () => {
+    const tpl = "{{ askAgent(`Summarize repo`, { json: true, tool: 'claude' }) }}";
+    const [snippet] = parseSnippets(tpl);
+    if (snippet.type !== 'askAgent') throw new Error('expected askAgent snippet');
+    expect(snippet.prompt.value).toBe('Summarize repo');
+    expect(snippet.options.json).toBe(true);
+    expect(snippet.options.tool).toBe('claude');
+  });
+
+  it('parses variable assignment with backtick literal', () => {
+    const tpl = '{{ var summary = askAgent(`Summarize the repository.`) }}';
+    const [snippet] = parseSnippets(tpl);
+    if (snippet.type !== 'askAgent') throw new Error('expected askAgent snippet');
+    expect(snippet.varName).toBe('summary');
+    expect(snippet.prompt.value).toBe('Summarize the repository.');
+  });
 });

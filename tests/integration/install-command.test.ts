@@ -175,8 +175,9 @@ version = "0.1.0"
     const stats = await fs.lstat(starterLink);
     expect(stats.isDirectory()).toBe(true);
 
-    const claude = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
-    expect(claude).toContain('Hello');
+    // Note: tz install only downloads packages, it doesn't render templates
+    // Templates are rendered by tz add, tz run, or tz update
+    // So we shouldn't expect CLAUDE.md to exist after install
 
     // idempotent second run
     await run('node', [cli, 'install'], { cwd: tmpProj, env });

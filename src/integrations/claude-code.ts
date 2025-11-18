@@ -7,6 +7,8 @@ import { ErrorCode, TerrazulError } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
 import { StorageManager } from '../core/storage.js';
 
+import type { CLIContext } from '../utils/context.js';
+
 const exec = promisify(execCallback);
 
 export interface MCPServerConfig {
@@ -34,11 +36,15 @@ export async function detectClaudeCLI(): Promise<boolean> {
 
 /**
  * Aggregate MCP server configs from multiple packages
+ * Checks multiple locations in priority order:
+ * 1. agent_modules/<pkg>/claude/mcp_servers.json (rendered template)
+ * 2. agent_modules/<pkg>/mcp-config.json (legacy rendered)
+ * 3. <storePath>/mcp-config.json (static from tarball)
  */
 export async function aggregateMCPConfigs(
   projectRoot: string,
   packageNames: string[],
-  options?: { storeDir?: string },
+  options?: { storeDir?: string; agentModulesRoot?: string; ctx?: CLIContext },
 ): Promise<MCPConfig> {
   const aggregated: MCPConfig = {
     mcpServers: {},
@@ -47,21 +53,44 @@ export async function aggregateMCPConfigs(
   // Read lockfile to get store paths
   const lockfile = LockfileManager.read(projectRoot);
   const storage = new StorageManager(options?.storeDir ? { storeDir: options.storeDir } : {});
+  const agentModulesRoot = options?.agentModulesRoot ?? path.join(projectRoot, 'agent_modules');
+  const ctx = options?.ctx;
 
   for (const pkgName of packageNames) {
     try {
-      // Get store path for this package (MCP config lives in store, not agent_modules)
+      // Try multiple config locations in priority order
+      const configPaths = [
+        // 1. Rendered template in claude/ subdirectory (new format)
+        path.join(agentModulesRoot, pkgName, 'claude', 'mcp_servers.json'),
+        // 2. Rendered template at package root (legacy)
+        path.join(agentModulesRoot, pkgName, 'mcp-config.json'),
+      ];
+
+      // 3. Static config in store (fallback)
       const lockEntry = lockfile?.packages[pkgName];
-      if (!lockEntry) continue;
+      if (lockEntry) {
+        const storePath = storage.getPackagePath(pkgName, lockEntry.version);
+        configPaths.push(path.join(storePath, 'mcp-config.json'));
+      }
 
-      const storePath = storage.getPackagePath(pkgName, lockEntry.version);
-      const mcpConfigPath = path.join(storePath, 'mcp-config.json');
+      // Find first existing config
+      let mcpConfigPath: string | null = null;
+      for (const configPath of configPaths) {
+        try {
+          await fs.access(configPath);
+          mcpConfigPath = configPath;
+          break;
+        } catch {
+          // Try next path
+          continue;
+        }
+      }
 
-      // Check if MCP config exists
-      try {
-        await fs.access(mcpConfigPath);
-      } catch {
-        // No MCP config for this package, skip
+      // No MCP config for this package, skip
+      if (!mcpConfigPath) {
+        if (ctx?.logger.isVerbose()) {
+          ctx.logger.debug(`No MCP config found for ${pkgName}`);
+        }
         continue;
       }
 
@@ -70,10 +99,20 @@ export async function aggregateMCPConfigs(
       const config = JSON.parse(content) as MCPConfig;
 
       if (!config.mcpServers || typeof config.mcpServers !== 'object') {
+        const relPath = path.relative(projectRoot, mcpConfigPath);
+        ctx?.logger.warn(
+          `Package ${pkgName} has MCP config at ${relPath} but it's missing the 'mcpServers' wrapper.\n` +
+            `Expected format: { "mcpServers": { "server-name": { "command": "...", "args": [...] } } }`,
+        );
         continue;
       }
 
       // Merge servers, checking for duplicates
+      const serverCount = Object.keys(config.mcpServers).length;
+      if (ctx?.logger.isVerbose()) {
+        ctx.logger.debug(`Found ${serverCount} MCP server(s) in ${pkgName}`);
+      }
+
       for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
         if (aggregated.mcpServers[serverName]) {
           throw new TerrazulError(
@@ -128,9 +167,17 @@ export async function spawnClaudeCode(
   mcpConfigPath: string,
   additionalArgs: string[] = [],
   cwd?: string,
+  model?: string,
 ): Promise<number> {
   return new Promise((resolve, reject) => {
-    const args = ['--mcp-config', mcpConfigPath, '--strict-mcp-config', ...additionalArgs];
+    const args = ['--mcp-config', mcpConfigPath, '--strict-mcp-config'];
+
+    // Add model flag if specified
+    if (model) {
+      args.push('--model', model);
+    }
+
+    args.push(...additionalArgs);
     const workingDir = cwd || process.cwd();
 
     // Log the full command for debugging

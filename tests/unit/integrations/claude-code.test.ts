@@ -9,6 +9,7 @@ import {
   detectClaudeCLI,
   generateMCPConfigFile,
   cleanupMCPConfig,
+  spawnClaudeCode,
 } from '../../../src/integrations/claude-code.js';
 
 describe('claude-code integration', () => {
@@ -118,6 +119,66 @@ cli_version = "0.1.0"
       expect(config.mcpServers).toHaveProperty('server2');
       expect(config.mcpServers.server1.command).toBe('node');
       expect(config.mcpServers.server2.command).toBe('node');
+    });
+
+    it('prioritizes rendered MCP configs in agent_modules over store', async () => {
+      // Create both agent_modules and store configs
+      const agentModulesRoot = path.join(tmpDir, 'agent_modules');
+      const pkgModulesDir = path.join(agentModulesRoot, '@test', 'pkg1', 'claude');
+      await fs.mkdir(pkgModulesDir, { recursive: true });
+
+      // Rendered config in agent_modules (should be used)
+      const renderedMcp = {
+        mcpServers: {
+          'rendered-server': {
+            command: 'node',
+            args: ['rendered.js'],
+          },
+        },
+      };
+      await fs.writeFile(path.join(pkgModulesDir, 'mcp_servers.json'), JSON.stringify(renderedMcp));
+
+      // Static config in store (should be ignored)
+      const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+      const pkgStoreDir = path.join(storeRoot, '@test', 'pkg1', '1.0.0');
+      await fs.mkdir(pkgStoreDir, { recursive: true });
+
+      const storeMcp = {
+        mcpServers: {
+          'store-server': {
+            command: 'node',
+            args: ['store.js'],
+          },
+        },
+      };
+      await fs.writeFile(path.join(pkgStoreDir, 'mcp-config.json'), JSON.stringify(storeMcp));
+
+      // Create lockfile
+      const lockfile = `
+version = 1
+
+[packages."@test/pkg1"]
+version = "1.0.0"
+resolved = "http://localhost/pkg1"
+integrity = "sha256-test1"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+      await fs.writeFile(path.join(tmpDir, 'agents-lock.toml'), lockfile.trim());
+
+      const config = await aggregateMCPConfigs(tmpDir, ['@test/pkg1'], {
+        storeDir: storeRoot,
+        agentModulesRoot,
+      });
+
+      // Should use rendered config, not store config
+      expect(config.mcpServers).toHaveProperty('rendered-server');
+      expect(config.mcpServers).not.toHaveProperty('store-server');
+      expect(config.mcpServers['rendered-server'].command).toBe('node');
+      expect(config.mcpServers['rendered-server'].args).toEqual(['rendered.js']);
     });
 
     it('handles packages without MCP config gracefully', async () => {
@@ -290,6 +351,26 @@ cli_version = "0.1.0"
       const configPath = path.join(tmpDir, 'nonexistent.json');
 
       await expect(cleanupMCPConfig(configPath)).resolves.not.toThrow();
+    });
+  });
+
+  describe('spawnClaudeCode', () => {
+    it('accepts model parameter in function signature', () => {
+      // Type-level test: this compiles if the signature is correct
+      // Verify the function can be called with the model parameter
+      expect(typeof spawnClaudeCode).toBe('function');
+
+      // The implementation should accept: (mcpConfigPath, additionalArgs?, cwd?, model?)
+      type ExpectedSignature = (
+        mcpConfigPath: string,
+        additionalArgs?: string[],
+        cwd?: string,
+        model?: string,
+      ) => Promise<number>;
+
+      // This will cause a type error if the signature doesn't match
+      const _typeCheck: ExpectedSignature = spawnClaudeCode;
+      expect(_typeCheck).toBe(spawnClaudeCode);
     });
   });
 });

@@ -55,7 +55,7 @@ cli_version = "0.1.0"
   return {
     agentModulesRoot,
     pkgRoot,
-    dest: path.join(project, 'AGENTS.md'),
+    dest: path.join(agentModulesRoot, 'pkg', 'AGENTS.md'),
   };
 }
 
@@ -201,12 +201,13 @@ cli_version = "0.1.0"
       storeDir: storeRoot,
     });
 
-    // Should skip due to symlinked ancestor outside project
-    const targetDest = path.join(project, '.claude', 'settings.json');
-    const skipEntry = res.skipped.find((s) => s.dest === targetDest);
-    expect(skipEntry?.code).toBe('symlink-ancestor-outside');
+    // With isolated rendering, file should render to agent_modules/pkg/claude/settings.json
+    // The .claude symlink doesn't affect rendering anymore
+    const targetDest = path.join(am, 'claude', 'settings.json');
+    const written = res.written.includes(targetDest);
+    expect(written).toBe(true);
     expect(res.backedUp.length).toBe(0);
-    // Ensure no file was written under symlink target
+    // Ensure file was written to agent_modules, NOT under the .claude symlink
     await expect(
       fs
         .stat(path.join(outside, 'settings.json'))

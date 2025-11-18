@@ -10,11 +10,8 @@ import { ErrorCode, TerrazulError } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
 import { PackageManager } from '../core/package-manager.js';
 import { planAndRender } from '../core/template-renderer.js';
-import { addPackageToProfile, readManifest } from '../utils/manifest.js';
-import { agentModulesPath } from '../utils/path.js';
+import { addPackageToProfile } from '../utils/manifest.js';
 import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
-import { generateTZMd, type PackageInfo } from '../utils/tz-md-generator.js';
-import { injectTZMdReference } from '../utils/context-file-injector.js';
 import { AskAgentSpinner, type AskAgentTask } from '../ui/apply/AskAgentSpinner.js';
 
 import type { SnippetProgress } from '../core/template-renderer.js';
@@ -247,7 +244,7 @@ export function registerAddCommand(
             }
             for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
 
-            // Collect packageFiles for TZ.md generation
+            // Collect packageFiles for post-render tasks
             if (res.packageFiles) {
               for (const [pkgName, files] of res.packageFiles) {
                 allPackageFiles.set(pkgName, files);
@@ -255,37 +252,10 @@ export function registerAddCommand(
             }
           }
 
-          // Generate TZ.md from all rendered packages
+          // Inject @-mentions and create symlinks
           if (allPackageFiles.size > 0) {
-            const packageInfos: PackageInfo[] = [];
-            for (const [pkgName, files] of allPackageFiles) {
-              if (files.length > 0) {
-                const pkgRoot = agentModulesPath(projectDir, pkgName);
-                const manifest = await readManifest(pkgRoot);
-                packageInfos.push({
-                  name: pkgName,
-                  version: manifest?.package?.version,
-                  root: pkgRoot,
-                });
-              }
-            }
-
-            await generateTZMd(projectDir, allPackageFiles, packageInfos);
-            ctx.logger.info('Generated .terrazul/TZ.md with package context');
-
-            // Inject @-mention of TZ.md into CLAUDE.md and AGENTS.md
-            const claudeMd = path.join(projectDir, 'CLAUDE.md');
-            const agentsMd = path.join(projectDir, 'AGENTS.md');
-
-            const claudeResult = await injectTZMdReference(claudeMd, projectDir);
-            if (claudeResult.modified) {
-              ctx.logger.info('Injected TZ.md reference into CLAUDE.md');
-            }
-
-            const agentsResult = await injectTZMdReference(agentsMd, projectDir);
-            if (agentsResult.modified) {
-              ctx.logger.info('Injected TZ.md reference into AGENTS.md');
-            }
+            const { executePostRenderTasks } = await import('../utils/post-render-tasks.js');
+            await executePostRenderTasks(projectDir, allPackageFiles, ctx.logger);
           }
 
           // Clean up Ink instance

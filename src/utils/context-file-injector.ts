@@ -4,6 +4,12 @@ import path from 'node:path';
 const BEGIN_MARKER = '<!-- terrazul:begin -->';
 const END_MARKER = '<!-- terrazul:end -->';
 
+export interface PackageInfo {
+  name: string;
+  version?: string;
+  root: string;
+}
+
 export interface InjectOptions {
   /**
    * Dry run mode - don't write, just return what would be written
@@ -12,17 +18,22 @@ export interface InjectOptions {
 }
 
 /**
- * Inject @-mention of .terrazul/TZ.md into a context file (CLAUDE.md, AGENTS.md, etc.)
+ * Inject direct @-mentions of package context files (CLAUDE.md, AGENTS.md) into a context file.
+ * Filters out non-context files (MCP configs, agents/, commands/, etc.)
  * Uses marker comments to ensure idempotent injection.
  *
- * @param filePath - Absolute path to the context file
+ * @param filePath - Absolute path to the context file to inject into
  * @param projectRoot - Absolute path to project root
+ * @param packageFiles - Map of package name to array of rendered file paths
+ * @param packages - Array of package info (name, version, root)
  * @param options - Injection options
- * @returns true if file was modified, false if already had the reference
+ * @returns Object indicating if file was modified and the new content
  */
-export async function injectTZMdReference(
+export async function injectPackageContext(
   filePath: string,
   projectRoot: string,
+  packageFiles: Map<string, string[]>,
+  packages: PackageInfo[],
   options: InjectOptions = {},
 ): Promise<{ modified: boolean; content?: string }> {
   // Check if file exists
@@ -32,7 +43,7 @@ export async function injectTZMdReference(
     content = await fs.readFile(filePath, 'utf8');
     fileExists = true;
   } catch {
-    // File doesn't exist, create with just the TZ.md reference
+    // File doesn't exist, create with just the package context
     content = '';
     fileExists = false;
   }
@@ -41,11 +52,13 @@ export async function injectTZMdReference(
   const hasBeginMarker = content.includes(BEGIN_MARKER);
   const hasEndMarker = content.includes(END_MARKER);
 
+  // Generate the new context block
+  const expectedBlock = generateContextBlock(projectRoot, packageFiles, packages);
+
   // If both markers exist, the injection is already present
   if (hasBeginMarker && hasEndMarker) {
     // Verify the content between markers is correct
     const regex = new RegExp(`${escapeRegExp(BEGIN_MARKER)}[\\s\\S]*?${escapeRegExp(END_MARKER)}`);
-    const expectedBlock = generateTZMdBlock();
 
     if (content.includes(expectedBlock)) {
       // Already injected and correct, no changes needed
@@ -68,12 +81,12 @@ export async function injectTZMdReference(
     content = content.replaceAll(new RegExp(escapeRegExp(END_MARKER), 'g'), '');
   }
 
-  // Inject the TZ.md reference block
-  const tzBlock = generateTZMdBlock();
+  // Inject the package context block
+  const contextBlock = expectedBlock;
 
   // New file or empty file - just add the block; otherwise append at the end with proper spacing
   const newContent =
-    !fileExists || content.trim() === '' ? tzBlock : content.trimEnd() + '\n\n' + tzBlock;
+    !fileExists || content.trim() === '' ? contextBlock : content.trimEnd() + '\n\n' + contextBlock;
 
   if (!options.dryRun) {
     await fs.mkdir(path.dirname(filePath), { recursive: true });
@@ -84,13 +97,13 @@ export async function injectTZMdReference(
 }
 
 /**
- * Remove TZ.md reference from a context file.
+ * Remove package context block from a context file.
  *
  * @param filePath - Absolute path to the context file
  * @param options - Injection options
- * @returns true if file was modified, false if reference wasn't present
+ * @returns Object indicating if file was modified and the new content
  */
-export async function removeTZMdReference(
+export async function removePackageContext(
   filePath: string,
   options: InjectOptions = {},
 ): Promise<{ modified: boolean; content?: string }> {
@@ -124,9 +137,9 @@ export async function removeTZMdReference(
 }
 
 /**
- * Check if a context file has the TZ.md reference injected.
+ * Check if a context file has the package context block injected.
  */
-export async function hasTZMdReference(filePath: string): Promise<boolean> {
+export async function hasPackageContext(filePath: string): Promise<boolean> {
   try {
     const content = await fs.readFile(filePath, 'utf8');
     return content.includes(BEGIN_MARKER) && content.includes(END_MARKER);
@@ -136,12 +149,58 @@ export async function hasTZMdReference(filePath: string): Promise<boolean> {
 }
 
 /**
- * Generate the TZ.md reference block.
+ * Legacy function for backward compatibility.
+ * @deprecated Use removePackageContext instead.
  */
-function generateTZMdBlock(): string {
-  return `${BEGIN_MARKER}
-@.terrazul/TZ.md
-${END_MARKER}`;
+export const removeTZMdReference = removePackageContext;
+
+/**
+ * Legacy function for backward compatibility.
+ * @deprecated Use hasPackageContext instead.
+ */
+export const hasTZMdReference = hasPackageContext;
+
+/**
+ * Generate the package context block with direct @-mentions.
+ * Filters to only include CLAUDE.md and AGENTS.md files (context files).
+ * Excludes MCP configs, agents/, commands/, hooks/, skills/ files.
+ */
+function generateContextBlock(
+  projectRoot: string,
+  packageFiles: Map<string, string[]>,
+  packages: PackageInfo[],
+): string {
+  const lines = [BEGIN_MARKER, '<!-- Terrazul package context - auto-managed, do not edit -->'];
+
+  // Sort packages alphabetically by name
+  const sortedPackages = [...packages].sort((a, b) => a.name.localeCompare(b.name));
+
+  for (const pkg of sortedPackages) {
+    const files = packageFiles.get(pkg.name);
+    if (!files || files.length === 0) continue;
+
+    // Filter to only include context files (CLAUDE.md, AGENTS.md)
+    // Exclude MCP configs, agents/, commands/, hooks/, skills/ directories
+    const contextFiles = files.filter((file) => {
+      const basename = path.basename(file);
+
+      // Only include CLAUDE.md and AGENTS.md
+      if (basename === 'CLAUDE.md' || basename === 'AGENTS.md') {
+        return true;
+      }
+
+      return false;
+    });
+
+    // Add @-mentions for each context file
+    for (const file of contextFiles) {
+      const relPath = path.relative(projectRoot, file);
+      lines.push(`@${relPath}`);
+    }
+  }
+
+  lines.push(END_MARKER);
+  return lines.join('\n');
 }
 
 /**

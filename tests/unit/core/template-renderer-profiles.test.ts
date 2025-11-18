@@ -23,8 +23,8 @@ describe('core/template-renderer profiles', () => {
   let agentModulesRoot = '';
   let fakeHomeDir = '';
   let storeRoot = '';
-  const alphaOutput = () => path.join(projectRoot, 'ALPHA.md');
-  const betaOutput = () => path.join(projectRoot, 'BETA.md');
+  const alphaOutput = () => path.join(agentModulesRoot, '@demo', 'alpha', 'ALPHA.md');
+  const betaOutput = () => path.join(agentModulesRoot, '@demo', 'beta', 'BETA.md');
 
   beforeAll(async () => {
     // Setup fake home directory

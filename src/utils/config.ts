@@ -34,7 +34,7 @@ const DEFAULT_COMMANDS: Record<ToolType, string> = {
 };
 
 const DEFAULT_PROFILE_TOOLS: ToolSpec[] = [
-  { type: 'claude', command: 'claude', model: 'default' },
+  { type: 'claude', command: 'claude', model: 'claude-sonnet-4-5-20250929' },
   { type: 'codex', command: 'codex', args: ['exec'] },
   { type: 'cursor', command: 'cursor-agent' },
   { type: 'copilot', command: 'copilot' },
@@ -59,7 +59,7 @@ function normalizeToolSpec(spec: ToolSpec): ToolSpec {
   const normalized = cloneToolSpec(spec);
   normalized.command = normalized.command ?? defaultCommandFor(normalized.type);
   if (normalized.type === 'claude' && !normalized.model) {
-    normalized.model = 'default';
+    normalized.model = 'claude-sonnet-4-5-20250929';
   }
   if (!normalized.args && normalized.type === 'codex') {
     normalized.args = ['exec'];

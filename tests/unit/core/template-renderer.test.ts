@@ -5,7 +5,6 @@ import path from 'node:path';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 
 import { planAndRender } from '../../../src/core/template-renderer';
-import { loadConfig } from '../../../src/utils/config';
 
 async function mkdtemp(prefix: string): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
@@ -102,21 +101,15 @@ cli_version = "0.1.0"
       noCache: true,
       storeDir: storeRoot,
     });
-    const cfg = await loadConfig();
-    const files = cfg.context?.files ?? {
-      claude: 'CLAUDE.md',
-      codex: 'AGENTS.md',
-      cursor: '.cursor/rules.mdc',
-      copilot: '.github/copilot-instructions.md',
-    };
-    // expect CLAUDE.md, AGENTS.md, claude extras, cursor output based on config mapping
+    // With isolated rendering (now default), all files render to agent_modules/@test/demo/
+    const packageRoot = path.join(agentModules, '@test', 'demo');
     const expected = [
-      path.join(projectRoot, files.claude),
-      path.join(projectRoot, files.codex),
-      path.join(projectRoot, '.claude', 'settings.local.json'),
-      path.join(projectRoot, '.claude', 'agents', 'reviewer.md'),
-      path.join(projectRoot, files.cursor),
-      path.join(projectRoot, files.copilot),
+      path.join(packageRoot, 'CLAUDE.md'),
+      path.join(packageRoot, 'AGENTS.md'),
+      path.join(packageRoot, 'claude', 'settings.local.json'),
+      path.join(packageRoot, 'claude', 'agents', 'reviewer.md'),
+      path.join(packageRoot, 'cursor.rules.mdc'),
+      path.join(packageRoot, 'copilot.md'),
     ];
     for (const f of expected) {
       const st = await fs.stat(f).catch(() => null);

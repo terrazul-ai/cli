@@ -16,13 +16,13 @@ import {
   cleanupMCPConfig,
   spawnClaudeCode,
 } from '../integrations/claude-code.js';
+import { createSymlinks } from '../integrations/symlink-manager.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest } from '../utils/manifest.js';
-import { agentModulesPath } from '../utils/path.js';
+import { agentModulesPath, isFilesystemPath, resolvePathSpec } from '../utils/path.js';
 import { normalizeToolOption } from '../utils/tool-options.js';
 import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
-import { generateTZMd, type PackageInfo } from '../utils/tz-md-generator.js';
-import { injectTZMdReference } from '../utils/context-file-injector.js';
+import { injectPackageContext, type PackageInfo } from '../utils/context-file-injector.js';
 import { AskAgentSpinner, type AskAgentTask } from '../ui/apply/AskAgentSpinner.js';
 
 import type { SnippetProgress } from '../core/template-renderer.js';
@@ -160,6 +160,65 @@ async function autoInstallPackage(
 }
 
 /**
+ * Validate a local package directory
+ */
+async function validateLocalPackage(packagePath: string): Promise<{
+  name: string;
+  version: string;
+}> {
+  // Check directory exists
+  try {
+    const stats = await fs.stat(packagePath);
+    if (!stats.isDirectory()) {
+      throw new TerrazulError(ErrorCode.INVALID_PACKAGE, `Path is not a directory: ${packagePath}`);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new TerrazulError(
+        ErrorCode.PACKAGE_NOT_FOUND,
+        `Package directory not found: ${packagePath}`,
+      );
+    }
+    throw error;
+  }
+
+  // Read and validate manifest
+  const manifest = await readManifest(packagePath);
+  if (!manifest || !manifest.package?.name || !manifest.package?.version) {
+    throw new TerrazulError(
+      ErrorCode.INVALID_PACKAGE,
+      `Invalid package: agents.toml must contain [package] with name and version`,
+    );
+  }
+
+  return {
+    name: manifest.package.name,
+    version: manifest.package.version,
+  };
+}
+
+/**
+ * Setup local package for rendering (create agent_modules entry)
+ */
+async function setupLocalPackage(
+  ctx: CLIContext,
+  projectRoot: string,
+  localPath: string,
+): Promise<{ packageName: string; version: string }> {
+  const validated = await validateLocalPackage(localPath);
+  const packageName = validated.name;
+
+  ctx.logger.info(`Using local package ${packageName}@${validated.version} from ${localPath}`);
+
+  // Create agent_modules directory for this package
+  const linkPath = agentModulesPath(projectRoot, packageName);
+  await ensureDir(path.dirname(linkPath));
+  await ensureDir(linkPath);
+
+  return { packageName, version: validated.version };
+}
+
+/**
  * Report rendering results to the logger
  */
 function reportRenderResults(
@@ -171,7 +230,7 @@ function reportRenderResults(
   // In verbose mode, show each written file
   if (logger.isVerbose() && result.written.length > 0) {
     for (const file of result.written) {
-      logger.verbose(`  rendered: ${file}`);
+      logger.debug(`  rendered: ${file}`);
     }
   }
 
@@ -383,25 +442,38 @@ export function registerRunCommand(
             return;
           }
 
-          // Parse and handle package spec
+          // Parse and handle package spec or filesystem path
           let packageName: string | undefined = undefined;
+          let localStorePath: string | undefined = undefined;
+
           if (_pkg) {
-            const parsed = parseSpec(_pkg);
-            if (!parsed) {
-              // No version specified, treat as package name only
-              packageName = _pkg;
-              const installed = await isPackageInstalled(projectRoot, packageName);
+            // Check if it's a filesystem path
+            if (isFilesystemPath(_pkg)) {
+              const resolvedPath = resolvePathSpec(_pkg);
+              const result = await setupLocalPackage(ctx, projectRoot, resolvedPath);
+              packageName = result.packageName;
+              localStorePath = resolvedPath;
 
-              if (!installed) {
-                // Auto-install with latest version
-                await autoInstallPackage(ctx, projectRoot, packageName, '*');
-              }
+              ctx.logger.info(`Running local package ${packageName} from ${resolvedPath}`);
             } else {
-              packageName = parsed.name;
-              const installed = await isPackageInstalled(projectRoot, packageName);
+              // Handle as package spec
+              const parsed = parseSpec(_pkg);
+              if (!parsed) {
+                // No version specified, treat as package name only
+                packageName = _pkg;
+                const installed = await isPackageInstalled(projectRoot, packageName);
 
-              if (!installed) {
-                await autoInstallPackage(ctx, projectRoot, parsed.name, parsed.range);
+                if (!installed) {
+                  // Auto-install with latest version
+                  await autoInstallPackage(ctx, projectRoot, packageName, '*');
+                }
+              } else {
+                packageName = parsed.name;
+                const installed = await isPackageInstalled(projectRoot, packageName);
+
+                if (!installed) {
+                  await autoInstallPackage(ctx, projectRoot, parsed.name, parsed.range);
+                }
               }
             }
           }
@@ -409,10 +481,15 @@ export function registerRunCommand(
           // Setup rendering options
           const toolOverride = normalizeToolOption(opts.tool);
           const toolSafeMode = opts.toolSafeMode ?? true;
-          const force = opts.force ?? false;
+          // Local packages should always force re-render to reflect latest changes
+          const force = opts.force ?? localStorePath !== undefined;
 
           // Create spinner manager for askAgent progress
           const spinner = createSpinnerManager(ctx);
+
+          // Prepare local package paths map if we have a local package
+          const localPackagePaths =
+            localStorePath && packageName ? new Map([[packageName, localStorePath]]) : undefined;
 
           // Render templates (with isolated mode to render to agent_modules/<pkg>/rendered/)
           const result = await planAndRender(projectRoot, agentModulesRoot, {
@@ -424,13 +501,14 @@ export function registerRunCommand(
             toolSafeMode,
             verbose: ctx.logger.isVerbose(),
             onSnippetEvent: spinner.onSnippetEvent,
+            localPackagePaths,
           });
 
           // Cleanup and report results
           spinner.cleanup();
           reportRenderResults(ctx.logger, result);
 
-          // Generate TZ.md from rendered packages
+          // Inject package context directly into CLAUDE.md and AGENTS.md
           if (result.packageFiles && result.packageFiles.size > 0) {
             // Build PackageInfo array from packageFiles
             const packageInfos: PackageInfo[] = [];
@@ -446,66 +524,107 @@ export function registerRunCommand(
               }
             }
 
-            await generateTZMd(projectRoot, result.packageFiles, packageInfos);
-            ctx.logger.info('Generated .terrazul/TZ.md with package context');
+            // Inject direct @-mentions into CLAUDE.md and AGENTS.md
+            const claudeMd = path.join(projectRoot, 'CLAUDE.md');
+            const agentsMd = path.join(projectRoot, 'AGENTS.md');
 
-            // Log @-mentions in verbose mode
-            if (ctx.logger.isVerbose()) {
-              for (const [pkgName, files] of result.packageFiles) {
-                if (files.length > 0) {
-                  ctx.logger.verbose(`  ${pkgName}: ${files.length} file(s) referenced`);
-                  for (const file of files) {
-                    const relPath = path.relative(projectRoot, file);
-                    ctx.logger.verbose(`    @${relPath}`);
+            const claudeResult = await injectPackageContext(
+              claudeMd,
+              projectRoot,
+              result.packageFiles,
+              packageInfos,
+            );
+            if (claudeResult.modified) {
+              ctx.logger.info('Injected package context into CLAUDE.md');
+              if (ctx.logger.isVerbose() && claudeResult.content) {
+                // Show the injected block
+                const lines = claudeResult.content.split('\n');
+                const beginIdx = lines.findIndex((l) => l.includes('terrazul:begin'));
+                if (beginIdx >= 0) {
+                  const endIdx = lines.findIndex((l) => l.includes('terrazul:end'));
+                  if (endIdx > beginIdx) {
+                    ctx.logger.debug('  Injected content:');
+                    for (let i = beginIdx; i <= endIdx && i < beginIdx + 10; i++) {
+                      ctx.logger.debug(`    ${lines[i]}`);
+                    }
                   }
                 }
               }
             }
 
-            // Inject @-mention of TZ.md into CLAUDE.md and AGENTS.md
-            const claudeMd = path.join(projectRoot, 'CLAUDE.md');
-            const agentsMd = path.join(projectRoot, 'AGENTS.md');
-
-            const claudeResult = await injectTZMdReference(claudeMd, projectRoot);
-            if (claudeResult.modified) {
-              ctx.logger.info('Injected TZ.md reference into CLAUDE.md');
-              if (ctx.logger.isVerbose() && claudeResult.content) {
-                // Show the injected block
-                const lines = claudeResult.content.split('\n');
-                const beginIdx = lines.findIndex((l) => l.includes('terrazul:begin'));
-                if (beginIdx >= 0 && beginIdx + 2 < lines.length) {
-                  ctx.logger.verbose('  Injected content:');
-                  ctx.logger.verbose(`    ${lines[beginIdx]}`);
-                  ctx.logger.verbose(`    ${lines[beginIdx + 1]}`);
-                  ctx.logger.verbose(`    ${lines[beginIdx + 2]}`);
-                }
-              }
-            }
-
-            const agentsResult = await injectTZMdReference(agentsMd, projectRoot);
+            const agentsResult = await injectPackageContext(
+              agentsMd,
+              projectRoot,
+              result.packageFiles,
+              packageInfos,
+            );
             if (agentsResult.modified) {
-              ctx.logger.info('Injected TZ.md reference into AGENTS.md');
+              ctx.logger.info('Injected package context into AGENTS.md');
               if (ctx.logger.isVerbose() && agentsResult.content) {
                 // Show the injected block
                 const lines = agentsResult.content.split('\n');
                 const beginIdx = lines.findIndex((l) => l.includes('terrazul:begin'));
-                if (beginIdx >= 0 && beginIdx + 2 < lines.length) {
-                  ctx.logger.verbose('  Injected content:');
-                  ctx.logger.verbose(`    ${lines[beginIdx]}`);
-                  ctx.logger.verbose(`    ${lines[beginIdx + 1]}`);
-                  ctx.logger.verbose(`    ${lines[beginIdx + 2]}`);
+                if (beginIdx >= 0) {
+                  const endIdx = lines.findIndex((l) => l.includes('terrazul:end'));
+                  if (endIdx > beginIdx) {
+                    ctx.logger.debug('  Injected content:');
+                    for (let i = beginIdx; i <= endIdx && i < beginIdx + 10; i++) {
+                      ctx.logger.debug(`    ${lines[i]}`);
+                    }
+                  }
+                }
+              }
+            }
+
+            // Log @-mentions in verbose mode
+            if (ctx.logger.isVerbose()) {
+              for (const [pkgName, files] of result.packageFiles) {
+                if (files.length > 0) {
+                  ctx.logger.debug(`  ${pkgName}: ${files.length} file(s) rendered`);
+                  for (const file of files) {
+                    const relPath = path.relative(projectRoot, file);
+                    ctx.logger.debug(`    ${relPath}`);
+                  }
                 }
               }
             }
           }
 
-          // Discover packages for MCP config aggregation
+          // Discover packages for rendering, symlinks, and MCP config
           const packages = await discoverPackagesForMCP(projectRoot, packageName, profileName);
+
+          // Create symlinks for agents/, commands/, hooks/, skills/ files
+          if (packages.length > 0) {
+            const symlinkResult = await createSymlinks({
+              projectRoot,
+              packages,
+              renderedFiles: result.renderedFiles,
+              activeTool: toolOverride ?? 'claude',
+            });
+
+            if (symlinkResult.created.length > 0) {
+              ctx.logger.info(
+                `Created ${symlinkResult.created.length} symlink(s) in .claude/ directories`,
+              );
+              if (ctx.logger.isVerbose()) {
+                for (const link of symlinkResult.created) {
+                  const relPath = path.relative(projectRoot, link);
+                  ctx.logger.debug(`  ${relPath}`);
+                }
+              }
+            }
+
+            if (symlinkResult.errors.length > 0) {
+              for (const err of symlinkResult.errors) {
+                ctx.logger.warn(`Failed to create symlink: ${err.path} - ${err.error}`);
+              }
+            }
+          }
 
           // Aggregate MCP configs from all rendered packages (may be empty)
           const mcpConfig =
             packages.length > 0
-              ? await aggregateMCPConfigs(projectRoot, packages)
+              ? await aggregateMCPConfigs(projectRoot, packages, { agentModulesRoot, ctx })
               : { mcpServers: {} };
 
           // Generate temporary MCP config file
@@ -535,8 +654,13 @@ export function registerRunCommand(
               ctx.logger.info('Launching Claude Code...');
             }
 
+            // Get model from user config
+            const userConfig = await ctx.config.load();
+            const claudeTool = userConfig.profile?.tools?.find((t) => t.type === 'claude');
+            const model = claudeTool?.model;
+
             // Spawn Claude Code with MCP config
-            const exitCode = await spawnClaudeCode(mcpConfigPath, [], projectRoot);
+            const exitCode = await spawnClaudeCode(mcpConfigPath, [], projectRoot, model);
 
             // Cleanup temp config
             await cleanupMCPConfig(mcpConfigPath);
