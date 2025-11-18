@@ -208,6 +208,7 @@ function collectFromExports(
   tool: ToolType,
   exp: ExportEntry | undefined,
 ): Array<{ abs: string; relUnderTemplates: string; tool: ToolType; isMcpConfig: boolean }> {
+  console.log(`[debug] collectFromExports tool=${tool} exp=${JSON.stringify(exp)}`);
   if (!exp) return [];
   const out: Array<{
     abs: string;
@@ -255,6 +256,38 @@ function collectFromExports(
   const subDirV = (exp as Record<string, unknown>)['subagentsDir'];
   if (typeof subDirV === 'string') {
     const relDir = subDirV.startsWith('templates/') ? subDirV.slice('templates/'.length) : subDirV;
+    const absDir = ensureWithinTemplates(relDir);
+    out.push(
+      ...collectFilesRecursively(absDir).map((f) => ({
+        abs: f,
+        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+        tool,
+        isMcpConfig: false,
+      })),
+    );
+  }
+
+  const commandsDirV = (exp as Record<string, unknown>)['commandsDir'];
+  if (typeof commandsDirV === 'string') {
+    const relDir = commandsDirV.startsWith('templates/')
+      ? commandsDirV.slice('templates/'.length)
+      : commandsDirV;
+    const absDir = ensureWithinTemplates(relDir);
+    out.push(
+      ...collectFilesRecursively(absDir).map((f) => ({
+        abs: f,
+        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+        tool,
+        isMcpConfig: false,
+      })),
+    );
+  }
+
+  const skillsDirV = (exp as Record<string, unknown>)['skillsDir'];
+  if (typeof skillsDirV === 'string') {
+    const relDir = skillsDirV.startsWith('templates/')
+      ? skillsDirV.slice('templates/'.length)
+      : skillsDirV;
     const absDir = ensureWithinTemplates(relDir);
     out.push(
       ...collectFilesRecursively(absDir).map((f) => ({
@@ -586,9 +619,8 @@ export async function planAndRender(
         continue;
       }
 
-      // Get package version from manifest
-      const pkgManifest = await readManifest(p.root);
-      const pkgVersion = pkgManifest?.package?.version ?? '0.0.0';
+      // Get package version from already-loaded manifest (m is read from p.storePath)
+      const pkgVersion = m?.package?.version ?? '0.0.0';
 
       const renderResult = await renderTemplateWithSnippets(item.abs, ctx, {
         preprocess: {

@@ -9,7 +9,7 @@ import { DependencyResolver } from '../core/dependency-resolver.js';
 import { ErrorCode, TerrazulError } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
 import { PackageManager } from '../core/package-manager.js';
-import { planAndRender } from '../core/template-renderer.js';
+import { planAndRender, type RenderedFileMetadata } from '../core/template-renderer.js';
 import { addPackageToProfile } from '../utils/manifest.js';
 import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
 import { AskAgentSpinner, type AskAgentTask } from '../ui/apply/AskAgentSpinner.js';
@@ -230,6 +230,7 @@ export function registerAddCommand(
 
           const agentModulesRoot = path.join(projectDir, 'agent_modules');
           const allPackageFiles = new Map<string, string[]>();
+          const allRenderedFiles: RenderedFileMetadata[] = [];
 
           for (const name of addedNames) {
             const res = await planAndRender(projectDir, agentModulesRoot, {
@@ -244,18 +245,19 @@ export function registerAddCommand(
             }
             for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
 
-            // Collect packageFiles for post-render tasks
+            // Collect packageFiles and renderedFiles for post-render tasks
             if (res.packageFiles) {
               for (const [pkgName, files] of res.packageFiles) {
                 allPackageFiles.set(pkgName, files);
               }
             }
+            allRenderedFiles.push(...res.renderedFiles);
           }
 
           // Inject @-mentions and create symlinks
           if (allPackageFiles.size > 0) {
             const { executePostRenderTasks } = await import('../utils/post-render-tasks.js');
-            await executePostRenderTasks(projectDir, allPackageFiles, ctx.logger);
+            await executePostRenderTasks(projectDir, allPackageFiles, ctx.logger, allRenderedFiles);
           }
 
           // Clean up Ink instance

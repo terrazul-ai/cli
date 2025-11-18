@@ -80,7 +80,29 @@ dependencies = { }
 generated_at = "2025-01-01T00:00:00.000Z"
 cli_version = "0.1.0"
 `;
-    await write(path.join(projectRoot, 'agents-lock.toml'), lockfile.trim());
+    const lockfilePath = path.join(projectRoot, 'agents-lock.toml');
+    await write(lockfilePath, lockfile.trim());
+
+    // Ensure lockfile is fully written to disk (prevents CI race conditions)
+    const fd = await fs.open(lockfilePath, 'r');
+    await fd.sync();
+    await fd.close();
+
+    // Verify test setup completed successfully
+    const requiredPaths = [
+      pkgStoreRoot,
+      path.join(pkgStoreRoot, 'agents.toml'),
+      path.join(pkgStoreRoot, 'templates', 'AGENTS.md.hbs'),
+      path.join(pkgStoreRoot, 'templates', 'CLAUDE.md.hbs'),
+      lockfilePath,
+      path.join(agentModules, '@test', 'demo'),
+    ];
+    for (const p of requiredPaths) {
+      const exists = await fs.stat(p).catch(() => null);
+      if (!exists) {
+        throw new Error(`Test setup failed: required path does not exist: ${p}`);
+      }
+    }
   });
 
   afterAll(async () => {
@@ -109,10 +131,19 @@ cli_version = "0.1.0"
       path.join(packageRoot, 'claude', 'settings.local.json'),
       path.join(packageRoot, 'claude', 'agents', 'reviewer.md'),
       path.join(packageRoot, 'cursor.rules.mdc'),
-      path.join(packageRoot, 'copilot.md'),
+      path.join(packageRoot, 'COPILOT.md'), // Template is COPILOT.md.hbs, so output is COPILOT.md
     ];
     for (const f of expected) {
       const st = await fs.stat(f).catch(() => null);
+      if (!st || !st.isFile()) {
+        // Enhanced error reporting for CI debugging
+        const diagnostics = [
+          `\nFile does not exist: ${f}`,
+          `Written files (${res.written.length}): ${res.written.join(', ')}`,
+          `Skipped files (${res.skipped.length}): ${res.skipped.map((s) => `${s.dest} (${s.code})`).join(', ')}`,
+        ];
+        throw new Error(diagnostics.join('\n'));
+      }
       expect(st && st.isFile()).toBe(true);
     }
     expect(res.written.length).toBeGreaterThanOrEqual(5);

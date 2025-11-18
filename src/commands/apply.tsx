@@ -195,7 +195,12 @@ export function registerApplyCommand(
             }
 
             const { executePostRenderTasks } = await import('../utils/post-render-tasks.js');
-            await executePostRenderTasks(projectRoot, res.packageFiles, ctx.logger);
+            await executePostRenderTasks(
+              projectRoot,
+              res.packageFiles,
+              ctx.logger,
+              res.renderedFiles,
+            );
           } else {
             ctx.logger.info(
               `[DEBUG] Not calling executePostRenderTasks: dryRun=${opts.dryRun}, packageFiles=${res.packageFiles ? 'exists' : 'undefined'}`,

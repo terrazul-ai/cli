@@ -4,7 +4,7 @@ import { DependencyResolver } from '../core/dependency-resolver.js';
 import { TerrazulError, ErrorCode } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
 import { PackageManager } from '../core/package-manager.js';
-import { planAndRender } from '../core/template-renderer.js';
+import { planAndRender, type RenderedFileMetadata } from '../core/template-renderer.js';
 import { handleCommandError } from '../utils/command-errors.js';
 import { readManifest } from '../utils/manifest.js';
 import { collectPackageFilesFromAgentModules } from '../utils/package-collection.js';
@@ -127,6 +127,7 @@ async function renderUpdatedPackages(
   ctx: CLIContext,
 ): Promise<void> {
   const agentModulesRoot = path.join(projectDir, 'agent_modules');
+  const allRenderedFiles: RenderedFileMetadata[] = [];
 
   for (const name of changed) {
     const res = await planAndRender(projectDir, agentModulesRoot, {
@@ -136,12 +137,19 @@ async function renderUpdatedPackages(
     });
     ctx.logger.info(`apply: wrote ${res.written.length} files for ${name}`);
     for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
+    allRenderedFiles.push(...res.renderedFiles);
   }
 
   // Inject package context and create symlinks
   const { packageFiles, packageInfos } = await collectPackageFilesFromAgentModules(projectDir);
   const { executePostRenderTasks } = await import('../utils/post-render-tasks.js');
-  await executePostRenderTasks(projectDir, packageFiles, ctx.logger, packageInfos);
+  await executePostRenderTasks(
+    projectDir,
+    packageFiles,
+    ctx.logger,
+    allRenderedFiles,
+    packageInfos,
+  );
 }
 
 export function registerUpdateCommand(

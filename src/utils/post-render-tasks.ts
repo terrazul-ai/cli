@@ -8,7 +8,7 @@ import path from 'node:path';
 import { injectPackageContext, type PackageInfo } from './context-file-injector.js';
 import { readManifest } from './manifest.js';
 import { agentModulesPath } from './path.js';
-import { createSymlinks } from '../integrations/symlink-manager.js';
+import { createSymlinks, type RenderedFile } from '../integrations/symlink-manager.js';
 
 import type { Logger } from './logger.js';
 
@@ -76,6 +76,7 @@ async function injectContext(
 async function createPackageSymlinks(
   projectRoot: string,
   packageInfos: PackageInfo[],
+  renderedFiles: RenderedFile[],
   logger: Logger,
 ): Promise<void> {
   if (packageInfos.length === 0) return;
@@ -83,6 +84,7 @@ async function createPackageSymlinks(
   const symlinkResult = await createSymlinks({
     projectRoot,
     packages: packageInfos.map((p) => p.name),
+    renderedFiles,
   });
 
   if (symlinkResult.created.length > 0) {
@@ -102,12 +104,14 @@ async function createPackageSymlinks(
  * @param projectRoot - Project root directory
  * @param packageFiles - Map of package names to their rendered files
  * @param logger - Logger instance
+ * @param renderedFiles - Rendered file metadata (for symlink creation)
  * @param packageInfos - Optional pre-built package info list (for update command)
  */
 export async function executePostRenderTasks(
   projectRoot: string,
   packageFiles: Map<string, string[]>,
   logger: Logger,
+  renderedFiles: RenderedFile[] = [],
   packageInfos?: PackageInfo[],
 ): Promise<void> {
   if (packageFiles.size === 0) return;
@@ -119,5 +123,5 @@ export async function executePostRenderTasks(
   await injectContext(projectRoot, packageFiles, pkgInfos, logger);
 
   // Create symlinks for operational files
-  await createPackageSymlinks(projectRoot, pkgInfos, logger);
+  await createPackageSymlinks(projectRoot, pkgInfos, renderedFiles, logger);
 }

@@ -18,7 +18,7 @@ import {
 } from '../integrations/claude-code.js';
 import { createSymlinks } from '../integrations/symlink-manager.js';
 import { ensureDir } from '../utils/fs.js';
-import { readManifest } from '../utils/manifest.js';
+import { addOrUpdateDependency, readManifest } from '../utils/manifest.js';
 import { agentModulesPath, isFilesystemPath, resolvePathSpec } from '../utils/path.js';
 import { normalizeToolOption } from '../utils/tool-options.js';
 import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
@@ -41,12 +41,34 @@ function parseSpec(spec?: string): { name: string; range: string } | null {
 }
 
 /**
- * Check if a package is installed in agent_modules/
+ * Check if a package is installed in agent_modules/ and optionally verify version
  */
-async function isPackageInstalled(projectRoot: string, packageName: string): Promise<boolean> {
+async function isPackageInstalled(
+  projectRoot: string,
+  packageName: string,
+  requestedRange?: string,
+): Promise<boolean> {
   try {
     const pkgPath = agentModulesPath(projectRoot, packageName);
     await fs.access(pkgPath);
+
+    // If a specific version range is requested, check lockfile
+    if (requestedRange) {
+      const lock = LockfileManager.read(projectRoot);
+      if (!lock?.packages) {
+        return false;
+      }
+
+      const installedVersion = lock.packages[packageName]?.version;
+      if (!installedVersion) {
+        return false;
+      }
+
+      // Check if installed version satisfies the requested range
+      const semver = await import('semver');
+      return semver.satisfies(installedVersion, requestedRange);
+    }
+
     return true;
   } catch {
     return false;
@@ -54,43 +76,14 @@ async function isPackageInstalled(projectRoot: string, packageName: string): Pro
 }
 
 /**
- * Update manifest file with a new dependency
+ * Update manifest file with a new dependency (idempotent)
  */
 async function updateManifestWithDependency(
   projectRoot: string,
   packageName: string,
   versionRange: string,
 ): Promise<void> {
-  const manifest = await readManifest(projectRoot);
-  if (!manifest || !manifest.dependencies) {
-    return;
-  }
-
-  manifest.dependencies[packageName] = versionRange;
-  const manifestPath = path.join(projectRoot, 'agents.toml');
-  const manifestContent = await fs.readFile(manifestPath, 'utf8');
-  const lines = manifestContent.split('\n');
-
-  // Find [dependencies] section and add the package
-  let inDeps = false;
-  let inserted = false;
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === '[dependencies]') {
-      inDeps = true;
-      continue;
-    }
-    if (inDeps && lines[i].trim().startsWith('[')) {
-      // New section, insert before it
-      lines.splice(i, 0, `"${packageName}" = "${versionRange}"`);
-      inserted = true;
-      break;
-    }
-  }
-  if (!inserted) {
-    lines.push(`"${packageName}" = "${versionRange}"`);
-  }
-
-  await fs.writeFile(manifestPath, lines.join('\n'), 'utf8');
+  await addOrUpdateDependency(projectRoot, packageName, versionRange);
 }
 
 /**
@@ -469,7 +462,7 @@ export function registerRunCommand(
                 }
               } else {
                 packageName = parsed.name;
-                const installed = await isPackageInstalled(projectRoot, packageName);
+                const installed = await isPackageInstalled(projectRoot, packageName, parsed.range);
 
                 if (!installed) {
                   await autoInstallPackage(ctx, projectRoot, parsed.name, parsed.range);
