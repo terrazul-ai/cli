@@ -27,7 +27,7 @@ async function setupCodexPackage(
   await fs.mkdir(path.join(pkgStoreRoot, 'templates'), { recursive: true });
   await fs.writeFile(
     path.join(pkgStoreRoot, 'agents.toml'),
-    `\n[package]\nname = "pkg"\nversion = "1.0.0"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n`,
+    `\n[package]\nname = "@test/pkg"\nversion = "1.0.0"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n`,
     'utf8',
   );
   await fs.writeFile(
@@ -159,7 +159,7 @@ describe('template-renderer symlink destination safety', () => {
     );
     await fs.writeFile(
       path.join(pkgStoreRoot, 'agents.toml'),
-      '[package]\nname = "pkg"\nversion = "1.0.0"\n\n[exports.claude]\nsettings = "templates/claude/settings.json.hbs"\n',
+      '[package]\nname = "@test/pkg"\nversion = "1.0.0"\n\n[exports.claude]\nsettings = "templates/claude/settings.json.hbs"\n',
       'utf8',
     );
 

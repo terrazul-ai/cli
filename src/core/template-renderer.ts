@@ -1,7 +1,7 @@
 import { promises as fs, readdirSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
 
-import { ensureFileDestination, safeResolveWithin } from './destinations.js';
+import { safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
 import { LockfileManager } from './lock-file.js';
 import { SnippetCacheManager } from './snippet-cache.js';
@@ -543,10 +543,20 @@ export async function planAndRender(
 
     for (const item of uniqueToRender) {
       const rel = item.relUnderTemplates.replaceAll('\\', '/');
-      // Always render to package directory
-      let dest = computeDestForRel(p.root, rel);
-      dest = await ensureFileDestination(dest, item.tool, projectRoot);
+      // Always render to package directory (isolated rendering)
+      const dest = computeDestForRel(p.root, rel);
       const destDir = path.dirname(dest);
+
+      // Security: verify destination safety before any operations
+      const safety = await evaluateDestinationSafety(projectRoot, dest);
+      if (!('safe' in safety) || safety.safe !== true) {
+        const code =
+          typeof safety === 'object' && 'safe' in safety && !safety.safe
+            ? safety.reason
+            : 'unsafe-symlink';
+        skipped.push(makeSkip(dest, code));
+        continue;
+      }
 
       if (opts.verbose) {
         console.log(`[template-renderer] Rendering template: ${item.abs} -> ${dest}`);
@@ -611,17 +621,6 @@ export async function planAndRender(
       }
 
       if (!opts.dryRun) {
-        // Security: prevent symlink escapes by verifying existing ancestors and
-        // destination symlink behavior before writing.
-        const safety = await evaluateDestinationSafety(projectRoot, dest);
-        if (!('safe' in safety) || safety.safe !== true) {
-          const code =
-            typeof safety === 'object' && 'safe' in safety && !safety.safe
-              ? safety.reason
-              : 'unsafe-symlink';
-          skipped.push(makeSkip(dest, code));
-          continue;
-        }
         if (destStat) {
           await backupExistingFile(dest);
         }
