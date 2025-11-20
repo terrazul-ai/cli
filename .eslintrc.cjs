@@ -141,19 +141,28 @@ module.exports = {
   },
   overrides: [
     {
-      files: ['src/commands/**/*.ts'],
+      files: ['src/commands/**/*.ts', 'src/commands/**/*.tsx'],
       rules: {
         '@typescript-eslint/explicit-module-boundary-types': 'off', // commands often export Commander instances
       },
     },
     {
-      files: ['tests/**/*.ts'],
+      files: ['tests/**/*.ts', 'tests/**/*.tsx'],
       rules: {
         '@typescript-eslint/no-unsafe-assignment': 'off',
         '@typescript-eslint/no-unsafe-call': 'off',
         '@typescript-eslint/no-unsafe-member-access': 'off',
         'import/no-default-export': 'off',
         'no-undef': 'off',
+        '@typescript-eslint/require-await': 'off',
+        'no-control-regex': 'off', // ANSI escape codes in test assertions
+      },
+    },
+    {
+      files: ['src/**/*.tsx'],
+      rules: {
+        'unicorn/filename-case': 'off', // Allow PascalCase for React components
+        '@typescript-eslint/no-floating-promises': 'off', // React event handlers don't need await
       },
     },
     {

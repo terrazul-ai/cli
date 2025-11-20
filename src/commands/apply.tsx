@@ -1,13 +1,13 @@
 import path from 'node:path';
 
-import React from 'react';
 import { render } from 'ink';
+import React from 'react';
 
 import { planAndRender } from '../core/template-renderer.js';
+import { AskAgentSpinner, type AskAgentTask } from '../ui/apply/AskAgentSpinner.js';
+import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
 import { reportSnippetExecutions } from '../utils/snippet-log.js';
 import { normalizeToolOption } from '../utils/tool-options.js';
-import { generateAskAgentSummary } from '../utils/ask-agent-summary.js';
-import { AskAgentSpinner, type AskAgentTask } from '../ui/apply/AskAgentSpinner.js';
 
 import type { SnippetProgress, TemplateProgress } from '../core/template-renderer.js';
 import type { CLIContext } from '../utils/context.js';
@@ -71,7 +71,7 @@ export function registerApplyCommand(
           const renderSpinner = (): void => {
             if (!isTTY) return;
 
-            const tasks = Array.from(activeTasks.values());
+            const tasks = [...activeTasks.values()];
             if (tasks.length === 0) {
               if (inkInstance !== null) {
                 const instance: Instance = inkInstance;
@@ -81,14 +81,14 @@ export function registerApplyCommand(
               return;
             }
 
-            if (inkInstance !== null) {
-              inkInstance.rerender(<AskAgentSpinner tasks={tasks} />);
-            } else {
+            if (inkInstance === null) {
               inkInstance = render(<AskAgentSpinner tasks={tasks} />, {
                 stdout: process.stdout,
                 stdin: process.stdin,
                 exitOnCtrlC: false,
               });
+            } else {
+              inkInstance.rerender(<AskAgentSpinner tasks={tasks} />);
             }
           };
 
@@ -118,13 +118,19 @@ export function registerApplyCommand(
                   renderSpinner();
 
                   // Generate summary asynchronously and update when ready
-                  void generateAskAgentSummary(event.prompt).then((summary) => {
-                    const existingTask = activeTasks.get(taskId);
-                    if (existingTask && existingTask.status === 'running') {
-                      existingTask.title = summary;
-                      renderSpinner();
-                    }
-                  });
+                  void generateAskAgentSummary(event.prompt)
+                    .then((summary) => {
+                      const existingTask = activeTasks.get(taskId);
+                      if (existingTask && existingTask.status === 'running') {
+                        existingTask.title = summary;
+                        renderSpinner();
+                      }
+                      return;
+                    })
+                    .catch(() => {
+                      // Silently ignore summary generation errors
+                      return;
+                    });
                 } else {
                   // Non-TTY: just log the start
                   ctx.logger.info('Running askAgent snippet...');

@@ -208,7 +208,6 @@ function collectFromExports(
   tool: ToolType,
   exp: ExportEntry | undefined,
 ): Array<{ abs: string; relUnderTemplates: string; tool: ToolType; isMcpConfig: boolean }> {
-  console.log(`[debug] collectFromExports tool=${tool} exp=${JSON.stringify(exp)}`);
   if (!exp) return [];
   const out: Array<{
     abs: string;

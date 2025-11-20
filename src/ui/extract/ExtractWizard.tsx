@@ -616,7 +616,6 @@ export function ExtractWizard({
           />
         );
       }
-      case 'preview':
       default: {
         if (!reviewSummary) {
           return <Text dimColor>No selections available.</Text>;

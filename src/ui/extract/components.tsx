@@ -1,4 +1,4 @@
-import chalk, { supportsColor as chalkSupportsColor } from 'chalk';
+import chalk from 'chalk';
 import cliTruncate from 'cli-truncate';
 import { Box, Text } from 'ink';
 import React, { type ReactNode, useMemo } from 'react';
@@ -72,7 +72,8 @@ const COLOR_SUPPORTED = supportsColor();
 
 export function supportsColor(): boolean {
   if (process.env.NO_COLOR) return false;
-  const support = chalkSupportsColor;
+  // eslint-disable-next-line import/no-named-as-default-member -- accessing chalk instance property
+  const support = chalk.supportsColor;
   return Boolean(support && (support.has256 || support.hasBasic));
 }
 

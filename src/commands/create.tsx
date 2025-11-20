@@ -32,7 +32,7 @@ interface AutomationPayload {
   dryRun?: boolean;
 }
 
-const VALID_TOOLS: ToolName[] = ['claude', 'codex', 'cursor', 'copilot'];
+const VALID_TOOLS = new Set<ToolName>(['claude', 'codex', 'cursor', 'copilot']);
 
 function applyAutomation(base: CreateOptions, payload: AutomationPayload | null): CreateOptions {
   if (!payload) return base;
@@ -47,7 +47,7 @@ function applyAutomation(base: CreateOptions, payload: AutomationPayload | null)
   if (Array.isArray(payload.tools)) {
     const filtered = payload.tools
       .map((tool) => tool.trim())
-      .filter((tool): tool is ToolName => VALID_TOOLS.includes(tool as ToolName));
+      .filter((tool): tool is ToolName => VALID_TOOLS.has(tool as ToolName));
     merged.tools = filtered;
   }
 
