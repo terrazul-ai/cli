@@ -1,6 +1,6 @@
-import React from 'react';
-import { render } from 'ink-testing-library';
 import { Box, Text } from 'ink';
+import { render } from 'ink-testing-library';
+import React from 'react';
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -13,7 +13,7 @@ import {
 } from '../../src/ui/extract/components';
 
 const stripAnsi = (value?: string): string =>
-  value ? value.replace(/\u001B\[[\d;?]*[ -/]*[@-~]/g, '') : '';
+  value ? value.replaceAll(/\u001B\[[\d;?]*[ -/]*[@-~]/g, '') : '';
 
 describe('extract UI components', () => {
   it('renders wizard frame with heading, instruction, warning, action hints, and status', () => {

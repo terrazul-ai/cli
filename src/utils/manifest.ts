@@ -287,6 +287,71 @@ export async function validateManifest(
   return { warnings, errors };
 }
 
+/**
+ * Add or update a dependency in the manifest (idempotent)
+ * @returns true if the manifest was modified, false otherwise
+ */
+export async function addOrUpdateDependency(
+  projectDir: string,
+  packageName: string,
+  versionRange: string,
+): Promise<boolean> {
+  const manifestPath = path.join(projectDir, 'agents.toml');
+
+  let raw: string;
+  try {
+    raw = await fs.readFile(manifestPath, 'utf8');
+  } catch {
+    return false;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = TOML.parse(raw);
+  } catch {
+    return false;
+  }
+
+  if (!isRecord(parsed)) {
+    return false;
+  }
+
+  // Initialize dependencies section if it doesn't exist
+  if (!parsed['dependencies']) {
+    parsed['dependencies'] = {};
+  }
+
+  const depsRaw = parsed['dependencies'];
+  if (!isRecord(depsRaw)) {
+    return false;
+  }
+
+  const deps: Record<string, string> = {};
+  for (const [name, value] of Object.entries(depsRaw)) {
+    if (typeof value === 'string') deps[name] = value;
+  }
+
+  // Check if we need to add/update
+  const existing = deps[packageName];
+  if (existing === versionRange) {
+    return false; // No change needed
+  }
+
+  // Add or update the dependency
+  deps[packageName] = versionRange;
+
+  // Sort dependencies alphabetically for deterministic output
+  const sortedDeps: Record<string, string> = {};
+  for (const key of Object.keys(deps).sort()) {
+    sortedDeps[key] = deps[key];
+  }
+  parsed['dependencies'] = sortedDeps;
+
+  const tomlOut = TOML.stringify(parsed as unknown as TOML.JsonMap);
+  await fs.writeFile(manifestPath, tomlOut, 'utf8');
+  return true;
+}
+
 export async function removeDependenciesFromManifest(
   projectDir: string,
   packagesToRemove: Iterable<string>,

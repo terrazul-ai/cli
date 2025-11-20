@@ -1,9 +1,11 @@
 import { promises as fs, readdirSync, realpathSync, type Stats } from 'node:fs';
 import path from 'node:path';
 
-import { ensureFileDestination, resolveWritePath, safeResolveWithin } from './destinations.js';
+import { safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
+import { LockfileManager } from './lock-file.js';
 import { SnippetCacheManager } from './snippet-cache.js';
+import { StorageManager } from './storage.js';
 import { loadConfig, getProfileTools, selectPrimaryTool } from '../utils/config.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
@@ -44,11 +46,23 @@ type SkipReasonCode =
   | 'unlink-failed'
   | 'unsafe-symlink';
 
+export interface RenderedFileMetadata {
+  pkgName: string;
+  source: string;
+  dest: string;
+  tool: ToolType;
+  isMcpConfig: boolean;
+}
+
 export interface RenderResult {
   written: string[];
   skipped: Array<{ dest: string; reason: string; code: SkipReasonCode }>;
   backedUp: string[];
   snippets: Array<{ source: string; dest: string; output: string; preprocess: PreprocessResult }>;
+  // Mapping of package name to array of rendered file paths
+  packageFiles?: Map<string, string[]>;
+  // Metadata about rendered files (for symlink manager)
+  renderedFiles: RenderedFileMetadata[];
 }
 
 export interface TemplateProgress {
@@ -182,76 +196,25 @@ async function evaluateDestinationSafety(
   return { safe: true, unlinkDestSymlink: false };
 }
 
-function computeDestForRel(
-  projectRoot: string,
-  filesMap: RenderContext['files'],
-  tool: ToolType,
-  relUnderTemplates: string,
-): string {
+function computeDestForRel(packageRoot: string, relUnderTemplates: string): string {
   const rel = relUnderTemplates.replaceAll('\\', '/');
-
-  if (tool === 'codex' && rel === 'AGENTS.md.hbs') {
-    return resolveWritePath({
-      projectDir: projectRoot,
-      value: filesMap.codex,
-      tool,
-      contextFiles: filesMap,
-    }).path;
-  }
-  if (tool === 'claude' && rel === 'CLAUDE.md.hbs') {
-    return resolveWritePath({
-      projectDir: projectRoot,
-      value: filesMap.claude,
-      tool,
-      contextFiles: filesMap,
-    }).path;
-  }
-  if (tool === 'cursor' && (rel === 'cursor.rules.mdc.hbs' || rel === 'cursor.rules.hbs')) {
-    return resolveWritePath({
-      projectDir: projectRoot,
-      value: filesMap.cursor,
-      tool,
-      contextFiles: filesMap,
-    }).path;
-  }
-  if (tool === 'copilot') {
-    const segment = rel.split('/').pop()?.toLowerCase();
-    if (segment === 'copilot.md.hbs') {
-      return resolveWritePath({
-        projectDir: projectRoot,
-        value: filesMap.copilot,
-        tool,
-        contextFiles: filesMap,
-      }).path;
-    }
-  }
-
-  if (tool === 'claude' && rel === 'claude/settings.json.hbs') {
-    return safeResolveWithin(projectRoot, path.join('.claude', 'settings.json'));
-  }
-  if (tool === 'claude' && rel === 'claude/settings.local.json.hbs') {
-    return safeResolveWithin(projectRoot, path.join('.claude', 'settings.local.json'));
-  }
-  if (tool === 'claude' && rel === 'claude/mcp_servers.json.hbs') {
-    return safeResolveWithin(projectRoot, path.join('.claude', 'mcp_servers.json'));
-  }
-  if (tool === 'claude' && rel.startsWith('claude/agents/')) {
-    const tail = rel.slice('claude/agents/'.length);
-    const under = tail.endsWith('.hbs') ? tail.slice(0, -4) : tail;
-    return safeResolveWithin(projectRoot, path.join('.claude', 'agents', String(under)));
-  }
-
+  // Always render to package directory following the package's directory structure
   const cleaned = rel.endsWith('.hbs') ? rel.slice(0, -4) : rel;
-  return safeResolveWithin(projectRoot, String(cleaned));
+  return safeResolveWithin(packageRoot, String(cleaned));
 }
 
 function collectFromExports(
   pkgRoot: string,
   tool: ToolType,
   exp: ExportEntry | undefined,
-): Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> {
+): Array<{ abs: string; relUnderTemplates: string; tool: ToolType; isMcpConfig: boolean }> {
   if (!exp) return [];
-  const out: Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> = [];
+  const out: Array<{
+    abs: string;
+    relUnderTemplates: string;
+    tool: ToolType;
+    isMcpConfig: boolean;
+  }> = [];
   const tplRoot = path.join(pkgRoot, 'templates');
 
   function ensureWithinTemplates(rel: string): string {
@@ -273,16 +236,19 @@ function collectFromExports(
       ? exp.template.slice('templates/'.length)
       : exp.template;
     const abs = ensureWithinTemplates(rel);
-    out.push({ abs, relUnderTemplates: rel, tool });
+    out.push({ abs, relUnderTemplates: rel, tool, isMcpConfig: false });
   }
 
+  // Track which keys represent MCP configs
   const extraKeys: Array<keyof ExportEntry> = ['settings', 'settingsLocal', 'mcpServers'] as never;
   for (const k of extraKeys) {
     const v = (exp as Record<string, unknown>)[k];
     if (typeof v === 'string') {
       const rel = v.startsWith('templates/') ? v.slice('templates/'.length) : v;
       const abs = ensureWithinTemplates(rel);
-      out.push({ abs, relUnderTemplates: rel, tool });
+      // Mark mcpServers files as MCP configs
+      const isMcpConfig = k === 'mcpServers';
+      out.push({ abs, relUnderTemplates: rel, tool, isMcpConfig });
     }
   }
 
@@ -295,6 +261,39 @@ function collectFromExports(
         abs: f,
         relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
         tool,
+        isMcpConfig: false,
+      })),
+    );
+  }
+
+  const commandsDirV = (exp as Record<string, unknown>)['commandsDir'];
+  if (typeof commandsDirV === 'string') {
+    const relDir = commandsDirV.startsWith('templates/')
+      ? commandsDirV.slice('templates/'.length)
+      : commandsDirV;
+    const absDir = ensureWithinTemplates(relDir);
+    out.push(
+      ...collectFilesRecursively(absDir).map((f) => ({
+        abs: f,
+        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+        tool,
+        isMcpConfig: false,
+      })),
+    );
+  }
+
+  const skillsDirV = (exp as Record<string, unknown>)['skillsDir'];
+  if (typeof skillsDirV === 'string') {
+    const relDir = skillsDirV.startsWith('templates/')
+      ? skillsDirV.slice('templates/'.length)
+      : skillsDirV;
+    const absDir = ensureWithinTemplates(relDir);
+    out.push(
+      ...collectFilesRecursively(absDir).map((f) => ({
+        abs: f,
+        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+        tool,
+        isMcpConfig: false,
       })),
     );
   }
@@ -377,6 +376,10 @@ export interface ApplyOptions {
   // Snippet caching options
   noCache?: boolean;
   cacheFilePath?: string;
+  // Custom store directory (for testing)
+  storeDir?: string;
+  // Map of package names to custom store paths (for local packages)
+  localPackagePaths?: Map<string, string>;
 }
 
 export async function planAndRender(
@@ -397,8 +400,11 @@ export async function planAndRender(
     copilot: contextFilesRaw?.copilot ?? '.github/copilot-instructions.md',
   };
 
-  // Discover installed packages
-  const pkgs: Array<{ name: string; root: string }> = [];
+  // Discover installed packages and get their store paths from lockfile
+  const lockfile = LockfileManager.read(projectRoot);
+  const storage = new StorageManager(opts.storeDir ? { storeDir: opts.storeDir } : {});
+
+  const pkgs: Array<{ name: string; root: string; storePath: string }> = [];
   const level1 = await fs.readdir(agentModulesRoot).catch(() => [] as string[]);
   for (const d1 of level1) {
     const abs = path.join(agentModulesRoot, d1);
@@ -409,10 +415,34 @@ export async function planAndRender(
       for (const d2 of nested) {
         const abs2 = path.join(abs, d2);
         const st2 = await fs.stat(abs2).catch(() => null);
-        if (st2 && st2.isDirectory()) pkgs.push({ name: `${d1}/${d2}`, root: abs2 });
+        if (st2 && st2.isDirectory()) {
+          const pkgName = `${d1}/${d2}`;
+
+          // Check for local package path override
+          const localPath = opts.localPackagePaths?.get(pkgName);
+          if (localPath) {
+            pkgs.push({ name: pkgName, root: abs2, storePath: localPath });
+          } else {
+            const lockEntry = lockfile?.packages[pkgName];
+            if (lockEntry) {
+              const storePath = storage.getPackagePath(pkgName, lockEntry.version);
+              pkgs.push({ name: pkgName, root: abs2, storePath });
+            }
+          }
+        }
       }
     } else {
-      pkgs.push({ name: d1, root: abs });
+      // Check for local package path override
+      const localPath = opts.localPackagePaths?.get(d1);
+      if (localPath) {
+        pkgs.push({ name: d1, root: abs, storePath: localPath });
+      } else {
+        const lockEntry = lockfile?.packages[d1];
+        if (lockEntry) {
+          const storePath = storage.getPackagePath(d1, lockEntry.version);
+          pkgs.push({ name: d1, root: abs, storePath });
+        }
+      }
     }
   }
   pkgs.sort((a, b) => a.name.localeCompare(b.name));
@@ -467,6 +497,7 @@ export async function planAndRender(
   const written: string[] = [];
   const skipped: Array<{ dest: string; reason: string; code: SkipReasonCode }> = [];
   const backedUp: string[] = [];
+  const renderedFiles: RenderedFileMetadata[] = [];
   let backupRoot: string | undefined;
   const backedUpTargets = new Set<string>();
   const snippetExecutions: Array<{
@@ -476,6 +507,7 @@ export async function planAndRender(
     preprocess: PreprocessResult;
   }> = [];
   const snippetFailures: SnippetFailureDetail[] = [];
+  const packageFiles = new Map<string, string[]>();
 
   async function backupExistingFile(target: string): Promise<void> {
     if (opts.dryRun) return;
@@ -499,18 +531,27 @@ export async function planAndRender(
   }
 
   for (const p of filtered) {
-    const m = await readManifest(p.root);
+    // Read manifest and templates from store path (read-only)
+    const m = await readManifest(p.storePath);
     const exp = (m?.exports ?? {}) as Partial<
       Record<'claude' | 'codex' | 'cursor' | 'copilot', ExportEntry>
     >;
-    const toRender: Array<{ abs: string; relUnderTemplates: string; tool: ToolType }> = [];
-    if (exp?.claude) toRender.push(...collectFromExports(p.root, 'claude', exp.claude));
-    if (exp?.codex) toRender.push(...collectFromExports(p.root, 'codex', exp.codex));
-    if (exp?.cursor) toRender.push(...collectFromExports(p.root, 'cursor', exp.cursor));
-    if (exp?.copilot) toRender.push(...collectFromExports(p.root, 'copilot', exp.copilot));
+    const toRender: Array<{
+      abs: string;
+      relUnderTemplates: string;
+      tool: ToolType;
+      isMcpConfig: boolean;
+    }> = [];
+    if (exp?.claude) toRender.push(...collectFromExports(p.storePath, 'claude', exp.claude));
+    if (exp?.codex) toRender.push(...collectFromExports(p.storePath, 'codex', exp.codex));
+    if (exp?.cursor) toRender.push(...collectFromExports(p.storePath, 'cursor', exp.cursor));
+    if (exp?.copilot) toRender.push(...collectFromExports(p.storePath, 'copilot', exp.copilot));
 
     // Deduplicate templates by absolute path to prevent rendering the same file multiple times
-    const seen = new Map<string, { abs: string; relUnderTemplates: string; tool: ToolType }>();
+    const seen = new Map<
+      string,
+      { abs: string; relUnderTemplates: string; tool: ToolType; isMcpConfig: boolean }
+    >();
     for (const item of toRender) {
       if (!seen.has(item.abs)) {
         seen.set(item.abs, item);
@@ -534,9 +575,20 @@ export async function planAndRender(
 
     for (const item of uniqueToRender) {
       const rel = item.relUnderTemplates.replaceAll('\\', '/');
-      let dest = computeDestForRel(projectRoot, filesMap, item.tool, rel);
-      dest = await ensureFileDestination(dest, item.tool, projectRoot);
+      // Always render to package directory (isolated rendering)
+      const dest = computeDestForRel(p.root, rel);
       const destDir = path.dirname(dest);
+
+      // Security: verify destination safety before any operations
+      const safety = await evaluateDestinationSafety(projectRoot, dest);
+      if (!('safe' in safety) || safety.safe !== true) {
+        const code =
+          typeof safety === 'object' && 'safe' in safety && !safety.safe
+            ? safety.reason
+            : 'unsafe-symlink';
+        skipped.push(makeSkip(dest, code));
+        continue;
+      }
 
       if (opts.verbose) {
         console.log(`[template-renderer] Rendering template: ${item.abs} -> ${dest}`);
@@ -566,9 +618,8 @@ export async function planAndRender(
         continue;
       }
 
-      // Get package version from manifest
-      const pkgManifest = await readManifest(p.root);
-      const pkgVersion = pkgManifest?.package?.version ?? '0.0.0';
+      // Get package version from already-loaded manifest (m is read from p.storePath)
+      const pkgVersion = m?.package?.version ?? '0.0.0';
 
       const renderResult = await renderTemplateWithSnippets(item.abs, ctx, {
         preprocess: {
@@ -601,17 +652,6 @@ export async function planAndRender(
       }
 
       if (!opts.dryRun) {
-        // Security: prevent symlink escapes by verifying existing ancestors and
-        // destination symlink behavior before writing.
-        const safety = await evaluateDestinationSafety(projectRoot, dest);
-        if (!('safe' in safety) || safety.safe !== true) {
-          const code =
-            typeof safety === 'object' && 'safe' in safety && !safety.safe
-              ? safety.reason
-              : 'unsafe-symlink';
-          skipped.push(makeSkip(dest, code));
-          continue;
-        }
         if (destStat) {
           await backupExistingFile(dest);
         }
@@ -627,6 +667,21 @@ export async function planAndRender(
         await fs.writeFile(dest, renderResult.output, 'utf8');
       }
       written.push(dest);
+
+      // Track rendered file metadata for symlink manager
+      renderedFiles.push({
+        pkgName: p.name,
+        source: dest, // Use dest as source since files are rendered to package dir
+        dest,
+        tool: item.tool,
+        isMcpConfig: item.isMcpConfig,
+      });
+
+      // Track files per package for TZ.md generation
+      if (!packageFiles.has(p.name)) {
+        packageFiles.set(p.name, []);
+      }
+      packageFiles.get(p.name)!.push(dest);
     }
   }
 
@@ -638,5 +693,5 @@ export async function planAndRender(
     );
   }
 
-  return { written, skipped, backedUp, snippets: snippetExecutions };
+  return { written, skipped, backedUp, snippets: snippetExecutions, packageFiles, renderedFiles };
 }

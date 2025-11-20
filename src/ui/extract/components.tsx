@@ -1,7 +1,8 @@
-import React, { type ReactNode, useMemo } from 'react';
-import { Box, Text } from 'ink';
-import chalk, { supportsColor as chalkSupportsColor } from 'chalk';
+// eslint-disable-next-line unicorn/import-style -- need named export for supportsColor
+import { supportsColor as chalkSupportsColor } from 'chalk';
 import cliTruncate from 'cli-truncate';
+import { Box, Text } from 'ink';
+import React, { type ReactNode, useMemo } from 'react';
 
 export interface WizardFrameHeading {
   task: string;

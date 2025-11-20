@@ -211,9 +211,10 @@ function findSnippetEnd(template: string, start: number, openCount: number): num
   let inSingle = false;
   let inDouble = false;
   let inTriple = false;
+  let inBacktick = false;
   while (i < template.length - 1) {
     const ahead3 = template.slice(i, i + 3);
-    if (!inSingle && !inDouble && ahead3 === '"""') {
+    if (!inSingle && !inDouble && !inBacktick && ahead3 === '"""') {
       inTriple = !inTriple;
       i += 3;
       continue;
@@ -223,21 +224,28 @@ function findSnippetEnd(template: string, start: number, openCount: number): num
       continue;
     }
     const ch = template[i];
-    if (ch === "'" && !inDouble) {
+    if (ch === "'" && !inDouble && !inBacktick) {
       if (i === start || template[i - 1] !== '\\') {
         inSingle = !inSingle;
       }
       i += 1;
       continue;
     }
-    if (ch === '"' && !inSingle) {
+    if (ch === '"' && !inSingle && !inBacktick) {
       if (i === start || template[i - 1] !== '\\') {
         inDouble = !inDouble;
       }
       i += 1;
       continue;
     }
-    if (inSingle || inDouble) {
+    if (ch === '`' && !inSingle && !inDouble) {
+      if (i === start || template[i - 1] !== '\\') {
+        inBacktick = !inBacktick;
+      }
+      i += 1;
+      continue;
+    }
+    if (inSingle || inDouble || inBacktick) {
       if (ch === '\\') {
         i += 2;
         continue;
@@ -315,6 +323,52 @@ function parseStringLiteral(source: string, start: number): StringLiteral {
     const content = source.slice(start + 3, close);
     const dedented = dedentTripleQuoted(content);
     return { value: dedented, endIndex: close + 3, literalKind: 'triple' };
+  }
+  // Handle backtick strings (template literals)
+  if (source[start] === '`') {
+    let i = start + 1;
+    let out = '';
+    while (i < source.length) {
+      const ch = source[i];
+      if (ch === '\\') {
+        if (i + 1 >= source.length) {
+          throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, 'Invalid escape sequence in string');
+        }
+        const next = source[i + 1];
+        switch (next) {
+          case '`':
+          case '\\': {
+            out += next;
+            break;
+          }
+          case 'n': {
+            out += '\n';
+            break;
+          }
+          case 't': {
+            out += '\t';
+            break;
+          }
+          case 'r': {
+            out += '\r';
+            break;
+          }
+          default: {
+            out += next;
+            break;
+          }
+        }
+        i += 2;
+        continue;
+      }
+      if (ch === '`') {
+        return { value: out, endIndex: i + 1, literalKind: 'single' };
+      }
+      // Unlike single quotes, backticks can span multiple lines
+      out += ch;
+      i += 1;
+    }
+    throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, 'Unterminated backtick string in snippet');
   }
   if (source[start] !== "'") {
     throw new TerrazulError(ErrorCode.INVALID_ARGUMENT, 'Snippet arguments must be quoted strings');

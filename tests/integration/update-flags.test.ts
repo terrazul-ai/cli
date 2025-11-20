@@ -157,10 +157,23 @@ describe('integration: update flags', () => {
       cwd: tmpProj,
       env,
     });
-    // Create conflicting file
-    await fs.writeFile(path.join(tmpProj, 'CLAUDE.md'), 'ORIGINAL', 'utf8');
-    await run('node', [cli, 'update', '--apply-force'], { cwd: tmpProj, env });
-    const md = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
+
+    // Create conflicting file in agent_modules where templates are rendered
+    const renderedClaudeMd = path.join(
+      tmpProj,
+      'agent_modules',
+      '@terrazul',
+      'starter',
+      'CLAUDE.md',
+    );
+    await fs.mkdir(path.dirname(renderedClaudeMd), { recursive: true });
+    await fs.writeFile(renderedClaudeMd, 'ORIGINAL', 'utf8');
+
+    // Apply with force should overwrite
+    await run('node', [cli, 'apply', '--force'], { cwd: tmpProj, env });
+
+    // Verify rendered file was overwritten with template content
+    const md = await fs.readFile(renderedClaudeMd, 'utf8');
     expect(md).toMatch(/Hello/);
     expect(md).not.toContain('ORIGINAL');
   });

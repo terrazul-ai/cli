@@ -1,17 +1,156 @@
-import { promises as fs } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import { DependencyResolver } from '../core/dependency-resolver.js';
 import { TerrazulError, ErrorCode } from '../core/errors.js';
 import { LockfileManager } from '../core/lock-file.js';
-import { planAndRender } from '../core/template-renderer.js';
-import { createSymlink, ensureDir } from '../utils/fs.js';
+import { PackageManager } from '../core/package-manager.js';
+import { planAndRender, type RenderedFileMetadata } from '../core/template-renderer.js';
+import { handleCommandError } from '../utils/command-errors.js';
 import { readManifest } from '../utils/manifest.js';
-import { agentModulesPath } from '../utils/path.js';
+import { collectPackageFilesFromAgentModules } from '../utils/package-collection.js';
 
 import type { CLIContext } from '../utils/context.js';
 import type { Command } from 'commander';
+
+/**
+ * Infer which packages should be updated as roots
+ */
+async function inferUpdateRoots(
+  projectDir: string,
+  pkg: string | undefined,
+  lockfile: ReturnType<typeof LockfileManager.read>,
+): Promise<Record<string, string>> {
+  const roots: Record<string, string> = {};
+
+  if (pkg) {
+    // Update specific package - constrain to current major version
+    const locked = lockfile!.packages[pkg];
+    if (!locked) {
+      throw new TerrazulError(ErrorCode.PACKAGE_NOT_FOUND, `Package ${pkg} not found in lockfile`);
+    }
+    roots[pkg] = `^${locked.version}`;
+  } else {
+    // Update all packages - prefer manifest dependencies as roots
+    const manifest = await readManifest(projectDir);
+    if (manifest?.dependencies && Object.keys(manifest.dependencies).length > 0) {
+      for (const [name, range] of Object.entries(manifest.dependencies)) {
+        roots[name] = range;
+      }
+    } else {
+      // Fallback: infer roots as packages not depended upon by others
+      const all = lockfile!.packages;
+      const dependedUpon = new Set<string>();
+      for (const info of Object.values(all)) {
+        for (const depName of Object.keys(info.dependencies || {})) {
+          dependedUpon.add(depName);
+        }
+      }
+      for (const name of Object.keys(all)) {
+        if (!dependedUpon.has(name)) {
+          roots[name] = `^${all[name].version}`;
+        }
+      }
+    }
+  }
+
+  return roots;
+}
+
+/**
+ * Build update plan by comparing resolved versions to lockfile
+ */
+function buildUpdatePlan(
+  resolved: Map<string, { version: string; dependencies?: Record<string, string> }>,
+  lockfile: ReturnType<typeof LockfileManager.read>,
+): Array<{ name: string; from?: string; to: string }> {
+  const plan: Array<{ name: string; from?: string; to: string }> = [];
+
+  for (const [name, info] of resolved) {
+    const current = lockfile!.packages[name]?.version;
+    if (current !== info.version) {
+      plan.push({ name, from: current, to: info.version });
+    }
+  }
+
+  return plan;
+}
+
+/**
+ * Apply updates by installing packages and updating lockfile
+ */
+async function applyUpdates(
+  projectDir: string,
+  resolved: Map<string, { version: string; dependencies?: Record<string, string> }>,
+  lockfile: ReturnType<typeof LockfileManager.read>,
+  ctx: CLIContext,
+): Promise<string[]> {
+  const updates: Record<string, ReturnType<typeof LockfileManager.merge>['packages'][string]> = {};
+  const changed: string[] = [];
+  const packageManager = new PackageManager(ctx);
+
+  for (const [pkgName, info] of resolved) {
+    const current = lockfile!.packages[pkgName]?.version;
+    if (current === info.version) continue; // skip unchanged
+
+    ctx.logger.info(`Updating ${pkgName} to ${info.version}`);
+
+    const { integrity } = await packageManager.installSinglePackage(
+      projectDir,
+      pkgName,
+      info.version,
+    );
+
+    const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
+    updates[pkgName] = {
+      version: info.version,
+      resolved: tarInfo.url,
+      integrity,
+      dependencies: info.dependencies,
+      yanked: false,
+    };
+    changed.push(pkgName);
+  }
+
+  const updated = LockfileManager.merge(lockfile, updates);
+  LockfileManager.write(updated, projectDir);
+
+  return changed;
+}
+
+/**
+ * Render templates for updated packages
+ */
+async function renderUpdatedPackages(
+  projectDir: string,
+  changed: string[],
+  applyForce: boolean,
+  ctx: CLIContext,
+): Promise<void> {
+  const agentModulesRoot = path.join(projectDir, 'agent_modules');
+  const allRenderedFiles: RenderedFileMetadata[] = [];
+
+  for (const name of changed) {
+    const res = await planAndRender(projectDir, agentModulesRoot, {
+      packageName: name,
+      force: applyForce,
+      dryRun: false,
+    });
+    ctx.logger.info(`apply: wrote ${res.written.length} files for ${name}`);
+    for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
+    allRenderedFiles.push(...res.renderedFiles);
+  }
+
+  // Inject package context and create symlinks
+  const { packageFiles, packageInfos } = await collectPackageFilesFromAgentModules(projectDir);
+  const { executePostRenderTasks } = await import('../utils/post-render-tasks.js');
+  await executePostRenderTasks(
+    projectDir,
+    packageFiles,
+    ctx.logger,
+    allRenderedFiles,
+    packageInfos,
+  );
+}
 
 export function registerUpdateCommand(
   program: Command,
@@ -33,15 +172,7 @@ export function registerUpdateCommand(
         const ctx = createCtx({ verbose: progOpts.verbose });
         const projectDir = process.cwd();
 
-        const getSafeLinkPath = (pkgName: string): string => {
-          try {
-            return agentModulesPath(projectDir, pkgName);
-          } catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            throw new TerrazulError(ErrorCode.SECURITY_VIOLATION, msg);
-          }
-        };
-
+        // Validate lockfile exists
         const lockfile = LockfileManager.read(projectDir);
         if (!lockfile) {
           ctx.logger.error('No lockfile found');
@@ -49,62 +180,26 @@ export function registerUpdateCommand(
           return;
         }
 
-        const roots: Record<string, string> = {};
-        if (pkg) {
-          // Constrain only the requested package to its current major
-          const locked = lockfile.packages[pkg];
-          if (!locked) {
-            ctx.logger.error(`Package ${pkg} not found in lockfile`);
-            process.exitCode = 1;
-            return;
-          }
-          roots[pkg] = `^${locked.version}`;
-        } else {
-          // Prefer manifest dependencies as top-level roots
-          const manifest = await readManifest(projectDir);
-          if (manifest?.dependencies && Object.keys(manifest.dependencies).length > 0) {
-            for (const [name, range] of Object.entries(manifest.dependencies)) {
-              roots[name] = range;
-            }
-          } else {
-            // Fallback: infer roots as packages that are not depended upon by others
-            const all = lockfile.packages;
-            const dependedUpon = new Set<string>();
-            for (const info of Object.values(all)) {
-              for (const depName of Object.keys(info.dependencies || {})) {
-                dependedUpon.add(depName);
-              }
-            }
-            for (const name of Object.keys(all)) {
-              if (!dependedUpon.has(name)) {
-                roots[name] = `^${all[name].version}`;
-              }
-            }
-          }
-        }
-
-        // During update we intentionally ignore the existing lockfile preference order
-        // to allow upgrading to the highest compatible versions.
-        const resolver = new DependencyResolver(ctx.registry, {
-          lockfile: undefined,
-          logger: ctx.logger,
-          preferLatest: true,
-        });
-
         try {
+          // Infer which packages to update
+          const roots = await inferUpdateRoots(projectDir, pkg, lockfile);
+
+          // Resolve dependencies (ignore existing lockfile to get latest versions)
+          const resolver = new DependencyResolver(ctx.registry, {
+            lockfile: undefined,
+            logger: ctx.logger,
+            preferLatest: true,
+          });
+
           const { resolved, warnings } = await resolver.resolve(roots);
           for (const w of warnings) {
             ctx.logger.warn(w);
           }
 
-          const plan: Array<{ name: string; from?: string; to: string }> = [];
-          for (const [name, info] of resolved) {
-            const current = lockfile.packages[name]?.version;
-            if (current !== info.version) {
-              plan.push({ name, from: current, to: info.version });
-            }
-          }
+          // Build update plan
+          const plan = buildUpdatePlan(resolved, lockfile);
 
+          // Handle dry-run
           if (opts.dryRun) {
             if (plan.length === 0) ctx.logger.info('All packages up to date');
             for (const p of plan) {
@@ -113,72 +208,17 @@ export function registerUpdateCommand(
             return;
           }
 
-          const updates: Record<
-            string,
-            ReturnType<typeof LockfileManager.merge>['packages'][string]
-          > = {};
-          const changed: string[] = [];
-          for (const [pkgName, info] of resolved) {
-            const current = lockfile.packages[pkgName]?.version;
-            if (current === info.version) continue; // skip unchanged
-            ctx.logger.info(`Updating ${pkgName} to ${info.version}`);
-            const tarInfo = await ctx.registry.getTarballInfo(pkgName, info.version);
-            const tarball = await ctx.registry.downloadTarball(tarInfo.url);
-            ctx.storage.store(tarball);
-            const tmpFile = path.join(
-              os.tmpdir(),
-              `tz-${Date.now()}-${Math.random().toString(16).slice(2)}.tgz`,
-            );
-            await fs.writeFile(tmpFile, tarball);
-            try {
-              await ctx.storage.extractTarball(tmpFile, pkgName, info.version);
-            } finally {
-              try {
-                await fs.rm(tmpFile, { force: true });
-              } catch {
-                /* ignore */
-              }
-            }
-            const storePath = ctx.storage.getPackagePath(pkgName, info.version);
-            const linkPath = getSafeLinkPath(pkgName);
-            ensureDir(path.dirname(linkPath));
-            await createSymlink(storePath, linkPath);
-
-            const integrity = LockfileManager.createIntegrityHash(tarball);
-            updates[pkgName] = {
-              version: info.version,
-              resolved: tarInfo.url,
-              integrity,
-              dependencies: info.dependencies,
-              yanked: false,
-            };
-            changed.push(pkgName);
-          }
-
-          const updated = LockfileManager.merge(lockfile, updates);
-          LockfileManager.write(updated, projectDir);
+          // Apply updates
+          const changed = await applyUpdates(projectDir, resolved, lockfile, ctx);
           ctx.logger.info('Update complete');
 
           // Optionally render templates for changed packages
           const applyEnabled = opts.apply !== false; // --no-apply sets false
           if (applyEnabled && changed.length > 0) {
-            const agentModulesRoot = path.join(projectDir, 'agent_modules');
-            for (const name of changed) {
-              const res = await planAndRender(projectDir, agentModulesRoot, {
-                packageName: name,
-                force: Boolean(opts.applyForce),
-                dryRun: false,
-              });
-              ctx.logger.info(`apply: wrote ${res.written.length} files for ${name}`);
-              for (const s of res.skipped) ctx.logger.warn(`skipped: ${s.dest} (${s.reason})`);
-            }
+            await renderUpdatedPackages(projectDir, changed, Boolean(opts.applyForce), ctx);
           }
         } catch (error) {
-          const err = error as TerrazulError | Error;
-          ctx.logger.error(
-            err instanceof TerrazulError ? err.toUserMessage() : String(err.message || err),
-          );
-          process.exitCode = err instanceof TerrazulError ? err.getExitCode() : 1;
+          handleCommandError(error, ctx.logger);
         }
       },
     );

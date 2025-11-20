@@ -1,12 +1,8 @@
+import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from 'ink-testing-library';
 
-import {
-  AskAgentSpinner,
-  type AskAgentTask,
-  type AskAgentSpinnerProps,
-} from '../../../../src/ui/apply/AskAgentSpinner';
+import { AskAgentSpinner, type AskAgentTask } from '../../../../src/ui/apply/AskAgentSpinner';
 
 describe('AskAgentSpinner', () => {
   beforeEach(() => {
@@ -31,7 +27,7 @@ describe('AskAgentSpinner', () => {
 
     expect(lastFrame()).toContain('Generate authentication module');
     // Should include a spinner character (one of the Braille patterns)
-    expect(lastFrame()).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/);
+    expect(lastFrame()).toMatch(/[⠇⠋⠏⠙⠦⠧⠴⠸⠹⠼]/);
   });
 
   it('renders multiple running tasks', () => {
@@ -133,7 +129,7 @@ describe('AskAgentSpinner', () => {
 
     // Frames should be different due to spinner animation
     // (unless we happen to land on the same frame in the cycle)
-    expect([frame1, frame2].some((f) => f.match(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/))).toBe(true);
+    expect([frame1, frame2].some((f) => f.match(/[⠇⠋⠏⠙⠦⠧⠴⠸⠹⠼]/))).toBe(true);
   });
 
   it('renders nothing when tasks array is empty', () => {
@@ -170,7 +166,7 @@ describe('AskAgentSpinner', () => {
     expect(output).toContain('Third task');
     expect(output).toContain('✓'); // complete
     expect(output).toContain('✗'); // error
-    expect(output).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/); // spinner for running
+    expect(output).toMatch(/[⠇⠋⠏⠙⠦⠧⠴⠸⠹⠼]/); // spinner for running
   });
 
   it('only shows error message when present', () => {

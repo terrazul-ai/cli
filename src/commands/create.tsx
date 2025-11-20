@@ -3,6 +3,7 @@ import process from 'node:process';
 
 import { render } from 'ink';
 
+import { ErrorCode, TerrazulError, wrapError } from '../core/errors.js';
 import {
   buildCreateOptionsSkeleton,
   createPackageScaffold,
@@ -10,12 +11,12 @@ import {
   type CreateOptions,
   type CreateResult,
 } from '../core/package-creator.js';
-import { ErrorCode, TerrazulError, wrapError } from '../core/errors.js';
 import { CreateWizard } from '../ui/create/CreateWizard.js';
 import { createInkLogger } from '../ui/logger-adapter.js';
+
 import type { CLIContext } from '../utils/context.js';
-import type { Command } from 'commander';
 import type { ToolName } from '../utils/manifest.js';
+import type { Command } from 'commander';
 
 interface CreateCommandOptions {
   dryRun?: boolean;
@@ -31,7 +32,7 @@ interface AutomationPayload {
   dryRun?: boolean;
 }
 
-const VALID_TOOLS: ToolName[] = ['claude', 'codex', 'cursor', 'copilot'];
+const VALID_TOOLS = new Set<ToolName>(['claude', 'codex', 'cursor', 'copilot']);
 
 function applyAutomation(base: CreateOptions, payload: AutomationPayload | null): CreateOptions {
   if (!payload) return base;
@@ -46,7 +47,7 @@ function applyAutomation(base: CreateOptions, payload: AutomationPayload | null)
   if (Array.isArray(payload.tools)) {
     const filtered = payload.tools
       .map((tool) => tool.trim())
-      .filter((tool): tool is ToolName => VALID_TOOLS.includes(tool as ToolName));
+      .filter((tool): tool is ToolName => VALID_TOOLS.has(tool as ToolName));
     merged.tools = filtered;
   }
 
@@ -99,7 +100,7 @@ async function runCreateWizard(
 
 function formatRelative(baseDir: string, target: string): string {
   const relative = path.relative(baseDir, target);
-  return relative.length === 0 ? './' : `./${relative.replace(/\\/g, '/')}`;
+  return relative.length === 0 ? './' : `./${relative.replaceAll('\\', '/')}`;
 }
 
 async function buildCreateBaseOptions(

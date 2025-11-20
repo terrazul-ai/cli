@@ -8,7 +8,6 @@ import { DependencyResolver, type ResolvedDependencies } from './dependency-reso
 import { ErrorCode, TerrazulError } from './errors.js';
 import { LockfileManager, type LockfileData, type LockfilePackage } from './lock-file.js';
 import { SnippetCacheManager } from './snippet-cache.js';
-import { createSymlink } from '../utils/fs.js';
 import { agentModulesPath } from '../utils/path.js';
 
 import type { ProjectConfigData } from '../utils/config.js';
@@ -235,7 +234,10 @@ export class PackageManager {
         }
       }
 
-      await createSymlink(storePath, linkPath);
+      // Create real directory in agent_modules
+      // The package directory will contain rendered files
+      // Templates are read from the store
+      await fs.mkdir(linkPath, { recursive: true });
 
       updates[name] = {
         version: info.version,
@@ -280,5 +282,55 @@ export class PackageManager {
     summary.sort((a, b) => a.name.localeCompare(b.name));
 
     return { lockfile, summary, warnings, resolvedPackages: resolvedVersions };
+  }
+
+  /**
+   * Install a single package version - used by add, update, and run commands
+   * Downloads, caches, extracts to store, and creates agent_modules directory
+   */
+  async installSinglePackage(
+    projectDir: string,
+    name: string,
+    version: string,
+    options: { force?: boolean } = {},
+  ): Promise<{
+    storePath: string;
+    linkPath: string;
+    integrity: string;
+    tarballBuffer: Buffer;
+  }> {
+    const storePath = this.ctx.storage.getPackagePath(name, version);
+    const linkPath = safeAgentModulesPath(projectDir, name);
+    const hasExtracted = await pathExists(storePath);
+
+    let tarballBuffer: Buffer;
+
+    // Download and extract if needed
+    if (options.force || !hasExtracted) {
+      const tarInfo = await this.ctx.registry.getTarballInfo(name, version);
+      tarballBuffer = await this.ctx.registry.downloadTarball(tarInfo.url);
+      this.ctx.storage.store(tarballBuffer);
+
+      const tmpFile = await writeTempTarball(tarballBuffer);
+      try {
+        await this.ctx.storage.extractTarball(tmpFile, name, version);
+      } finally {
+        await fs.rm(tmpFile, { force: true }).catch(() => {});
+      }
+    } else {
+      // Already extracted, download tarball only for integrity hash
+      const tarInfo = await this.ctx.registry.getTarballInfo(name, version);
+      tarballBuffer = await this.ctx.registry.downloadTarball(tarInfo.url);
+    }
+
+    // Create real directory in agent_modules
+    // The package directory will contain rendered files
+    // Templates are read from the store
+    await fs.mkdir(path.dirname(linkPath), { recursive: true });
+    await fs.mkdir(linkPath, { recursive: true });
+
+    const integrity = LockfileManager.createIntegrityHash(tarballBuffer);
+
+    return { storePath, linkPath, integrity, tarballBuffer };
   }
 }

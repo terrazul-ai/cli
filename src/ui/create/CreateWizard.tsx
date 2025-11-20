@@ -1,9 +1,9 @@
 import path from 'node:path';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+
 import { Box, Text, useApp, useInput } from 'ink';
 import TextInput from 'ink-text-input';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { CreateOptions, CreateResult } from '../../core/package-creator.js';
 import { getPackageDirName } from '../../core/package-creator.js';
 import {
   type KeyHint,
@@ -12,6 +12,8 @@ import {
   type StatusMessage,
   WizardFrame,
 } from '../extract/components.js';
+
+import type { CreateOptions, CreateResult } from '../../core/package-creator.js';
 
 export interface LoggerLike {
   info: (msg: string) => void;
@@ -64,8 +66,8 @@ const OPTION_LABELS: { id: 'examples' | 'hooks'; label: string }[] = [
 
 function slugifySegment(value: string): string {
   const lower = value.toLowerCase();
-  const replaced = lower.replace(/[^a-z0-9]+/g, '-');
-  const trimmed = replaced.replace(/^-+|-+$/g, '');
+  const replaced = lower.replaceAll(/[^\da-z]+/g, '-');
+  const trimmed = replaced.replaceAll(/^-+|-+$/g, '');
   return trimmed || 'package';
 }
 
@@ -110,40 +112,52 @@ export function CreateWizard({
 
   const headingTitle = useMemo(() => {
     switch (step) {
-      case 'metadata':
+      case 'metadata': {
         return 'Package Metadata';
-      case 'tools':
+      }
+      case 'tools': {
         return 'Tool Compatibility';
-      case 'options':
+      }
+      case 'options': {
         return 'Options';
-      default:
+      }
+      default: {
         return 'Review & Confirm';
+      }
     }
   }, [step]);
 
   const stepIndex = useMemo(() => {
     switch (step) {
-      case 'metadata':
+      case 'metadata': {
         return 0;
-      case 'tools':
+      }
+      case 'tools': {
         return 1;
-      case 'options':
+      }
+      case 'options': {
         return 2;
-      default:
+      }
+      default: {
         return 3;
+      }
     }
   }, [step]);
 
   const instruction = useMemo(() => {
     switch (step) {
-      case 'metadata':
+      case 'metadata': {
         return 'Define your package identity';
-      case 'tools':
+      }
+      case 'tools': {
         return 'Select which AI tools are supported';
-      case 'options':
+      }
+      case 'options': {
         return 'Configure additional scaffolding options';
-      default:
+      }
+      default: {
         return 'Review configuration before creating the package';
+      }
     }
   }, [step]);
 
@@ -152,14 +166,15 @@ export function CreateWizard({
       return [{ key: 'Esc', label: 'Cancel', hidden: true }];
     }
     switch (step) {
-      case 'metadata':
+      case 'metadata': {
         return [
           { key: 'Enter', label: 'Next field' },
           { key: 'Tab', label: 'Next field' },
           { key: 'Shift+Tab', label: 'Previous field' },
           { key: 'Esc', label: 'Cancel', emphasis: 'danger' },
         ];
-      case 'tools':
+      }
+      case 'tools': {
         return [
           { key: 'Space', label: 'Toggle tool' },
           { key: 'A', label: 'Select all' },
@@ -168,14 +183,16 @@ export function CreateWizard({
           { key: 'Shift+Tab', label: 'Back' },
           { key: 'Esc', label: 'Cancel', emphasis: 'danger' },
         ];
-      case 'options':
+      }
+      case 'options': {
         return [
           { key: 'Space', label: 'Toggle option' },
           { key: 'Enter', label: 'Continue', emphasis: 'primary' },
           { key: 'Shift+Tab', label: 'Back' },
           { key: 'Esc', label: 'Cancel', emphasis: 'danger' },
         ];
-      default:
+      }
+      default: {
         return [
           {
             key: 'Enter',
@@ -185,6 +202,7 @@ export function CreateWizard({
           { key: 'Shift+Tab', label: 'Back' },
           { key: 'Esc', label: 'Cancel', emphasis: 'danger' },
         ];
+      }
     }
   }, [step, executing, baseOptions.dryRun]);
 
@@ -462,9 +480,10 @@ export function CreateWizard({
     { isActive: true },
   );
 
-  const toolsList = selectedTools.length
-    ? selectedTools.map((tool) => `✓ ${tool}`).join('\n ')
-    : 'None selected';
+  const toolsList =
+    selectedTools.length > 0
+      ? selectedTools.map((tool) => `✓ ${tool}`).join('\n ')
+      : 'None selected';
 
   return (
     <WizardFrame
@@ -586,16 +605,21 @@ function buildTemplateTree(tools: SelectableTool[]): string[] {
   const files = tools
     .map((tool) => {
       switch (tool) {
-        case 'claude':
+        case 'claude': {
           return 'CLAUDE.md.hbs';
-        case 'codex':
+        }
+        case 'codex': {
           return 'AGENTS.md.hbs';
-        case 'cursor':
+        }
+        case 'cursor': {
           return 'cursor.rules.mdc.hbs';
-        case 'copilot':
+        }
+        case 'copilot': {
           return 'COPILOT.md.hbs';
-        default:
+        }
+        default: {
           return null;
+        }
       }
     })
     .filter((value) => value !== null)
@@ -603,9 +627,9 @@ function buildTemplateTree(tools: SelectableTool[]): string[] {
   if (files.length === 0) return [];
   const sorted = [...files].sort();
   const lines: string[] = ['├── templates/'];
-  sorted.forEach((file, index) => {
+  for (const [index, file] of sorted.entries()) {
     const prefix = index === sorted.length - 1 ? '│   └──' : '│   ├──';
     lines.push(`${prefix} ${file}`);
-  });
+  }
   return lines;
 }

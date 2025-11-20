@@ -1,3 +1,4 @@
+import os from 'node:os';
 import path from 'node:path';
 
 /**
@@ -75,4 +76,39 @@ export function agentModulesPath(projectDir: string, pkgName: string): string {
   const base = path.join(projectDir, 'agent_modules');
   const parsed = parseSafePackageName(pkgName);
   return resolveWithin(base, parsed.scope, parsed.name);
+}
+
+/**
+ * Check if a string looks like a filesystem path (not a package spec).
+ * Returns true for:
+ * - Absolute paths (/foo/bar, C:\foo\bar)
+ * - Relative paths (./foo, ../bar)
+ * - Tilde paths (~/foo)
+ */
+export function isFilesystemPath(spec: string): boolean {
+  // Absolute paths
+  if (path.isAbsolute(spec)) return true;
+
+  // Relative paths starting with ./ or ../
+  if (spec.startsWith('./') || spec.startsWith('../')) return true;
+
+  // Tilde expansion (home directory)
+  if (spec.startsWith('~/')) return true;
+
+  // Windows paths (C:\, D:\, etc.)
+  if (/^[A-Za-z]:[/\\]/.test(spec)) return true;
+
+  return false;
+}
+
+/**
+ * Resolve a path spec, handling tilde expansion.
+ * For absolute and relative paths, resolves them normally.
+ * For tilde paths, expands ~ to the home directory.
+ */
+export function resolvePathSpec(pathSpec: string): string {
+  if (pathSpec.startsWith('~/')) {
+    return path.join(os.homedir(), pathSpec.slice(2));
+  }
+  return path.resolve(pathSpec);
 }

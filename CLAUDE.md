@@ -171,8 +171,9 @@ cli/
 
 ### `integrations/`
 
-- `claude-code.ts` – symlink/copy `agents/` + `commands/`, merge MCP servers into `.claude/settings.local.json`, idempotent
+- `claude-code.ts` – merge MCP servers into `.claude/settings.local.json`, idempotent
 - `detector.ts` – detect tool presence (`.claude/`)
+- `symlink-manager.ts` – create/remove namespaced symlinks for agents/, commands/, hooks/, skills/ files from agent_modules to .claude/ directories; tracks ownership in registry file
 
 ### `utils/`
 
@@ -181,7 +182,7 @@ cli/
 - `fs.ts` – `exists()`, symlink/junction fallback for Windows
 - `hash.ts` – hex/base64 helpers
 - `logger.ts` – info/warn/error/debug with `--verbose`
-- `terrazul-md.ts` – generate `TERRAZUL.md` from installed packages
+- `context-file-injector.ts` – inject/remove package context @-mentions in CLAUDE.md/AGENTS.md
 
 ### `types/`
 
@@ -349,9 +350,9 @@ Commands that call `planAndRender` (`apply`, `run`, `add`) show an Ink spinner d
 ## 12) Commands
 
 - `tz init` – Create `agents.toml`, detect `.claude/`, update `.gitignore`
-- `tz add [@scope/name@range]` – Resolve, download (CDN), verify SHA‑256, extract to `agent_modules/`, symlink for integrations, write lockfile, generate `TERRAZUL.md`. Use `--profile <name>` to append the added package to a manifest profile.
-- `tz uninstall [package]` – Remove package from `agent_modules/`, clean up symlinks, update manifests and lockfile; also prunes the package from any manifest profiles.
-- `tz update [package] [--dry-run]` – Highest compatible non‑yanked versions; atomic replacement; regenerate lockfile + md
+- `tz add [@scope/name@range]` – Resolve, download (CDN), verify SHA‑256, extract to `agent_modules/`, render templates to package directory, inject @-mentions into CLAUDE.md/AGENTS.md, write lockfile. Use `--profile <name>` to append the added package to a manifest profile.
+- `tz uninstall [package]` – Remove package from `agent_modules/`, clean up integration symlinks from .claude/ directories, remove @-mentions from CLAUDE.md/AGENTS.md, update manifests and lockfile; also prunes the package from any manifest profiles.
+- `tz update [package] [--dry-run]` – Highest compatible non‑yanked versions; atomic replacement; regenerate lockfile and update @-mentions
 - `tz publish` – Validate structure; build tarball; POST to registry
 - `tz yank @pkg@version` / `tz unyank @pkg@version` – Hide/restore package versions from new installs
 - `tz extract --from .claude --out ../pkg --name @user/pkg --pkg-version 0.1.0` – Extract AI configs into publishable package scaffold
@@ -359,7 +360,7 @@ Commands that call `planAndRender` (`apply`, `run`, `add`) show an Ink spinner d
 - `tz link [@user/package]` – Register local package for development (like `npm link`)
 - `tz unlink [package]` – Remove local development link, restore to published version
 - `tz validate [--offline]` – Validate package structure, manifest, and dependencies
-- `tz run -- [args...]` – Aggregate MCP server configs and spawn Claude Code with `--mcp-config`; accepts `--profile <name>` to limit rendering to a single manifest profile before launch.
+- `tz run [@owner/package@version] [--force] [--profile <name>]` – Auto-install package if needed, render templates (skip if files exist unless --force), and launch Claude Code with aggregated MCP config. Use `--profile <name>` to limit rendering to a single manifest profile.
 - `tz auth login|logout` – Store/clear tokens, 0600 perms
 - `tz login` / `tz logout` – Top-level aliases for auth commands
 
@@ -370,17 +371,17 @@ Commands that call `planAndRender` (`apply`, `run`, `add`) show an Ink spinner d
 **Behavior**
 
 1. Removes directory `./agent_modules/<pkg>/` (or scoped path).
-2. Removes symlinks created for integrations (e.g., `.claude/agents/*`, `.claude/commands/*`).
-3. Updates `agents.toml` (remove from `[dependencies]` if present).
-4. Updates `agents-lock.toml` (remove entry and its transitive deps **only if no other package requires them**; otherwise keep).
-5. Updates `TERRAZUL.md` to remove references.
+2. Removes namespaced symlinks created for integrations (e.g., `.claude/agents/@scope-pkg-*.md`, `.claude/commands/@scope-pkg-*.md`).
+3. Removes @-mentions from `CLAUDE.md` and `AGENTS.md` (if present).
+4. Updates `agents.toml` (remove from `[dependencies]` if present).
+5. Updates `agents-lock.toml` (remove entry and its transitive deps **only if no other package requires them**; otherwise keep).
 6. Leaves cache intact in `~/.terrazul/` so reinstalls are fast.
 
 **Acceptance Criteria**
 
 - Package directory and integration symlinks are removed.
+- @-mentions removed from `CLAUDE.md` and `AGENTS.md`.
 - `agents.toml` and `agents-lock.toml` are updated consistently.
-- Removed from `TERRAZUL.md`.
 - No orphaned symlinks remain.
 - Command is idempotent (running twice is a no‑op).
 
@@ -537,6 +538,113 @@ tz extract --from .claude --out ../my-package --name @user/pkg --pkg-version 0.1
 
 ---
 
+### `tz run [@owner/package@version | <path>]`
+
+**Purpose**: Install (if needed), render templates, and execute with Claude Code integration.
+
+**Syntax**
+
+```bash
+# Run from registry (auto-install if needed)
+tz run [@owner/package@version] [--force] [--profile <name>] [--tool <tool>] [--no-tool-safe-mode]
+
+# Run from local filesystem path
+tz run <path> [--force] [--tool <tool>] [--no-tool-safe-mode]
+tz run ~/my-package
+tz run ./local-dev-package
+tz run /absolute/path/to/package
+```
+
+**Behavior**
+
+1. **Registry packages**: Auto-installs from registry if not present, then renders templates
+   - Resolves dependencies using SAT solver
+   - Downloads tarballs from registry
+   - Extracts to store and creates symlinks
+   - Updates lockfile and manifest
+
+2. **Local filesystem paths**: Runs packages directly from local directories (perfect for development)
+   - Detects absolute paths, relative paths (`./`, `../`), or tilde paths (`~/`)
+   - Validates package has valid `agents.toml` with `name` and `version`
+   - Uses local path as template source (read-only)
+   - Creates directory in `agent_modules/` for rendered output
+   - **Does NOT update lockfile** (local packages are ephemeral)
+   - **Always uses latest local content** (automatically forces re-rendering)
+   - Mutually exclusive with `--profile` option
+
+3. **Smart rendering**: Renders templates from the specified package (or all packages if no spec provided):
+   - **Skip mode** (default for registry packages): Skips rendering if output files already exist
+   - **Force mode** (automatic for local paths, or use `--force`): Re-renders all templates even if files exist
+   - All files render to `agent_modules/<scope>/<package>/` following package directory structure
+   - Respects snippet cache to avoid re-prompting for askUser/askAgent
+   - Uses Ink spinner for live askAgent progress feedback
+
+4. **Context injection**: After rendering, injects @-mentions into project CLAUDE.md/AGENTS.md:
+   - Only includes CLAUDE.md and AGENTS.md files from packages (filtered to avoid context pollution)
+   - Uses HTML comment markers for idempotent injection
+   - Paths are relative to project root (e.g., `@agent_modules/@scope/pkg/CLAUDE.md`)
+
+5. **Symlink creation**: Creates namespaced symlinks for operational files:
+   - Scans rendered agents/, commands/, hooks/, skills/ directories in agent_modules
+   - Creates symlinks in .claude/ directories with pattern `@scope-pkg-filename.md`
+   - Tracks ownership in `.terrazul/symlinks.json` registry for cleanup
+   - Excludes CLAUDE.md, AGENTS.md, and MCP config files (handled separately)
+
+6. **Profile support**: Use `--profile <name>` to limit rendering to packages in a specific manifest profile (registry packages only)
+
+7. **Claude Code integration** (planned): After rendering completes:
+   - Aggregates MCP server configs from rendered packages
+   - Generates temporary MCP config file
+   - Spawns Claude Code with `--mcp-config` flag
+   - Forwards additional args after `--`
+
+**Examples**
+
+```bash
+# Run all installed packages (render and execute)
+tz run
+
+# Run specific registry package (auto-install if needed, then render and execute)
+tz run @terrazul/starter@^1.1.0
+
+# Run specific package with force re-rendering
+tz run @terrazul/starter --force
+
+# Run only packages in "focus" profile
+tz run --profile focus
+
+# Run local package for development (always re-renders)
+tz run ~/projects/my-agent-package
+
+# Run relative local package
+tz run ../shared-configs
+
+# Run absolute path local package
+tz run /Users/username/dev/custom-agent
+```
+
+**Acceptance Criteria**
+
+- Auto-installs package if spec provided and not present in `agent_modules/`
+- Detects filesystem paths vs. package specs correctly
+- Validates local package structure (agents.toml required)
+- Templates read from local path, rendered to `agent_modules/<scope>/<package>/`
+- Injects @-mentions for CLAUDE.md/AGENTS.md into project files (filtered, no MCP configs)
+- Creates namespaced symlinks for agents/, commands/, hooks/, skills/ in .claude/ directories
+- Tracks symlink ownership in registry for cleanup
+- No lockfile pollution for local packages
+- Local packages automatically force re-rendering to reflect latest changes
+- Errors clearly if path doesn't exist or lacks valid manifest
+- Cannot combine path argument with `--profile`
+- Skips rendering by default if output files exist (registry packages only); re-renders with `--force`
+- Updates lockfile and manifest when auto-installing
+- Shows Ink spinner for askAgent operations with live summaries
+- Respects snippet cache for askUser/askAgent responses
+- Profile support limits rendering to specified manifest profile
+- (Future) Claude Code integration aggregates MCP configs and spawns process
+
+---
+
 ## 13) Security Considerations
 
 - **Package validation**: block executable code or strip exec bits by policy
@@ -576,10 +684,10 @@ We aim for **high coverage** on core logic and **deterministic** integration/e2e
 - **Commands/init**: manifest + `.gitignore`; compatibility when `.claude/` exists
 - **Commands/install**: explicit spec & manifest; integrity mismatch abort; idempotency; parallel cap
 - **Commands/update**: dry‑run plan; atomic swap; respect semver/yanked
+- **Commands/run**: auto-install if missing; skip rendering if files exist; force re-render with --force; profile support; specific package vs all packages
 - **Publish**: structure validation; executable policy enforcement
 - **Yank/Unyank**: visibility flip; lock allows old version with warning
-- **Integrations/Claude**: links & MCP merge; idempotent
-- **Run**: spawns mock Claude with `--mcp-config` and forwards args
+- **Integrations/Claude**: MCP config aggregation; duplicate server detection; malformed config handling
 - **Security**: HTTPS‑only (except localhost), tarbomb prevention
 - **Perf**: parallel installs within target (skippable on CI if flaky)
 
@@ -801,14 +909,28 @@ IMPORTANT IMPORTANT IMPORTANT, REQUIRED RUN AND FIX ANY ERRORS FROM
 
 ---
 
-## Appendix: New Command — tz apply
+## Appendix: Template Rendering and Context Injection
 
-- `tz apply [@user/package] [--force] [--dry-run]` — Render installed templates into actual config files (CLAUDE.md, .claude/, etc.).
-  - Scans `agent_modules/` and reads `agents.toml` `[exports]`.
-  - Supports Claude extras: `settings`, `settingsLocal`, `mcpServers`, `subagentsDir`.
-  - Uses Handlebars context `{ project, pkg, env, now, files }`.
-  - Safe path handling ensures outputs stay within project root.
-  - `tz add` integrates apply by default; disable with `--no-apply`, overwrite with `--apply-force`.
+**Template Rendering**:
+
+- All templates render to `agent_modules/<scope>/<package>/` following the package's directory structure
+- No files are written to project root (isolated rendering only)
+- Handlebars templates use context `{ project, pkg, env, now, files }`
+- Safe path handling ensures outputs stay within package directory
+
+**Context Injection**:
+
+- After rendering, CLAUDE.md/AGENTS.md files from packages are @-mentioned in project's CLAUDE.md/AGENTS.md
+- Only context files (CLAUDE.md, AGENTS.md) are included to avoid pollution
+- MCP configs, agents/, commands/, hooks/, skills/ are NOT @-mentioned
+- Uses HTML comment markers (`<!-- terrazul:begin -->` / `<!-- terrazul:end -->`) for idempotent injection
+
+**Symlink Management**:
+
+- Operational files (agents/, commands/, hooks/, skills/) are symlinked from agent_modules to .claude/ directories
+- Symlinks use namespaced pattern: `@scope-pkg-filename.md` to avoid conflicts
+- Ownership tracked in `.terrazul/symlinks.json` registry for cleanup on uninstall
+- Symlinks created on `tz run`, removed on `tz uninstall`
 
 ### AskAgent System Prompt Support
 

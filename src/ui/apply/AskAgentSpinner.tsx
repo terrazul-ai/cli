@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Box, Text } from 'ink';
 import cliTruncate from 'cli-truncate';
+import { Box, Text } from 'ink';
+import React, { useState, useEffect, useRef } from 'react';
 
 /**
  * Braille patterns used for spinner animation

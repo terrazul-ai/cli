@@ -1,6 +1,6 @@
+import { render } from 'ink-testing-library';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render } from 'ink-testing-library';
 
 import { type CreateOptions, type CreateResult } from '../../src/core/package-creator';
 import { CreateWizard } from '../../src/ui/create/CreateWizard';

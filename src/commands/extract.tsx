@@ -18,8 +18,8 @@ import { ExtractWizard } from '../ui/extract/ExtractWizard.js';
 import { createInkLogger } from '../ui/logger-adapter.js';
 import { resolveProfileScope, slugifySegment } from '../utils/profile.js';
 
-import type { Command } from 'commander';
 import type { CLIContext } from '../utils/context.js';
+import type { Command } from 'commander';
 
 function deriveDefaultName(fromDir: string): string {
   const base = path.basename(fromDir) || 'project';

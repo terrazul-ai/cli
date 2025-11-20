@@ -1,6 +1,6 @@
+import { render } from 'ink-testing-library';
 import React from 'react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render } from 'ink-testing-library';
 
 import {
   type ExtractOptions,
@@ -141,7 +141,7 @@ const noopLogger = {
 };
 
 const stripAnsi = (value?: string): string =>
-  value ? value.replace(/\u001B\[[0-9;?]*[ -\/]*[@-~]/g, '') : '';
+  value ? value.replaceAll(/\u001B\[[\d;?]*[ -/]*[@-~]/g, '') : '';
 
 const pause = async (ms = 150): Promise<void> =>
   await new Promise((resolve) => {
@@ -223,7 +223,7 @@ describe('ExtractWizard', () => {
     stdin.write('\t');
     await pause();
     for (const _ of '0.0.0') {
-      stdin.write('\u007f');
+      stdin.write('\u007F');
       await pause(10);
     }
     stdin.write('invalid');
@@ -236,7 +236,7 @@ describe('ExtractWizard', () => {
     await expectFrameContains(lastFrame, 'Extract • Step 4/6 — Confirm Package Metadata');
 
     for (const _ of 'invalid') {
-      stdin.write('\u007f');
+      stdin.write('\u007F');
       await pause(10);
     }
     stdin.write('1.2.3');

@@ -90,8 +90,9 @@ process.stdout.write(chosen);
     };
     await fs.writeFile(path.join(cfgDir, 'config.json'), JSON.stringify(config, null, 2));
 
-    const pkgRoot = path.join(tmpProj, 'agent_modules', '@fixtures', 'dynamic');
-    await fs.mkdir(path.join(pkgRoot, 'templates'), { recursive: true });
+    // Create package in store (templates go here)
+    const storeRoot = path.join(tmpHome, '.terrazul', 'store', '@fixtures', 'dynamic', '0.1.0');
+    await fs.mkdir(path.join(storeRoot, 'templates'), { recursive: true });
     const pkgManifest = `
 [package]
 name = "@fixtures/dynamic"
@@ -100,7 +101,7 @@ version = "0.1.0"
 [exports.claude]
 template = "templates/CLAUDE.md.hbs"
 `;
-    await fs.writeFile(path.join(pkgRoot, 'agents.toml'), pkgManifest.trimStart(), 'utf8');
+    await fs.writeFile(path.join(storeRoot, 'agents.toml'), pkgManifest.trimStart(), 'utf8');
 
     const template = `
 # Dynamic Prompt Demo
@@ -109,10 +110,14 @@ template = "templates/CLAUDE.md.hbs"
 {{ askAgent('Use {{ vars.first }} and {{ snippets.snippet_0 }} to craft final output') }}
 `;
     await fs.writeFile(
-      path.join(pkgRoot, 'templates', 'CLAUDE.md.hbs'),
+      path.join(storeRoot, 'templates', 'CLAUDE.md.hbs'),
       template.trimStart(),
       'utf8',
     );
+
+    // Create empty directory in agent_modules (rendered files go here)
+    const pkgRoot = path.join(tmpProj, 'agent_modules', '@fixtures', 'dynamic');
+    await fs.mkdir(pkgRoot, { recursive: true });
 
     const projectManifest = `
 [package]
@@ -123,6 +128,22 @@ version = "0.0.1"
 template = "ignored"
 `;
     await fs.writeFile(path.join(tmpProj, 'agents.toml'), projectManifest.trimStart(), 'utf8');
+
+    // Create lockfile so planAndRender can discover the package
+    const lockfile = `
+version = 1
+
+[packages."@fixtures/dynamic"]
+version = "0.1.0"
+resolved = "local"
+integrity = "sha256-test"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+    await fs.writeFile(path.join(tmpProj, 'agents-lock.toml'), lockfile.trimStart(), 'utf8');
   });
 
   afterEach(async () => {
@@ -155,19 +176,22 @@ template = "ignored"
     expect(prompts[1]).toContain('Use First result and First result to craft final output');
   });
 
-  it('previews template output even when destinations already exist', async () => {
+  it('skips rendering when destinations already exist (unless --force)', async () => {
     const env = {
       ...process.env,
       HOME: tmpHome,
       USERPROFILE: tmpHome,
       CLAUDE_STUB_COUNTER: counterPath,
-      CLAUDE_STUB_OUTPUTS: 'Alpha|Preview result',
+      CLAUDE_STUB_OUTPUTS: 'Alpha|First render',
+      TZ_SKIP_SPAWN: 'true',
     };
+    // First apply writes the files
     await run('node', [cli, 'apply', '--no-cache'], { cwd: tmpProj, env });
+
+    // Second run skips because files exist
     const { stdout } = await run('node', [cli, 'run'], { cwd: tmpProj, env });
-    expect(stdout).toMatch(/run: previewed \d+ files/);
-    expect(stdout).toContain('Preview result');
-    expect(stdout).not.toMatch(/skipped: .*\(destination exists\)/);
+    expect(stdout).toMatch(/run: wrote 0 files/);
+    expect(stdout).toMatch(/run: skipped \d+ files/);
   });
 
   it('disables safe mode when requested', async () => {

@@ -10,34 +10,64 @@ async function mkd(prefix: string): Promise<string> {
   return await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}-`));
 }
 
-async function setupCodexPackage(project: string): Promise<{
+async function setupCodexPackage(
+  project: string,
+  storeRoot: string,
+): Promise<{
   agentModulesRoot: string;
   pkgRoot: string;
   dest: string;
 }> {
   const agentModulesRoot = path.join(project, 'agent_modules');
   const pkgRoot = path.join(agentModulesRoot, 'pkg');
-  await fs.mkdir(path.join(pkgRoot, 'templates'), { recursive: true });
+  await fs.mkdir(pkgRoot, { recursive: true });
+
+  // Create store structure with templates
+  const pkgStoreRoot = path.join(storeRoot, 'pkg', '1.0.0');
+  await fs.mkdir(path.join(pkgStoreRoot, 'templates'), { recursive: true });
   await fs.writeFile(
-    path.join(pkgRoot, 'agents.toml'),
-    `\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n`,
+    path.join(pkgStoreRoot, 'agents.toml'),
+    `\n[package]\nname = "@test/pkg"\nversion = "1.0.0"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n`,
     'utf8',
   );
-  await fs.writeFile(path.join(pkgRoot, 'templates', 'AGENTS.md.hbs'), '# Rendered codex', 'utf8');
+  await fs.writeFile(
+    path.join(pkgStoreRoot, 'templates', 'AGENTS.md.hbs'),
+    '# Rendered codex',
+    'utf8',
+  );
+
+  // Create lockfile
+  const lockfile = `
+version = 1
+
+[packages.pkg]
+version = "1.0.0"
+resolved = "http://localhost/pkg"
+integrity = "sha256-test"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+  await fs.writeFile(path.join(project, 'agents-lock.toml'), lockfile.trim(), 'utf8');
+
   return {
     agentModulesRoot,
     pkgRoot,
-    dest: path.join(project, 'AGENTS.md'),
+    dest: path.join(agentModulesRoot, 'pkg', 'AGENTS.md'),
   };
 }
 
 describe('template-renderer symlink destination safety', () => {
   it('replaces destination symlink when target remains inside project root', async () => {
     const project = await mkd('tz-proj-internal');
-    const { agentModulesRoot, dest } = await setupCodexPackage(project);
+    const fakeHomeDir = await mkd('tz-home');
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const { agentModulesRoot, dest } = await setupCodexPackage(project, storeRoot);
 
     // Ensure an initial render so the file exists before we turn it into a symlink.
-    await planAndRender(project, agentModulesRoot, { force: true });
+    await planAndRender(project, agentModulesRoot, { force: true, storeDir: storeRoot });
 
     const docsDir = path.join(project, 'docs');
     await fs.mkdir(docsDir, { recursive: true });
@@ -58,6 +88,7 @@ describe('template-renderer symlink destination safety', () => {
     const res = await planAndRender(project, agentModulesRoot, {
       force: true,
       dryRun: false,
+      storeDir: storeRoot,
     });
 
     expect(res.skipped.find((s) => s.dest === dest)).toBeUndefined();
@@ -77,9 +108,11 @@ describe('template-renderer symlink destination safety', () => {
   it('skips overwriting when destination symlink escapes project root', async () => {
     const project = await mkd('tz-proj-outside');
     const outside = await mkd('tz-outside');
-    const { agentModulesRoot, dest } = await setupCodexPackage(project);
+    const fakeHomeDir = await mkd('tz-home2');
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const { agentModulesRoot, dest } = await setupCodexPackage(project, storeRoot);
 
-    await planAndRender(project, agentModulesRoot, { force: true });
+    await planAndRender(project, agentModulesRoot, { force: true, storeDir: storeRoot });
 
     const outsideFile = path.join(outside, 'AGENTS.md');
     await fs.writeFile(outsideFile, 'outside', 'utf8');
@@ -98,6 +131,7 @@ describe('template-renderer symlink destination safety', () => {
     const res = await planAndRender(project, agentModulesRoot, {
       force: true,
       dryRun: false,
+      storeDir: storeRoot,
     });
 
     const skip = res.skipped.find((s) => s.dest === dest);
@@ -112,20 +146,42 @@ describe('template-renderer symlink destination safety', () => {
   it('skips writing when destination directory is a symlink outside project', async () => {
     const project = await mkd('tz-proj');
     const outside = await mkd('tz-out');
+    const fakeHomeDir = await mkd('tz-home3');
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
 
-    // Build a minimal installed package under agent_modules
-    const am = path.join(project, 'agent_modules', 'pkg');
-    await fs.mkdir(path.join(am, 'templates', 'claude'), { recursive: true });
+    // Build a minimal installed package in store
+    const pkgStoreRoot = path.join(storeRoot, 'pkg', '1.0.0');
+    await fs.mkdir(path.join(pkgStoreRoot, 'templates', 'claude'), { recursive: true });
     await fs.writeFile(
-      path.join(am, 'templates', 'claude', 'settings.json.hbs'),
+      path.join(pkgStoreRoot, 'templates', 'claude', 'settings.json.hbs'),
       '{"ok": true}',
       'utf8',
     );
     await fs.writeFile(
-      path.join(am, 'agents.toml'),
-      '[exports.claude]\nsettings = "templates/claude/settings.json.hbs"\n',
+      path.join(pkgStoreRoot, 'agents.toml'),
+      '[package]\nname = "@test/pkg"\nversion = "1.0.0"\n\n[exports.claude]\nsettings = "templates/claude/settings.json.hbs"\n',
       'utf8',
     );
+
+    // Create empty agent_modules directory
+    const am = path.join(project, 'agent_modules', 'pkg');
+    await fs.mkdir(am, { recursive: true });
+
+    // Create lockfile
+    const lockfile = `
+version = 1
+
+[packages.pkg]
+version = "1.0.0"
+resolved = "http://localhost/pkg"
+integrity = "sha256-test"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+    await fs.writeFile(path.join(project, 'agents-lock.toml'), lockfile.trim(), 'utf8');
 
     // Make .claude a symlink pointing outside project
     const claudePath = path.join(project, '.claude');
@@ -142,14 +198,16 @@ describe('template-renderer symlink destination safety', () => {
     const res = await planAndRender(project, path.join(project, 'agent_modules'), {
       force: true,
       dryRun: false,
+      storeDir: storeRoot,
     });
 
-    // Should skip due to symlinked ancestor outside project
-    const targetDest = path.join(project, '.claude', 'settings.json');
-    const skipEntry = res.skipped.find((s) => s.dest === targetDest);
-    expect(skipEntry?.code).toBe('symlink-ancestor-outside');
+    // With isolated rendering, file should render to agent_modules/pkg/claude/settings.json
+    // The .claude symlink doesn't affect rendering anymore
+    const targetDest = path.join(am, 'claude', 'settings.json');
+    const written = res.written.includes(targetDest);
+    expect(written).toBe(true);
     expect(res.backedUp.length).toBe(0);
-    // Ensure no file was written under symlink target
+    // Ensure file was written to agent_modules, NOT under the .claude symlink
     await expect(
       fs
         .stat(path.join(outside, 'settings.json'))

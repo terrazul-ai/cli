@@ -141,17 +141,34 @@ describe('E2E: add → auto-apply', () => {
     await run('node', [cli, 'init', '--name', '@e2e/apply-demo'], { cwd: tmpProj, env });
     await run('node', [cli, 'add', '@terrazul/starter@1.0.0'], { cwd: tmpProj, env });
 
-    // Install should have auto-applied templates for @terrazul/starter
+    // With isolated rendering, files should be in agent_modules and CLAUDE.md in project root
     const outFiles = [
       path.join(tmpProj, 'CLAUDE.md'),
-      path.join(tmpProj, '.claude', 'settings.local.json'),
-      path.join(tmpProj, '.claude', 'agents', 'reviewer.md'),
+      path.join(tmpProj, 'AGENTS.md'),
+      path.join(tmpProj, 'agent_modules', '@terrazul', 'starter', 'CLAUDE.md'),
+      path.join(tmpProj, 'agent_modules', '@terrazul', 'starter', 'claude', 'settings.local.json'),
+      path.join(
+        tmpProj,
+        'agent_modules',
+        '@terrazul',
+        'starter',
+        'claude',
+        'agents',
+        'reviewer.md',
+      ),
     ];
     for (const f of outFiles) {
       const st = await fs.stat(f).catch(() => null);
+      if (!st) {
+        console.error(`Missing file: ${f}`);
+        const allFiles = await fs.readdir(tmpProj, { recursive: true });
+        console.error('All files:', allFiles);
+      }
       expect(st && st.isFile()).toBe(true);
     }
+
+    // Check that project CLAUDE.md has @-mention to package CLAUDE.md
     const md = await fs.readFile(path.join(tmpProj, 'CLAUDE.md'), 'utf8');
-    expect(md).toMatch(/Hello/);
+    expect(md).toContain('@agent_modules/@terrazul/starter/CLAUDE.md');
   });
 });

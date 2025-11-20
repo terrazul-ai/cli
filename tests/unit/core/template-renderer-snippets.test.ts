@@ -35,12 +35,23 @@ describe('template renderer snippets integration', () => {
   let projectRoot = '';
   let agentModules = '';
   let pkgRoot = '';
+  let fakeHomeDir = '';
+  let storeRoot = '';
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
 
   beforeAll(async () => {
+    // Setup fake home directory
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+    fakeHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'tz-snippets-home-'));
+    process.env.HOME = fakeHomeDir;
+    process.env.USERPROFILE = fakeHomeDir;
+
     projectRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'tz-snippets-'));
     agentModules = path.join(projectRoot, 'agent_modules');
     pkgRoot = path.join(agentModules, '@test', 'demo');
-    await fs.mkdir(path.join(pkgRoot, 'templates'), { recursive: true });
+    await fs.mkdir(pkgRoot, { recursive: true });
 
     await fs.writeFile(
       path.join(projectRoot, 'agents.toml'),
@@ -48,8 +59,13 @@ describe('template renderer snippets integration', () => {
       'utf8',
     );
 
+    // Create store structure with templates
+    storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const pkgStoreRoot = path.join(storeRoot, '@test', 'demo', '1.0.0');
+    await fs.mkdir(path.join(pkgStoreRoot, 'templates'), { recursive: true });
+
     await fs.writeFile(
-      path.join(pkgRoot, 'agents.toml'),
+      path.join(pkgStoreRoot, 'agents.toml'),
       `\n[package]\nname = "@test/demo"\nversion = "1.0.0"\n\n[exports.codex]\ntemplate = "templates/AGENTS.md.hbs"\n`,
       'utf8',
     );
@@ -59,11 +75,34 @@ describe('template renderer snippets integration', () => {
 User: {{ askUser('Your name?', { placeholder: 'Jane Doe' }) }}
 {{ var summary = askAgent('Provide summary', { json: true }) }}
 Summary: {{ vars.summary.result }}`;
-    await fs.writeFile(path.join(pkgRoot, 'templates', 'AGENTS.md.hbs'), templateBody, 'utf8');
+    await fs.writeFile(path.join(pkgStoreRoot, 'templates', 'AGENTS.md.hbs'), templateBody, 'utf8');
+
+    // Create lockfile
+    const lockfile = `
+version = 1
+
+[packages."@test/demo"]
+version = "1.0.0"
+resolved = "http://localhost/demo"
+integrity = "sha256-test"
+dependencies = { }
+
+[metadata]
+generated_at = "2025-01-01T00:00:00.000Z"
+cli_version = "0.1.0"
+`;
+    await fs.writeFile(path.join(projectRoot, 'agents-lock.toml'), lockfile.trim(), 'utf8');
   });
 
   afterAll(async () => {
     await fs.rm(projectRoot, { recursive: true, force: true });
+    if (fakeHomeDir) {
+      await fs.rm(fakeHomeDir, { recursive: true, force: true }).catch(() => {});
+    }
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
   });
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -83,6 +122,7 @@ Summary: {{ vars.summary.result }}`;
       packageName: '@test/demo',
       tool: 'claude',
       noCache: true,
+      storeDir: storeRoot,
     });
 
     expect(res.written).toHaveLength(1);
@@ -103,6 +143,7 @@ Summary: {{ vars.summary.result }}`;
         packageName: '@test/demo',
         tool: 'claude',
         noCache: true,
+        storeDir: storeRoot,
       }),
     ).rejects.toMatchObject({
       code: ErrorCode.TOOL_EXECUTION_FAILED,
@@ -118,6 +159,7 @@ Summary: {{ vars.summary.result }}`;
       packageName: '@test/demo',
       tool: 'claude',
       noCache: true,
+      storeDir: storeRoot,
     });
 
     expect(promptMock).toHaveBeenCalledTimes(1);
