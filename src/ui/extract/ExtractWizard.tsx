@@ -3,13 +3,6 @@ import TextInput from 'ink-text-input';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
-  type ExecuteOptions,
-  type ExtractOptions,
-  type ExtractPlan,
-  type ExtractResult,
-  type LoggerLike,
-} from '../../core/extract/orchestrator.js';
-import {
   type KeyHint,
   type LogEntry,
   LogPanel,
@@ -27,6 +20,13 @@ import {
   type OptionListItem,
   type WizardViewModel,
 } from './extract-wizard-viewmodel.js';
+import {
+  type ExecuteOptions,
+  type ExtractOptions,
+  type ExtractPlan,
+  type ExtractResult,
+  type LoggerLike,
+} from '../../core/extract/orchestrator.js';
 
 const TASK_NAME = 'Extract';
 
@@ -102,10 +102,22 @@ export function ExtractWizard({
         message,
       };
       setLogs((prev) => [...prev.slice(-49), entry]);
-      if (level === 'info') logger.info(message);
-      else if (level === 'warn') logger.warn(message);
-      else if (level === 'error') logger.error(message);
-      else logger.debug(message);
+      switch (level) {
+      case 'info': {
+      logger.info(message);
+      break;
+      }
+      case 'warn': {
+      logger.warn(message);
+      break;
+      }
+      case 'error': {
+      logger.error(message);
+      break;
+      }
+      default: { logger.debug(message);
+      }
+      }
     },
     [logger],
   );
@@ -127,9 +139,7 @@ export function ExtractWizard({
         actions.setStatus('error', null);
         actions.setError(message);
         pushLog('error', message);
-        if (logger.isVerbose && logger.isVerbose()) {
-          if (error instanceof Error) logger.error(error.stack ?? message);
-        }
+        if (logger.isVerbose && logger.isVerbose() && error instanceof Error) logger.error(error.stack ?? message);
       }
     },
     [actions, analyze, logger, pushLog],
@@ -202,8 +212,8 @@ export function ExtractWizard({
     const execOptions: ExecuteOptions = {
       ...state.options,
       includedArtifacts: computeIncludedArtifacts(state.plan, state.selections, state.options),
-      includedMcpServers: Array.from(state.selections.mcpServers),
-      includedSubagentFiles: Array.from(state.selections.subagents),
+      includedMcpServers: [...state.selections.mcpServers],
+      includedSubagentFiles: [...state.selections.subagents],
     };
     lastExecOptionsRef.current = execOptions;
     try {
@@ -215,9 +225,7 @@ export function ExtractWizard({
       actions.setStatus('error', null);
       actions.setError(message);
       pushLog('error', message);
-      if (logger.isVerbose && logger.isVerbose()) {
-        if (error instanceof Error) logger.error(error.stack ?? message);
-      }
+      if (logger.isVerbose && logger.isVerbose() && error instanceof Error) logger.error(error.stack ?? message);
     }
   }, [
     actions,
@@ -296,7 +304,7 @@ export function ExtractWizard({
   const handleOptionToggle = useCallback(
     (id: OptionToggleId) => {
       const config = OPTION_TOGGLE_CONFIG.find((entry) => entry.id === id);
-      const toggledValue = !Boolean(state.options[id as keyof ExtractOptions]);
+      const toggledValue = !state.options[id as keyof ExtractOptions];
       const changes = { [id]: toggledValue } as Partial<ExtractOptions>;
       const nextOptions = { ...state.options, ...changes };
       actions.updateOptions(changes);
@@ -472,8 +480,9 @@ export function ExtractWizard({
         }
         break;
       }
-      default:
+      default: {
         break;
+      }
     }
   });
 
@@ -516,7 +525,7 @@ export function ExtractWizard({
 
   const renderBody = (): React.ReactElement => {
     switch (state.step) {
-      case 'artifacts':
+      case 'artifacts': {
         return (
           <Box flexDirection="column" gap={1}>
             <SelectableList
@@ -529,7 +538,8 @@ export function ExtractWizard({
             </Text>
           </Box>
         );
-      case 'subagents':
+      }
+      case 'subagents': {
         return (
           <Box flexDirection="column" gap={1}>
             <SelectableList
@@ -542,7 +552,8 @@ export function ExtractWizard({
             </Text>
           </Box>
         );
-      case 'mcp':
+      }
+      case 'mcp': {
         return (
           <Box flexDirection="column" gap={1}>
             <SelectableList
@@ -555,7 +566,8 @@ export function ExtractWizard({
             </Text>
           </Box>
         );
-      case 'output':
+      }
+      case 'output': {
         return (
           <Box flexDirection="column" gap={1}>
             <Text>Package directory:</Text>
@@ -569,7 +581,8 @@ export function ExtractWizard({
             </Text>
           </Box>
         );
-      case 'metadata':
+      }
+      case 'metadata': {
         return (
           <Box flexDirection="column" gap={1}>
             <Box flexDirection="column">
@@ -593,7 +606,8 @@ export function ExtractWizard({
             </Box>
           </Box>
         );
-      case 'options':
+      }
+      case 'options': {
         return (
           <SelectableList
             items={optionItems as SelectableListItem[]}
@@ -601,8 +615,9 @@ export function ExtractWizard({
             emptyMessage="No options available"
           />
         );
+      }
       case 'preview':
-      default:
+      default: {
         if (!reviewSummary) {
           return <Text dimColor>No selections available.</Text>;
         }
@@ -645,6 +660,7 @@ export function ExtractWizard({
             ) : null}
           </Box>
         );
+      }
     }
   };
 

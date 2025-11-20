@@ -1,5 +1,6 @@
-import React from 'react';
 import { render, type Instance } from 'ink';
+import React from 'react';
+
 import { AskAgentSpinner, type AskAgentTask } from './AskAgentSpinner.js';
 
 export interface SpinnerManager {
@@ -19,7 +20,7 @@ export function createSpinnerManager(isTTY: boolean): SpinnerManager {
   const renderSpinner = (): void => {
     if (!isTTY) return;
 
-    const tasks = Array.from(activeTasks.values());
+    const tasks = [...activeTasks.values()];
     if (tasks.length === 0) {
       if (inkInstance !== null) {
         const instance: Instance = inkInstance;
@@ -29,14 +30,14 @@ export function createSpinnerManager(isTTY: boolean): SpinnerManager {
       return;
     }
 
-    if (inkInstance !== null) {
-      inkInstance.rerender(<AskAgentSpinner tasks={tasks} />);
-    } else {
+    if (inkInstance === null) {
       inkInstance = render(<AskAgentSpinner tasks={tasks} />, {
         stdout: process.stdout,
         stdin: process.stdin,
         exitOnCtrlC: false,
       });
+    } else {
+      inkInstance.rerender(<AskAgentSpinner tasks={tasks} />);
     }
   };
 
