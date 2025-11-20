@@ -103,20 +103,21 @@ export function ExtractWizard({
       };
       setLogs((prev) => [...prev.slice(-49), entry]);
       switch (level) {
-      case 'info': {
-      logger.info(message);
-      break;
-      }
-      case 'warn': {
-      logger.warn(message);
-      break;
-      }
-      case 'error': {
-      logger.error(message);
-      break;
-      }
-      default: { logger.debug(message);
-      }
+        case 'info': {
+          logger.info(message);
+          break;
+        }
+        case 'warn': {
+          logger.warn(message);
+          break;
+        }
+        case 'error': {
+          logger.error(message);
+          break;
+        }
+        default: {
+          logger.debug(message);
+        }
       }
     },
     [logger],
@@ -139,7 +140,8 @@ export function ExtractWizard({
         actions.setStatus('error', null);
         actions.setError(message);
         pushLog('error', message);
-        if (logger.isVerbose && logger.isVerbose() && error instanceof Error) logger.error(error.stack ?? message);
+        if (logger.isVerbose && logger.isVerbose() && error instanceof Error)
+          logger.error(error.stack ?? message);
       }
     },
     [actions, analyze, logger, pushLog],
@@ -225,7 +227,8 @@ export function ExtractWizard({
       actions.setStatus('error', null);
       actions.setError(message);
       pushLog('error', message);
-      if (logger.isVerbose && logger.isVerbose() && error instanceof Error) logger.error(error.stack ?? message);
+      if (logger.isVerbose && logger.isVerbose() && error instanceof Error)
+        logger.error(error.stack ?? message);
     }
   }, [
     actions,

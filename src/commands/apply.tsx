@@ -27,6 +27,7 @@ export function registerApplyCommand(
     .option('--profile <profile>', 'Apply only the packages associated with the given profile')
     .option('--tool <tool>', 'Use a specific answer tool (claude or codex)')
     .option('--no-tool-safe-mode', 'Disable safe mode for tool execution')
+    .option('--no-cache', 'Skip snippet cache (re-execute all askAgent/askUser prompts)', false)
     .action(
       async (
         _pkg: string | undefined,
@@ -36,6 +37,7 @@ export function registerApplyCommand(
           profile?: string;
           tool?: string;
           toolSafeMode?: boolean;
+          noCache?: boolean;
         },
       ) => {
         const g = program.opts<{ verbose?: boolean }>();
@@ -187,6 +189,7 @@ export function registerApplyCommand(
             profileName,
             tool: toolOverride,
             toolSafeMode,
+            noCache: opts.noCache,
             verbose: ctx.logger.isVerbose(),
             onTemplateStart,
             onSnippetEvent,

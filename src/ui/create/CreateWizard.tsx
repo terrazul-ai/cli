@@ -480,9 +480,10 @@ export function CreateWizard({
     { isActive: true },
   );
 
-  const toolsList = selectedTools.length > 0
-    ? selectedTools.map((tool) => `✓ ${tool}`).join('\n ')
-    : 'None selected';
+  const toolsList =
+    selectedTools.length > 0
+      ? selectedTools.map((tool) => `✓ ${tool}`).join('\n ')
+      : 'None selected';
 
   return (
     <WizardFrame
