@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/terrazul-ai/tz/compare/v0.15.0...v0.16.0) (2025-11-21)
+
+
+### Features
+
+* Adds includes, not, or to the handlebars runtime ([#59](https://github.com/terrazul-ai/tz/issues/59)) ([ad7ad86](https://github.com/terrazul-ai/tz/commit/ad7ad86d66291f5634c928713534a3fb24d16357))
+
 ## [0.15.0](https://github.com/terrazul-ai/tz/compare/v0.14.0...v0.15.0) (2025-11-21)
 
 
