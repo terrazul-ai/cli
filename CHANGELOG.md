@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/terrazul-ai/tz/compare/v0.14.0...v0.15.0) (2025-11-21)
+
+
+### Features
+
+* Fixes template rendering, and copying of agent files ([#56](https://github.com/terrazul-ai/tz/issues/56)) ([fa2ed0b](https://github.com/terrazul-ai/tz/commit/fa2ed0b076acb6c95964fb4822805d11bfdb6dec))
+
 ## [0.14.0](https://github.com/terrazul-ai/tz/compare/v0.13.0...v0.14.0) (2025-11-20)
 
 
