@@ -294,6 +294,15 @@ Commands that call `planAndRender` (`apply`, `run`, `add`) show an Ink spinner d
   with `tz add --profile focus @scope/name@1.0.0`, the CLI automatically appends it to the
   specified profile in `agents.toml`.
 
+- `[exports.<tool>]` sections define template files and directories to render for each tool:
+  - `template` - Main template file path (e.g., `"templates/CLAUDE.md.hbs"`)
+  - `subagentsDir` - Directory containing agent files (e.g., `"templates/agents"`)
+  - `commandsDir` - Directory containing command files (e.g., `"templates/commands"`)
+  - `skillsDir` - Directory containing skill files (e.g., `"templates/skills"`)
+  - `promptsDir` - Directory containing prompt files for askAgent snippets (e.g., `"templates/prompts"`)
+  - `settings`, `settingsLocal` - Tool-specific configuration files
+  - `mcpServers` - MCP server configuration file
+
 ### `agents-lock.toml`
 
 - Deterministic, includes:
@@ -915,8 +924,17 @@ IMPORTANT IMPORTANT IMPORTANT, REQUIRED RUN AND FIX ANY ERRORS FROM
 
 - All templates render to `agent_modules/<scope>/<package>/` following the package's directory structure
 - No files are written to project root (isolated rendering only)
+- **File Type Detection**:
+  - Files with `.hbs` extension → **rendered as templates** (processed through Handlebars + snippet preprocessing)
+  - Files without `.hbs` extension → **copied literally** (no template processing, preserves example syntax)
 - Handlebars templates use context `{ project, pkg, env, now, files }`
 - Safe path handling ensures outputs stay within package directory
+
+**Use Cases for Literal Files**:
+
+- Documentation containing example template syntax (e.g., `templates/EXAMPLES.md`)
+- Tutorial or reference files showing how to use `{{ askUser() }}` or `{{ askAgent() }}`
+- Any file that should preserve template-like syntax without rendering
 
 **Context Injection**:
 

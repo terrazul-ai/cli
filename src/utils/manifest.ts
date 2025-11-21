@@ -10,6 +10,14 @@ export type ToolName = 'claude' | 'codex' | 'cursor' | 'copilot';
 
 export interface ExportEntry {
   template?: string;
+  /** Directory containing agent subfiles (e.g., templates/agents) */
+  subagentsDir?: string;
+  /** Directory containing command files (e.g., templates/commands) */
+  commandsDir?: string;
+  /** Directory containing skill files (e.g., templates/skills) */
+  skillsDir?: string;
+  /** Directory containing prompt files for askAgent snippets (e.g., templates/prompts) */
+  promptsDir?: string;
   // Keep unknown keys to allow forward-compat while warning
   [key: string]: unknown;
 }
@@ -188,7 +196,16 @@ export async function validateManifest(
   const errors: string[] = [];
 
   const validTools: ToolName[] = ['claude', 'codex', 'cursor', 'copilot'];
-  const validProp = 'template';
+  const validProps = new Set([
+    'template',
+    'subagentsDir',
+    'commandsDir',
+    'skillsDir',
+    'promptsDir',
+    'settings',
+    'settingsLocal',
+    'mcpServers',
+  ]);
 
   // Exports: warn on unknown tool keys and unknown properties
   const exp = manifest.exports ?? {};
@@ -199,7 +216,7 @@ export async function validateManifest(
     }
     if (isRecord(entry)) {
       for (const k of Object.keys(entry)) {
-        if (k !== validProp && entry[k] !== undefined) {
+        if (!validProps.has(k) && entry[k] !== undefined) {
           warnings.push(`Unknown property under [exports.${tool}]: '${k}'`);
         }
       }

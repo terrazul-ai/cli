@@ -166,4 +166,191 @@ cli_version = "0.1.0"
     expect(after.written.length).toBeGreaterThan(0);
     expect(after.backedUp.length).toBeGreaterThan(0);
   });
+
+  it('copies literal files without rendering template syntax', async () => {
+    // Create a package with a literal (non-.hbs) file containing template syntax
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const literalPkgRoot = path.join(storeRoot, '@test', 'literal', '1.0.0');
+
+    await write(
+      path.join(literalPkgRoot, 'agents.toml'),
+      `\n[package]\nname = "@test/literal"\nversion = "1.0.0"\n\n[exports.claude]\ntemplate = "templates/EXAMPLES.md"\n`,
+    );
+
+    const exampleContent = `# Template Examples
+
+Use {{ askUser('prompt') }} to ask questions.
+Use {{ askAgent('task') }} to delegate to AI.
+Access variables with {{ project.name }} and {{ pkg.version }}.`;
+
+    await write(path.join(literalPkgRoot, 'templates', 'EXAMPLES.md'), exampleContent);
+
+    // Create lockfile entry for literal package
+    const lockfileContent = await fs.readFile(path.join(projectRoot, 'agents-lock.toml'), 'utf8');
+    const updatedLockfile =
+      lockfileContent +
+      `\n[packages."@test/literal"]\nversion = "1.0.0"\nresolved = "http://localhost/literal"\nintegrity = "sha256-test"\ndependencies = { }\n`;
+    await fs.writeFile(path.join(projectRoot, 'agents-lock.toml'), updatedLockfile, 'utf8');
+
+    // Create package directory in agent_modules
+    const literalOutputDir = path.join(agentModules, '@test', 'literal');
+    await fs.mkdir(literalOutputDir, { recursive: true });
+
+    // Render the literal file
+    await planAndRender(projectRoot, agentModules, {
+      packageName: '@test/literal',
+      noCache: true,
+      storeDir: storeRoot,
+    });
+
+    // Verify the file was copied literally without rendering
+    const outputPath = path.join(literalOutputDir, 'EXAMPLES.md');
+    const outputContent = await fs.readFile(outputPath, 'utf8');
+    expect(outputContent).toBe(exampleContent);
+    expect(outputContent).toContain('{{ askUser(');
+    expect(outputContent).toContain('{{ askAgent(');
+    expect(outputContent).toContain('{{ project.name }}');
+  });
+
+  it('renders .hbs files as templates', async () => {
+    // Create a package with a .hbs file
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const hbsPkgRoot = path.join(storeRoot, '@test', 'hbs', '1.0.0');
+
+    await write(
+      path.join(hbsPkgRoot, 'agents.toml'),
+      `\n[package]\nname = "@test/hbs"\nversion = "1.0.0"\n\n[exports.claude]\ntemplate = "templates/README.md.hbs"\n`,
+    );
+
+    const templateContent = `# {{project.name}}
+
+Version: {{pkg.version}}`;
+
+    await write(path.join(hbsPkgRoot, 'templates', 'README.md.hbs'), templateContent);
+
+    // Create lockfile entry
+    const lockfileContent = await fs.readFile(path.join(projectRoot, 'agents-lock.toml'), 'utf8');
+    const updatedLockfile =
+      lockfileContent +
+      `\n[packages."@test/hbs"]\nversion = "1.0.0"\nresolved = "http://localhost/hbs"\nintegrity = "sha256-test"\ndependencies = { }\n`;
+    await fs.writeFile(path.join(projectRoot, 'agents-lock.toml'), updatedLockfile, 'utf8');
+
+    // Create package directory
+    const hbsOutputDir = path.join(agentModules, '@test', 'hbs');
+    await fs.mkdir(hbsOutputDir, { recursive: true });
+
+    // Render the template
+    await planAndRender(projectRoot, agentModules, {
+      packageName: '@test/hbs',
+      noCache: true,
+      storeDir: storeRoot,
+    });
+
+    // Verify the template was rendered
+    const outputPath = path.join(hbsOutputDir, 'README.md');
+    const outputContent = await fs.readFile(outputPath, 'utf8');
+    expect(outputContent).toContain('# @test/project'); // project.name rendered
+    expect(outputContent).toContain('Version: 1.0.0'); // pkg.version rendered
+    expect(outputContent).not.toContain('{{'); // no template syntax left
+  });
+
+  it('handles mixed literal and template files correctly', async () => {
+    // Create a package with both .hbs and non-.hbs files
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const mixedPkgRoot = path.join(storeRoot, '@test', 'mixed', '1.0.0');
+
+    await write(
+      path.join(mixedPkgRoot, 'agents.toml'),
+      `\n[package]\nname = "@test/mixed"\nversion = "1.0.0"\n\n[exports.claude]\nsubagentsDir = "templates/agents"\n`,
+    );
+
+    // Literal file with examples
+    const literalContent = 'Example: {{ askUser("question") }}';
+    await write(path.join(mixedPkgRoot, 'templates', 'agents', 'examples.md'), literalContent);
+
+    // Template file to render
+    const templateContent = 'Project: {{project.name}}';
+    await write(path.join(mixedPkgRoot, 'templates', 'agents', 'agent.md.hbs'), templateContent);
+
+    // Create lockfile entry
+    const lockfileContent = await fs.readFile(path.join(projectRoot, 'agents-lock.toml'), 'utf8');
+    const updatedLockfile =
+      lockfileContent +
+      `\n[packages."@test/mixed"]\nversion = "1.0.0"\nresolved = "http://localhost/mixed"\nintegrity = "sha256-test"\ndependencies = { }\n`;
+    await fs.writeFile(path.join(projectRoot, 'agents-lock.toml'), updatedLockfile, 'utf8');
+
+    // Create package directory
+    const mixedOutputDir = path.join(agentModules, '@test', 'mixed');
+    await fs.mkdir(mixedOutputDir, { recursive: true });
+
+    // Render
+    await planAndRender(projectRoot, agentModules, {
+      packageName: '@test/mixed',
+      noCache: true,
+      storeDir: storeRoot,
+    });
+
+    // Verify literal file was copied
+    const literalOutputPath = path.join(mixedOutputDir, 'agents', 'examples.md');
+    const literalOutput = await fs.readFile(literalOutputPath, 'utf8');
+    expect(literalOutput).toBe(literalContent);
+    expect(literalOutput).toContain('{{ askUser(');
+
+    // Verify template file was rendered
+    const templateOutputPath = path.join(mixedOutputDir, 'agents', 'agent.md');
+    const templateOutput = await fs.readFile(templateOutputPath, 'utf8');
+    expect(templateOutput).toContain('Project: @test/project');
+    expect(templateOutput).not.toContain('{{');
+  });
+
+  it('copies promptsDir files for askAgent snippets', async () => {
+    // Create a package with prompts directory
+    const storeRoot = path.join(fakeHomeDir, '.terrazul', 'store');
+    const promptsPkgRoot = path.join(storeRoot, '@test', 'prompts', '1.0.0');
+
+    await write(
+      path.join(promptsPkgRoot, 'agents.toml'),
+      `\n[package]\nname = "@test/prompts"\nversion = "1.0.0"\n\n[exports.claude]\ntemplate = "templates/CLAUDE.md.hbs"\npromptsDir = "templates/prompts"\n`,
+    );
+
+    // Create a template that references a prompt file
+    // Note: The path is relative to the rendered package root (agent_modules/@test/prompts/)
+    const templateContent = `# {{project.name}}\n\nPrompts directory contains supporting files.`;
+    await write(path.join(promptsPkgRoot, 'templates', 'CLAUDE.md.hbs'), templateContent);
+
+    // Create prompt files
+    const promptContent = 'Analyze the tech stack of this project';
+    await write(
+      path.join(promptsPkgRoot, 'templates', 'prompts', 'detect-tech-stack.txt'),
+      promptContent,
+    );
+
+    // Create lockfile entry
+    const lockfileContent = await fs.readFile(path.join(projectRoot, 'agents-lock.toml'), 'utf8');
+    const updatedLockfile =
+      lockfileContent +
+      `\n[packages."@test/prompts"]\nversion = "1.0.0"\nresolved = "http://localhost/prompts"\nintegrity = "sha256-test"\ndependencies = { }\n`;
+    await fs.writeFile(path.join(projectRoot, 'agents-lock.toml'), updatedLockfile, 'utf8');
+
+    // Create package directory
+    const promptsOutputDir = path.join(agentModules, '@test', 'prompts');
+    await fs.mkdir(promptsOutputDir, { recursive: true });
+
+    // Render
+    await planAndRender(projectRoot, agentModules, {
+      packageName: '@test/prompts',
+      noCache: true,
+      storeDir: storeRoot,
+    });
+
+    // Verify prompt file was copied
+    const promptOutputPath = path.join(promptsOutputDir, 'prompts', 'detect-tech-stack.txt');
+    const promptOutput = await fs.readFile(promptOutputPath, 'utf8');
+    expect(promptOutput).toBe(promptContent);
+
+    // Verify template was rendered (will be mocked askAgent result in real scenario)
+    const templateOutputPath = path.join(promptsOutputDir, 'CLAUDE.md');
+    const templateOutputExists = await fs.stat(templateOutputPath).catch(() => null);
+    expect(templateOutputExists).toBeTruthy();
+  });
 });
