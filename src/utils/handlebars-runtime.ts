@@ -1,9 +1,16 @@
+import { existsSync } from 'node:fs';
+
 import Handlebars from 'handlebars';
+
+import { resolveWithin } from './path.js';
 
 export type HandlebarsRuntime = typeof Handlebars;
 
 export interface TemplateContext {
   [key: string]: unknown;
+  project?: {
+    root?: string;
+  };
 }
 
 export function registerCoreHandlebarsHelpers(instance: HandlebarsRuntime): void {
@@ -14,6 +21,31 @@ export function registerCoreHandlebarsHelpers(instance: HandlebarsRuntime): void
   instance.registerHelper('json', function jsonHelper(value: unknown) {
     return JSON.stringify(value, null, 2);
   });
+
+  instance.registerHelper(
+    'exists',
+    function existsHelper(this: TemplateContext, relativePath: unknown) {
+      if (typeof relativePath !== 'string') return false;
+      const projectRoot =
+        typeof this.project === 'object' && this.project && typeof this.project.root === 'string'
+          ? this.project.root
+          : process.cwd();
+
+      try {
+        // Use resolveWithin to enforce containment within project root
+        // This prevents directory traversal attacks and absolute path probing
+        const safePath = resolveWithin(projectRoot, relativePath);
+        return existsSync(safePath);
+      } catch {
+        // Path escaped project root or was otherwise invalid - return false
+        // Optionally log the attempt for security auditing
+        if (process.env.TERRAZUL_VERBOSE === '1') {
+          console.warn(`exists helper blocked invalid path: ${relativePath}`);
+        }
+        return false;
+      }
+    },
+  );
 
   instance.registerHelper(
     'findById',

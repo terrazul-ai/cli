@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 import {
   getSharedHandlebars,
@@ -78,6 +79,16 @@ function mergeRenderContext(
     snippets: mergedSnippets,
     vars: mergedVars,
   };
+}
+
+/**
+ * Copy a file literally without any template processing.
+ * Used for documentation files that contain example template syntax.
+ */
+export async function copyLiteralFile(sourcePath: string, destPath: string): Promise<void> {
+  const content = await fs.readFile(sourcePath, 'utf8');
+  await fs.mkdir(path.dirname(destPath), { recursive: true });
+  await fs.writeFile(destPath, content, 'utf8');
 }
 
 export { registerCoreHandlebarsHelpers, type TemplateContext } from './handlebars-runtime.js';

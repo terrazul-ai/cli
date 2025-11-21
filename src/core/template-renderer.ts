@@ -9,7 +9,7 @@ import { StorageManager } from './storage.js';
 import { loadConfig, getProfileTools, selectPrimaryTool } from '../utils/config.js';
 import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
-import { renderTemplateWithSnippets } from '../utils/template.js';
+import { renderTemplateWithSnippets, copyLiteralFile } from '../utils/template.js';
 
 import type { ToolType } from '../types/context.js';
 import type { PreprocessResult, SnippetEvent } from '../types/snippet.js';
@@ -287,6 +287,22 @@ function collectFromExports(
     const relDir = skillsDirV.startsWith('templates/')
       ? skillsDirV.slice('templates/'.length)
       : skillsDirV;
+    const absDir = ensureWithinTemplates(relDir);
+    out.push(
+      ...collectFilesRecursively(absDir).map((f) => ({
+        abs: f,
+        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+        tool,
+        isMcpConfig: false,
+      })),
+    );
+  }
+
+  const promptsDirV = (exp as Record<string, unknown>)['promptsDir'];
+  if (typeof promptsDirV === 'string') {
+    const relDir = promptsDirV.startsWith('templates/')
+      ? promptsDirV.slice('templates/'.length)
+      : promptsDirV;
     const absDir = ensureWithinTemplates(relDir);
     out.push(
       ...collectFilesRecursively(absDir).map((f) => ({
@@ -618,70 +634,109 @@ export async function planAndRender(
         continue;
       }
 
-      // Get package version from already-loaded manifest (m is read from p.storePath)
-      const pkgVersion = m?.package?.version ?? '0.0.0';
+      // Determine if this is a literal file (non-.hbs) or a template (.hbs)
+      const isLiteralFile = !item.relUnderTemplates.endsWith('.hbs');
 
-      const renderResult = await renderTemplateWithSnippets(item.abs, ctx, {
-        preprocess: {
-          projectDir: projectRoot,
-          packageDir: p.root,
-          currentTool: primaryTool,
-          availableTools: profileTools,
-          toolSafeMode,
-          verbose: opts.verbose ?? false,
-          dryRun: opts.dryRun ?? false,
-          report: reporter,
-          cacheManager,
-          packageName: p.name,
-          packageVersion: pkgVersion,
-          noCache: opts.noCache ?? false,
-        },
-      });
-
-      snippetExecutions.push({
-        source: item.abs,
-        dest,
-        output: renderResult.output,
-        preprocess: renderResult.preprocess,
-      });
-
-      const failures = collectSnippetFailures(renderResult.preprocess, dest, rel, p.name);
-      if (failures.length > 0) {
-        snippetFailures.push(...failures);
-        continue;
-      }
-
-      if (!opts.dryRun) {
-        if (destStat) {
-          await backupExistingFile(dest);
-        }
-        if (safety.unlinkDestSymlink) {
-          try {
-            await fs.unlink(dest);
-          } catch {
-            skipped.push(makeSkip(dest, 'unlink-failed'));
-            continue;
+      if (isLiteralFile) {
+        // Literal file: copy without any template processing
+        if (!opts.dryRun) {
+          if (destStat) {
+            await backupExistingFile(dest);
           }
+          if (safety.unlinkDestSymlink) {
+            try {
+              await fs.unlink(dest);
+            } catch {
+              skipped.push(makeSkip(dest, 'unlink-failed'));
+              continue;
+            }
+          }
+          ensureDir(destDir);
+          await copyLiteralFile(item.abs, dest);
         }
-        ensureDir(destDir);
-        await fs.writeFile(dest, renderResult.output, 'utf8');
-      }
-      written.push(dest);
+        written.push(dest);
 
-      // Track rendered file metadata for symlink manager
-      renderedFiles.push({
-        pkgName: p.name,
-        source: dest, // Use dest as source since files are rendered to package dir
-        dest,
-        tool: item.tool,
-        isMcpConfig: item.isMcpConfig,
-      });
+        // Track literal file metadata for symlink manager
+        renderedFiles.push({
+          pkgName: p.name,
+          source: dest,
+          dest,
+          tool: item.tool,
+          isMcpConfig: item.isMcpConfig,
+        });
 
-      // Track files per package for TZ.md generation
-      if (!packageFiles.has(p.name)) {
-        packageFiles.set(p.name, []);
+        // Track files per package for TZ.md generation
+        if (!packageFiles.has(p.name)) {
+          packageFiles.set(p.name, []);
+        }
+        packageFiles.get(p.name)!.push(dest);
+      } else {
+        // Template file: render with Handlebars and snippets
+        // Get package version from already-loaded manifest (m is read from p.storePath)
+        const pkgVersion = m?.package?.version ?? '0.0.0';
+
+        const renderResult = await renderTemplateWithSnippets(item.abs, ctx, {
+          preprocess: {
+            projectDir: projectRoot,
+            packageDir: p.storePath,
+            currentTool: primaryTool,
+            availableTools: profileTools,
+            toolSafeMode,
+            verbose: opts.verbose ?? false,
+            dryRun: opts.dryRun ?? false,
+            report: reporter,
+            cacheManager,
+            packageName: p.name,
+            packageVersion: pkgVersion,
+            noCache: opts.noCache ?? false,
+          },
+        });
+
+        snippetExecutions.push({
+          source: item.abs,
+          dest,
+          output: renderResult.output,
+          preprocess: renderResult.preprocess,
+        });
+
+        const failures = collectSnippetFailures(renderResult.preprocess, dest, rel, p.name);
+        if (failures.length > 0) {
+          snippetFailures.push(...failures);
+          continue;
+        }
+
+        if (!opts.dryRun) {
+          if (destStat) {
+            await backupExistingFile(dest);
+          }
+          if (safety.unlinkDestSymlink) {
+            try {
+              await fs.unlink(dest);
+            } catch {
+              skipped.push(makeSkip(dest, 'unlink-failed'));
+              continue;
+            }
+          }
+          ensureDir(destDir);
+          await fs.writeFile(dest, renderResult.output, 'utf8');
+        }
+        written.push(dest);
+
+        // Track rendered file metadata for symlink manager
+        renderedFiles.push({
+          pkgName: p.name,
+          source: dest, // Use dest as source since files are rendered to package dir
+          dest,
+          tool: item.tool,
+          isMcpConfig: item.isMcpConfig,
+        });
+
+        // Track files per package for TZ.md generation
+        if (!packageFiles.has(p.name)) {
+          packageFiles.set(p.name, []);
+        }
+        packageFiles.get(p.name)!.push(dest);
       }
-      packageFiles.get(p.name)!.push(dest);
     }
   }
 
