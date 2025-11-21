@@ -11,7 +11,7 @@ import { ensureDir } from '../utils/fs.js';
 import { readManifest, type ExportEntry } from '../utils/manifest.js';
 import { renderTemplateWithSnippets, copyLiteralFile } from '../utils/template.js';
 
-import type { ToolType } from '../types/context.js';
+import type { ToolType, ToolSpec } from '../types/context.js';
 import type { PreprocessResult, SnippetEvent } from '../types/snippet.js';
 
 export interface RenderContext {
@@ -252,66 +252,29 @@ function collectFromExports(
     }
   }
 
-  const subDirV = (exp as Record<string, unknown>)['subagentsDir'];
-  if (typeof subDirV === 'string') {
-    const relDir = subDirV.startsWith('templates/') ? subDirV.slice('templates/'.length) : subDirV;
-    const absDir = ensureWithinTemplates(relDir);
-    out.push(
-      ...collectFilesRecursively(absDir).map((f) => ({
-        abs: f,
-        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
-        tool,
-        isMcpConfig: false,
-      })),
-    );
-  }
+  // Helper to collect files from directory exports
+  const collectDirectoryExport = (dirKey: string) => {
+    const dirValue = (exp as Record<string, unknown>)[dirKey];
+    if (typeof dirValue === 'string') {
+      const relDir = dirValue.startsWith('templates/')
+        ? dirValue.slice('templates/'.length)
+        : dirValue;
+      const absDir = ensureWithinTemplates(relDir);
+      out.push(
+        ...collectFilesRecursively(absDir).map((f) => ({
+          abs: f,
+          relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
+          tool,
+          isMcpConfig: false,
+        })),
+      );
+    }
+  };
 
-  const commandsDirV = (exp as Record<string, unknown>)['commandsDir'];
-  if (typeof commandsDirV === 'string') {
-    const relDir = commandsDirV.startsWith('templates/')
-      ? commandsDirV.slice('templates/'.length)
-      : commandsDirV;
-    const absDir = ensureWithinTemplates(relDir);
-    out.push(
-      ...collectFilesRecursively(absDir).map((f) => ({
-        abs: f,
-        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
-        tool,
-        isMcpConfig: false,
-      })),
-    );
-  }
-
-  const skillsDirV = (exp as Record<string, unknown>)['skillsDir'];
-  if (typeof skillsDirV === 'string') {
-    const relDir = skillsDirV.startsWith('templates/')
-      ? skillsDirV.slice('templates/'.length)
-      : skillsDirV;
-    const absDir = ensureWithinTemplates(relDir);
-    out.push(
-      ...collectFilesRecursively(absDir).map((f) => ({
-        abs: f,
-        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
-        tool,
-        isMcpConfig: false,
-      })),
-    );
-  }
-
-  const promptsDirV = (exp as Record<string, unknown>)['promptsDir'];
-  if (typeof promptsDirV === 'string') {
-    const relDir = promptsDirV.startsWith('templates/')
-      ? promptsDirV.slice('templates/'.length)
-      : promptsDirV;
-    const absDir = ensureWithinTemplates(relDir);
-    out.push(
-      ...collectFilesRecursively(absDir).map((f) => ({
-        abs: f,
-        relUnderTemplates: path.join(relDir, path.relative(absDir, f)),
-        tool,
-        isMcpConfig: false,
-      })),
-    );
+  // Collect files from all directory-based exports
+  const dirExports = ['subagentsDir', 'commandsDir', 'skillsDir', 'promptsDir'];
+  for (const dirKey of dirExports) {
+    collectDirectoryExport(dirKey);
   }
 
   return out;
@@ -398,12 +361,80 @@ export interface ApplyOptions {
   localPackagePaths?: Map<string, string>;
 }
 
-export async function planAndRender(
+interface DiscoveredPackage {
+  name: string;
+  root: string;
+  storePath: string;
+}
+
+interface RenderConfiguration {
+  primaryTool: ToolSpec;
+  toolSafeMode: boolean;
+  filesMap: RenderContext['files'];
+  profileTools: ToolSpec[];
+}
+
+/**
+ * Manages file backups during template rendering.
+ * Creates timestamped backup directories and tracks backed up files.
+ */
+class BackupManager {
+  private backupRoot: string | undefined;
+  private backedUpTargets = new Set<string>();
+  private backedUpPaths: string[] = [];
+
+  constructor(
+    private projectRoot: string,
+    private dryRun: boolean = false,
+  ) {}
+
+  /**
+   * Backup a file before overwriting it.
+   * Idempotent - won't backup the same file twice.
+   */
+  async backupFile(target: string): Promise<void> {
+    if (this.dryRun) return;
+
+    try {
+      // Skip if already backed up
+      if (this.backedUpTargets.has(target)) return;
+
+      const stat = await fs.lstat(target);
+      if (!stat.isFile() && !stat.isSymbolicLink()) return;
+
+      // Create backup root on first backup
+      if (!this.backupRoot) {
+        const stamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
+        this.backupRoot = path.join(this.projectRoot, '.tz-backup', stamp);
+      }
+
+      const relativeTarget = path.relative(this.projectRoot, target);
+      const backupPath = path.join(this.backupRoot, relativeTarget);
+      await fs.mkdir(path.dirname(backupPath), { recursive: true });
+      await fs.copyFile(target, backupPath);
+
+      this.backedUpPaths.push(path.relative(this.projectRoot, backupPath));
+      this.backedUpTargets.add(target);
+    } catch {
+      // Ignore backup errors - don't block rendering
+    }
+  }
+
+  /**
+   * Get list of backed up file paths (relative to project root).
+   */
+  getBackedUpPaths(): string[] {
+    return [...this.backedUpPaths];
+  }
+}
+
+/**
+ * Setup rendering configuration from user config and options.
+ */
+export async function setupRenderConfiguration(
   projectRoot: string,
-  agentModulesRoot: string,
-  opts: ApplyOptions = {},
-): Promise<RenderResult> {
-  // Load user config for destination defaults
+  opts: Pick<ApplyOptions, 'tool' | 'toolSafeMode'>,
+): Promise<RenderConfiguration> {
   const cfg = await loadConfig();
   const profileTools = getProfileTools(cfg);
   const primaryTool = selectPrimaryTool(cfg, opts.tool);
@@ -416,17 +447,29 @@ export async function planAndRender(
     copilot: contextFilesRaw?.copilot ?? '.github/copilot-instructions.md',
   };
 
-  // Discover installed packages and get their store paths from lockfile
-  const lockfile = LockfileManager.read(projectRoot);
-  const storage = new StorageManager(opts.storeDir ? { storeDir: opts.storeDir } : {});
+  return { primaryTool, toolSafeMode, filesMap, profileTools };
+}
 
-  const pkgs: Array<{ name: string; root: string; storePath: string }> = [];
+/**
+ * Discover installed packages from agent_modules directory.
+ * Reads lockfile to get version info and storage manager to resolve paths.
+ */
+export async function discoverInstalledPackages(
+  agentModulesRoot: string,
+  lockfile: ReturnType<typeof LockfileManager.read>,
+  storage: StorageManager,
+  opts: Pick<ApplyOptions, 'localPackagePaths'>,
+): Promise<DiscoveredPackage[]> {
+  const pkgs: DiscoveredPackage[] = [];
   const level1 = await fs.readdir(agentModulesRoot).catch(() => [] as string[]);
+
   for (const d1 of level1) {
     const abs = path.join(agentModulesRoot, d1);
     const st = await fs.stat(abs).catch(() => null);
     if (!st || !st.isDirectory()) continue;
+
     if (d1.startsWith('@')) {
+      // Scoped package: @scope/name
       const nested = await fs.readdir(abs).catch(() => [] as string[]);
       for (const d2 of nested) {
         const abs2 = path.join(abs, d2);
@@ -448,7 +491,7 @@ export async function planAndRender(
         }
       }
     } else {
-      // Check for local package path override
+      // Non-scoped package
       const localPath = opts.localPackagePaths?.get(d1);
       if (localPath) {
         pkgs.push({ name: d1, root: abs, storePath: localPath });
@@ -461,16 +504,27 @@ export async function planAndRender(
       }
     }
   }
+
+  // Sort alphabetically for deterministic order
   pkgs.sort((a, b) => a.name.localeCompare(b.name));
+  return pkgs;
+}
 
-  const projectManifest = (await readManifest(projectRoot)) ?? undefined;
-  const projectName = projectManifest?.package?.name;
-  const projectVersion = projectManifest?.package?.version;
-
-  let filtered = pkgs;
+/**
+ * Filter packages by name or profile options.
+ */
+export function filterPackagesByOptions(
+  packages: DiscoveredPackage[],
+  projectManifest: Awaited<ReturnType<typeof readManifest>> | undefined,
+  opts: Pick<ApplyOptions, 'packageName' | 'profileName'>,
+): DiscoveredPackage[] {
+  // Filter by specific package name
   if (opts.packageName) {
-    filtered = pkgs.filter((p) => p.name === opts.packageName);
-  } else if (opts.profileName) {
+    return packages.filter((p) => p.name === opts.packageName);
+  }
+
+  // Filter by profile
+  if (opts.profileName) {
     if (!projectManifest) {
       throw new TerrazulError(
         ErrorCode.CONFIG_NOT_FOUND,
@@ -486,7 +540,7 @@ export async function planAndRender(
       );
     }
     const allowed = new Set(memberships);
-    const missing = memberships.filter((name) => !pkgs.some((pkg) => pkg.name === name));
+    const missing = memberships.filter((name) => !packages.some((pkg) => pkg.name === name));
     if (missing.length > 0) {
       throw new TerrazulError(
         ErrorCode.INVALID_ARGUMENT,
@@ -495,8 +549,34 @@ export async function planAndRender(
         )}`,
       );
     }
-    filtered = pkgs.filter((pkg) => allowed.has(pkg.name));
+    return packages.filter((pkg) => allowed.has(pkg.name));
   }
+
+  // No filter: return all packages
+  return packages;
+}
+
+export async function planAndRender(
+  projectRoot: string,
+  agentModulesRoot: string,
+  opts: ApplyOptions = {},
+): Promise<RenderResult> {
+  // Setup configuration
+  const { primaryTool, toolSafeMode, filesMap, profileTools } = await setupRenderConfiguration(
+    projectRoot,
+    opts,
+  );
+
+  // Discover installed packages from agent_modules and lockfile
+  const lockfile = LockfileManager.read(projectRoot);
+  const storage = new StorageManager(opts.storeDir ? { storeDir: opts.storeDir } : {});
+  const pkgs = await discoverInstalledPackages(agentModulesRoot, lockfile, storage, opts);
+
+  // Filter packages by name or profile
+  const projectManifest = (await readManifest(projectRoot)) ?? undefined;
+  const projectName = projectManifest?.package?.name;
+  const projectVersion = projectManifest?.package?.version;
+  const filtered = filterPackagesByOptions(pkgs, projectManifest, opts);
 
   // Initialize snippet cache manager (unless explicitly disabled)
   let cacheManager: SnippetCacheManager | undefined;
@@ -512,10 +592,7 @@ export async function planAndRender(
 
   const written: string[] = [];
   const skipped: Array<{ dest: string; reason: string; code: SkipReasonCode }> = [];
-  const backedUp: string[] = [];
   const renderedFiles: RenderedFileMetadata[] = [];
-  let backupRoot: string | undefined;
-  const backedUpTargets = new Set<string>();
   const snippetExecutions: Array<{
     source: string;
     dest: string;
@@ -525,26 +602,8 @@ export async function planAndRender(
   const snippetFailures: SnippetFailureDetail[] = [];
   const packageFiles = new Map<string, string[]>();
 
-  async function backupExistingFile(target: string): Promise<void> {
-    if (opts.dryRun) return;
-    try {
-      if (backedUpTargets.has(target)) return;
-      const stat = await fs.lstat(target);
-      if (!stat.isFile() && !stat.isSymbolicLink()) return;
-      if (!backupRoot) {
-        const stamp = new Date().toISOString().replaceAll(':', '-').replaceAll('.', '-');
-        backupRoot = path.join(projectRoot, '.tz-backup', stamp);
-      }
-      const relativeTarget = path.relative(projectRoot, target);
-      const backupPath = path.join(backupRoot, relativeTarget);
-      await fs.mkdir(path.dirname(backupPath), { recursive: true });
-      await fs.copyFile(target, backupPath);
-      backedUp.push(path.relative(projectRoot, backupPath));
-      backedUpTargets.add(target);
-    } catch {
-      /* ignore backup errors */
-    }
-  }
+  // Initialize backup manager
+  const backupManager = new BackupManager(projectRoot, opts.dryRun ?? false);
 
   for (const p of filtered) {
     // Read manifest and templates from store path (read-only)
@@ -641,7 +700,7 @@ export async function planAndRender(
         // Literal file: copy without any template processing
         if (!opts.dryRun) {
           if (destStat) {
-            await backupExistingFile(dest);
+            await backupManager.backupFile(dest);
           }
           if (safety.unlinkDestSymlink) {
             try {
@@ -707,7 +766,7 @@ export async function planAndRender(
 
         if (!opts.dryRun) {
           if (destStat) {
-            await backupExistingFile(dest);
+            await backupManager.backupFile(dest);
           }
           if (safety.unlinkDestSymlink) {
             try {
@@ -748,5 +807,12 @@ export async function planAndRender(
     );
   }
 
-  return { written, skipped, backedUp, snippets: snippetExecutions, packageFiles, renderedFiles };
+  return {
+    written,
+    skipped,
+    backedUp: backupManager.getBackedUpPaths(),
+    snippets: snippetExecutions,
+    packageFiles,
+    renderedFiles,
+  };
 }
