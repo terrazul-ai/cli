@@ -171,4 +171,184 @@ describe('handlebars-runtime helpers', () => {
       expect(result).toBe('');
     });
   });
+
+  describe('includes helper', () => {
+    it('returns true when value is in space-separated list', () => {
+      const template =
+        "{{#if (includes framework 'Next.js React Vue')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { framework: 'Next.js' });
+      expect(result).toBe('found');
+    });
+
+    it('returns true when value is in middle of list', () => {
+      const template =
+        "{{#if (includes framework 'Next.js React Vue')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { framework: 'React' });
+      expect(result).toBe('found');
+    });
+
+    it('returns true when value is last in list', () => {
+      const template =
+        "{{#if (includes framework 'Next.js React Vue')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { framework: 'Vue' });
+      expect(result).toBe('found');
+    });
+
+    it('returns false when value is not in list', () => {
+      const template = "{{#if (includes framework 'Next.js React')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { framework: 'Angular' });
+      expect(result).toBe('not found');
+    });
+
+    it('handles single value in list', () => {
+      const template = "{{#if (includes db 'PostgreSQL')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { db: 'PostgreSQL' });
+      expect(result).toBe('found');
+    });
+
+    it('returns false for non-string value input', () => {
+      const template = "{{#if (includes value 'foo bar')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { value: 123 });
+      expect(result).toBe('not found');
+    });
+
+    it('returns false for non-string list input', () => {
+      const template = '{{#if (includes value invalidList)}}found{{else}}not found{{/if}}';
+      const result = interpolate(template, { value: 'foo', invalidList: 123 });
+      expect(result).toBe('not found');
+    });
+
+    it('handles empty string value', () => {
+      const template = "{{#if (includes value 'foo bar')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { value: '' });
+      expect(result).toBe('not found');
+    });
+
+    it('handles empty string list', () => {
+      const template = "{{#if (includes value '')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { value: 'foo' });
+      expect(result).toBe('not found');
+    });
+
+    it('handles list with multiple spaces', () => {
+      const template =
+        "{{#if (includes db 'PostgreSQL  MySQL   SQLite')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { db: 'MySQL' });
+      expect(result).toBe('found');
+    });
+
+    it('is case-sensitive', () => {
+      const template = "{{#if (includes framework 'react vue')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { framework: 'React' });
+      expect(result).toBe('not found');
+    });
+
+    it('requires exact match (not substring)', () => {
+      const template = "{{#if (includes db 'PostgreSQL MySQL')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { db: 'Postgre' });
+      expect(result).toBe('not found');
+    });
+
+    it('works with complex values containing spaces in quotes', () => {
+      const template =
+        "{{#if (includes framework 'Next.js Nuxt.js Create-React-App')}}found{{else}}not found{{/if}}";
+      const result = interpolate(template, { framework: 'Create-React-App' });
+      expect(result).toBe('found');
+    });
+  });
+
+  describe('not helper', () => {
+    it('negates truthy values', () => {
+      const template = '{{#if (not flag)}}not set{{else}}set{{/if}}';
+      const result = interpolate(template, { flag: true });
+      expect(result).toBe('set');
+    });
+
+    it('negates falsy values', () => {
+      const template = '{{#if (not flag)}}not set{{else}}set{{/if}}';
+      const result = interpolate(template, { flag: false });
+      expect(result).toBe('not set');
+    });
+
+    it('works with eq helper', () => {
+      const template = "{{#if (not (eq value 'None'))}}has value{{else}}no value{{/if}}";
+      const result = interpolate(template, { value: 'Something' });
+      expect(result).toBe('has value');
+    });
+
+    it('works with eq helper negating match', () => {
+      const template = "{{#if (not (eq value 'None'))}}has value{{else}}no value{{/if}}";
+      const result = interpolate(template, { value: 'None' });
+      expect(result).toBe('no value');
+    });
+
+    it('handles undefined values', () => {
+      const template = '{{#if (not value)}}not set{{else}}set{{/if}}';
+      const result = interpolate(template, {});
+      expect(result).toBe('not set');
+    });
+
+    it('handles empty strings', () => {
+      const template = '{{#if (not value)}}empty{{else}}not empty{{/if}}';
+      const result = interpolate(template, { value: '' });
+      expect(result).toBe('empty');
+    });
+
+    it('handles zero', () => {
+      const template = '{{#if (not value)}}zero{{else}}not zero{{/if}}';
+      const result = interpolate(template, { value: 0 });
+      expect(result).toBe('zero');
+    });
+  });
+
+  describe('or helper', () => {
+    it('returns true when first argument is truthy', () => {
+      const template = '{{#if (or a b)}}found{{else}}not found{{/if}}';
+      const result = interpolate(template, { a: true, b: false });
+      expect(result).toBe('found');
+    });
+
+    it('returns true when second argument is truthy', () => {
+      const template = '{{#if (or a b)}}found{{else}}not found{{/if}}';
+      const result = interpolate(template, { a: false, b: true });
+      expect(result).toBe('found');
+    });
+
+    it('returns true when both arguments are truthy', () => {
+      const template = '{{#if (or a b)}}found{{else}}not found{{/if}}';
+      const result = interpolate(template, { a: true, b: true });
+      expect(result).toBe('found');
+    });
+
+    it('returns false when both arguments are falsy', () => {
+      const template = '{{#if (or a b)}}found{{else}}not found{{/if}}';
+      const result = interpolate(template, { a: false, b: false });
+      expect(result).toBe('not found');
+    });
+
+    it('works with eq helper', () => {
+      const template = "{{#if (or (eq type 'A') (eq type 'B'))}}matches{{else}}no match{{/if}}";
+      const result = interpolate(template, { type: 'A' });
+      expect(result).toBe('matches');
+    });
+
+    it('works with multiple conditions', () => {
+      const template = "{{#if (or (eq type 'A') (eq type 'B'))}}matches{{else}}no match{{/if}}";
+      const result = interpolate(template, { type: 'B' });
+      expect(result).toBe('matches');
+    });
+
+    it('returns false when no conditions match', () => {
+      const template = "{{#if (or (eq type 'A') (eq type 'B'))}}matches{{else}}no match{{/if}}";
+      const result = interpolate(template, { type: 'C' });
+      expect(result).toBe('no match');
+    });
+
+    it('works with includes helper', () => {
+      const template =
+        "{{#if (or (eq typescript 'yes') (includes quality 'ESLint Prettier'))}}configured{{else}}not configured{{/if}}";
+      const result = interpolate(template, { typescript: 'no', quality: 'ESLint' });
+      expect(result).toBe('configured');
+    });
+  });
 });

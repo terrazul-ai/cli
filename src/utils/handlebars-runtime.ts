@@ -61,6 +61,22 @@ export function registerCoreHandlebarsHelpers(instance: HandlebarsRuntime): void
       return entry;
     },
   );
+
+  instance.registerHelper('includes', function includesHelper(value: unknown, list: unknown) {
+    if (typeof value !== 'string' || typeof list !== 'string') return false;
+    const options = list.split(/\s+/).filter(Boolean);
+    return options.includes(value);
+  });
+
+  instance.registerHelper('not', function notHelper(value: unknown) {
+    return !value;
+  });
+
+  instance.registerHelper('or', function orHelper(...args: unknown[]) {
+    // Handlebars passes an options object as the last argument
+    const values = args.slice(0, -1);
+    return values.some((v) => !!v);
+  });
 }
 
 const sharedRuntime = Handlebars.create();
