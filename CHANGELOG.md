@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/terrazul-ai/tz/compare/v0.16.0...v0.17.0) (2025-11-22)
+
+
+### Features
+
+* Moves schemas to be under /templates ([#62](https://github.com/terrazul-ai/tz/issues/62)) ([05b61d0](https://github.com/terrazul-ai/tz/commit/05b61d04e7d9a9354fd2133c93a737c506490d1e))
+
 ## [0.16.0](https://github.com/terrazul-ai/tz/compare/v0.15.0...v0.16.0) (2025-11-21)
 
 
