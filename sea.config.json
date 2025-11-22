@@ -6,6 +6,8 @@
   "useCodeCache": true,
   "assets": {
     "tz.mjs": "dist/tz.mjs",
-    "yoga.wasm": "dist/yoga.wasm"
+    "yoga.wasm": "dist/yoga.wasm",
+    "vendor/zod/index.mjs": "dist/vendor/zod/index.mjs",
+    "vendor/zod/package.json": "dist/vendor/zod/package.json"
   }
 }

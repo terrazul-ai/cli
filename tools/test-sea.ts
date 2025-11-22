@@ -70,6 +70,8 @@ async function main() {
       assets: {
         'tz.mjs': 'dist/tz.mjs',
         'yoga.wasm': 'dist/yoga.wasm',
+        'vendor/zod/index.mjs': 'dist/vendor/zod/index.mjs',
+        'vendor/zod/package.json': 'dist/vendor/zod/package.json',
       },
     } as const;
     await fs.writeFile(seaConfigPath, JSON.stringify(seaConfig, null, 2));
