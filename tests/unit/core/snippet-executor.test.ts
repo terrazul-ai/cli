@@ -431,4 +431,151 @@ describe('snippet executor', () => {
       expect(context.snippets.snippet_1.value).toBe('Second');
     });
   });
+
+  describe('two-pass execution', () => {
+    it('executes all askUser snippets before any askAgent snippets', async () => {
+      const executionOrder: string[] = [];
+
+      promptMock.mockImplementation(async () => {
+        executionOrder.push('askUser');
+        return { value: 'User response' };
+      });
+
+      invokeToolMock.mockImplementation(async () => {
+        executionOrder.push('askAgent');
+        return {
+          command: 'claude',
+          args: [],
+          stdout: 'Agent response',
+          stderr: '',
+        };
+      });
+
+      const snippets = parseSnippets(`
+        {{ askAgent('First agent prompt') }}
+        {{ askUser('First user question?') }}
+        {{ askAgent('Second agent prompt') }}
+        {{ askUser('Second user question?') }}
+      `);
+
+      await executeSnippets(snippets, makeOptions());
+
+      // Verify all askUser calls happened before any askAgent calls
+      expect(executionOrder).toEqual(['askUser', 'askUser', 'askAgent', 'askAgent']);
+    });
+
+    it('allows askAgent snippets to reference askUser variables', async () => {
+      promptMock.mockResolvedValueOnce({ value: 'ProjectName' });
+      invokeToolMock.mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Analysis result',
+        stderr: '',
+      });
+
+      const snippets = parseSnippets(`
+        {{ var projectName = askUser('What is your project name?') }}
+        {{ askAgent('Analyze the project called {{ vars.projectName }}') }}
+      `);
+
+      await executeSnippets(snippets, makeOptions());
+
+      expect(invokeToolMock).toHaveBeenCalledTimes(1);
+      const call = invokeToolMock.mock.calls[0]?.[0];
+      expect(call?.prompt).toContain('Analyze the project called ProjectName');
+    });
+
+    it('handles multiple askUser variables referenced by multiple askAgent snippets', async () => {
+      promptMock
+        .mockResolvedValueOnce({ value: 'Alice' })
+        .mockResolvedValueOnce({ value: 'Beta' })
+        .mockResolvedValueOnce({ value: 'Production' });
+
+      invokeToolMock
+        .mockResolvedValueOnce({
+          command: 'claude',
+          args: [],
+          stdout: 'First result',
+          stderr: '',
+        })
+        .mockResolvedValueOnce({
+          command: 'claude',
+          args: [],
+          stdout: 'Second result',
+          stderr: '',
+        });
+
+      const snippets = parseSnippets(`
+        {{ var userName = askUser('Your name?') }}
+        {{ var version = askUser('Version?') }}
+        {{ var environment = askUser('Environment?') }}
+        {{ askAgent('Deploy {{ vars.version }} to {{ vars.environment }} by {{ vars.userName }}') }}
+        {{ askAgent('Notify {{ vars.userName }} about deployment') }}
+      `);
+
+      await executeSnippets(snippets, makeOptions());
+
+      expect(promptMock).toHaveBeenCalledTimes(3);
+      expect(invokeToolMock).toHaveBeenCalledTimes(2);
+
+      const firstAgentCall = invokeToolMock.mock.calls[0]?.[0];
+      expect(firstAgentCall?.prompt).toContain('Deploy Beta to Production by Alice');
+
+      const secondAgentCall = invokeToolMock.mock.calls[1]?.[0];
+      expect(secondAgentCall?.prompt).toContain('Notify Alice about deployment');
+    });
+
+    it('emits events in two-pass order (askUser:*, then askAgent:*)', async () => {
+      promptMock.mockResolvedValueOnce({ value: 'Response' });
+      invokeToolMock.mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Result',
+        stderr: '',
+      });
+
+      const snippets = parseSnippets(`
+        {{ askAgent('Agent prompt') }}
+        {{ askUser('User question?') }}
+      `);
+
+      const events: SnippetEvent[] = [];
+      await executeSnippets(
+        snippets,
+        makeOptions({
+          report: (event) => {
+            events.push(event);
+          },
+        }),
+      );
+
+      // Events should be: askUser:start, askUser:end, askAgent:start, askAgent:end
+      expect(events).toHaveLength(4);
+      expect(events[0]?.type).toBe('askUser:start');
+      expect(events[1]?.type).toBe('askUser:end');
+      expect(events[2]?.type).toBe('askAgent:start');
+      expect(events[3]?.type).toBe('askAgent:end');
+    });
+
+    it('maintains snippet IDs regardless of execution order', async () => {
+      promptMock.mockResolvedValueOnce({ value: 'User input' });
+      invokeToolMock.mockResolvedValueOnce({
+        command: 'claude',
+        args: [],
+        stdout: 'Agent output',
+        stderr: '',
+      });
+
+      const snippets = parseSnippets(`
+        {{ askAgent('Agent first') }}
+        {{ askUser('User second?') }}
+      `);
+
+      const context = await executeSnippets(snippets, makeOptions());
+
+      // Snippet IDs are assigned in document order, not execution order
+      expect(context.snippets.snippet_0.value).toBe('Agent output');
+      expect(context.snippets.snippet_1.value).toBe('User input');
+    });
+  });
 });

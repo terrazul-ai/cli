@@ -44,18 +44,26 @@ export async function executeSnippets(
 
   // Dry runs (e.g. tz apply --dry-run) still execute snippets so previews remain accurate, so
   // we purposefully do not short-circuit on options.dryRun here.
-  for (const snippet of snippets) {
-    if (snippet.type === 'askUser') {
-      const result = await runAskUser(snippet, options).catch((error) => ({
-        value: null,
-        error: toSnippetError(error),
-      }));
-      context.snippets[snippet.id] = result;
-      if (!result.error && snippet.varName) {
-        context.vars[snippet.varName] = result.value;
-      }
-      continue;
+
+  // PASS 1: Execute all askUser snippets first to gather user input upfront
+  const askUserSnippets = snippets.filter((s) => s.type === 'askUser');
+  for (const snippet of askUserSnippets) {
+    const result = await runAskUser(snippet, options).catch((error) => ({
+      value: null,
+      error: toSnippetError(error),
+    }));
+    context.snippets[snippet.id] = result;
+    if (!result.error && snippet.varName) {
+      context.vars[snippet.varName] = result.value;
     }
+  }
+
+  // PASS 2: Execute all askAgent snippets (can reference askUser variables)
+  const askAgentSnippets = snippets.filter((s) => s.type === 'askAgent');
+  if (askAgentSnippets.length > 0) {
+    console.log('\nAnalyzing your codebase, this may take a couple minutes. Hang tight!\n');
+  }
+  for (const snippet of askAgentSnippets) {
     const result = await runAskAgent(snippet, options, cache, promptCache, context).catch(
       (error) => ({
         value: null,
