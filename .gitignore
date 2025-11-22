@@ -1,7 +1,11 @@
 # Build output
 dist/
+logs/
 !bin/
 !bin/**
+
+# Claude local
+settings.local.json
 
 # Dependencies
 node_modules/
