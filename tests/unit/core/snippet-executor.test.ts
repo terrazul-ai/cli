@@ -10,7 +10,12 @@ import { parseSnippets } from '../../../src/utils/snippet-parser';
 import * as toolRunner from '../../../src/utils/tool-runner';
 
 import type { ToolSpec } from '../../../src/types/context';
-import type { ExecuteSnippetsOptions, SnippetEvent } from '../../../src/types/snippet';
+import type {
+  CachedSnippet,
+  ExecuteSnippetsOptions,
+  SnippetCacheManager,
+  SnippetEvent,
+} from '../../../src/types/snippet';
 
 type ToolRunnerModule = typeof toolRunner;
 
@@ -118,6 +123,64 @@ describe('snippet executor', () => {
     expect(invokeToolMock).toHaveBeenCalledTimes(1);
     expect(context.snippets.snippet_0.value).toBe('cached');
     expect(context.snippets.snippet_1.value).toBe('cached');
+  });
+
+  it('logs analysis message once when invoking the first uncached askAgent snippet', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    invokeToolMock.mockResolvedValue({
+      command: 'claude',
+      args: [],
+      stdout: 'computed',
+      stderr: '',
+    });
+
+    try {
+      const snippets = parseSnippets(`
+        {{ askAgent('Summarize this repo') }}
+        {{ askAgent('Summarize this repo') }}
+      `);
+      await executeSnippets(snippets, makeOptions());
+
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      expect(logSpy.mock.calls[0]?.[0]).toContain('Analyzing your codebase');
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it('does not log analysis message when askAgent result comes from persistent cache', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const cachedSnippet: CachedSnippet = {
+      id: 'snippet-cache-id',
+      type: 'askAgent',
+      promptExcerpt: 'Summarize',
+      value: JSON.stringify('cached-value'),
+      timestamp: new Date().toISOString(),
+      tool: 'claude',
+    };
+    const cacheManager: SnippetCacheManager = {
+      getSnippet: vi.fn(() => cachedSnippet),
+      setSnippet: vi.fn(async () => {}),
+    };
+
+    try {
+      const snippets = parseSnippets("{{ askAgent('Summarize this repo') }}");
+      const context = await executeSnippets(
+        snippets,
+        makeOptions({
+          noCache: false,
+          cacheManager,
+          packageName: 'pkg',
+          packageVersion: '1.0.0',
+        }),
+      );
+
+      expect(invokeToolMock).not.toHaveBeenCalled();
+      expect(logSpy).not.toHaveBeenCalled();
+      expect(context.snippets.snippet_0.value).toBe('cached-value');
+    } finally {
+      logSpy.mockRestore();
+    }
   });
 
   it('parses JSON output when json flag is true', async () => {
