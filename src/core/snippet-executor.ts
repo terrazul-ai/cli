@@ -3,13 +3,12 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import inquirer from 'inquirer';
-import { z } from 'zod';
 
 import { DIRECTORY_DEFAULT_FILENAMES, safeResolveWithin } from './destinations.js';
 import { ErrorCode, TerrazulError } from './errors.js';
 import { interpolate } from '../utils/handlebars-runtime.js';
-import { generateSnippetId } from '../utils/snippet-parser.js';
 import { ensureZodRuntime } from '../utils/schema-runtime.js';
+import { generateSnippetId } from '../utils/snippet-parser.js';
 import { defaultToolSpec, invokeTool, parseToolOutput, stripAnsi } from '../utils/tool-runner.js';
 
 import type { ToolSpec, ToolType } from '../types/context.js';
@@ -24,6 +23,7 @@ import type {
 } from '../types/snippet.js';
 import type { TemplateContext } from '../utils/handlebars-runtime.js';
 import type { InputQuestion } from 'inquirer';
+import type { z, ZodError } from 'zod';
 
 interface CacheEntry {
   value: SnippetValue;
@@ -417,10 +417,19 @@ async function validateWithSchema(
   try {
     return schema.parse(value);
   } catch (error) {
-    if (error instanceof z.ZodError) {
+    // Check if this is a ZodError by shape (constructor name check is more reliable
+    // than instanceof when dealing with dynamically imported modules)
+    if (
+      error &&
+      typeof error === 'object' &&
+      'errors' in error &&
+      Array.isArray(error.errors) &&
+      (error.constructor.name === 'ZodError' || error.constructor.name === '_ZodError')
+    ) {
+      const zodError = error as ZodError;
       throw new TerrazulError(
         ErrorCode.TOOL_OUTPUT_PARSE_ERROR,
-        `Schema validation failed: ${error.errors.map((e) => e.message).join(', ')}`,
+        `Schema validation failed: ${zodError.errors.map((e) => e.message).join(', ')}`,
       );
     }
     throw error;

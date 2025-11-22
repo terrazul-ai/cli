@@ -75,7 +75,6 @@ export async function ensureZodRuntime(packageDir: string): Promise<void> {
   const indexContent = `// Auto-generated shim for zod runtime
 // This file re-exports zod from the Terrazul CLI's bundled runtime
 export * from '${zodProviderPath}';
-export { z } from '${zodProviderPath}';
 `;
 
   await fs.writeFile(zodIndexFile, indexContent);
