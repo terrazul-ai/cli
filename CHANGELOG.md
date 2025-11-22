@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.18.0](https://github.com/terrazul-ai/tz/compare/v0.17.0...v0.18.0) (2025-11-22)
+
+
+### Features
+
+* two pass snippet execution ([#61](https://github.com/terrazul-ai/tz/issues/61)) ([d0c22f7](https://github.com/terrazul-ai/tz/commit/d0c22f7ff62eb030563f1443ae590745168f9225))
+
+
+### Bug Fixes
+
+* Fixes zod dependency at runtime ([#66](https://github.com/terrazul-ai/tz/issues/66)) ([b928ab2](https://github.com/terrazul-ai/tz/commit/b928ab2cf671231f325fde185057cd7d196db48e))
+
 ## [0.17.0](https://github.com/terrazul-ai/tz/compare/v0.16.0...v0.17.0) (2025-11-22)
 
 
