@@ -359,7 +359,11 @@ async function validateWithSchema(
     absolute = schemaRef.file;
   } else {
     try {
-      absolute = safeResolveWithin(options.packageDir, schemaRef.file);
+      // Schema files are located in templates/ subdirectory
+      const schemaRelPath = schemaRef.file.startsWith('templates/')
+        ? schemaRef.file
+        : path.join('templates', schemaRef.file);
+      absolute = safeResolveWithin(options.packageDir, schemaRelPath);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new TerrazulError(

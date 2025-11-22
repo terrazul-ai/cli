@@ -149,7 +149,7 @@ describe('snippet executor', () => {
   });
 
   it('validates JSON output via schema reference', async () => {
-    const schemaDir = path.join(packageDir, 'schemas');
+    const schemaDir = path.join(packageDir, 'templates', 'schemas');
     await fs.mkdir(schemaDir, { recursive: true });
     const schemaFile = path.join(schemaDir, 'summary-schema.mjs');
     await fs.writeFile(
@@ -170,14 +170,16 @@ describe('snippet executor', () => {
     });
 
     const snippets = parseSnippets(
-      "{{ askAgent('Prompt', { json: true, schema: { file: './schemas/summary-schema.mjs', exportName: 'SummarySchema' } }) }}",
+      "{{ askAgent('Prompt', { json: true, schema: { file: 'schemas/summary-schema.mjs', exportName: 'SummarySchema' } }) }}",
     );
     const context = await executeSnippets(snippets, makeOptions());
     expect(context.snippets.snippet_0.value).toEqual({ result: 'done' });
   });
 
   it('captures schema validation errors', async () => {
-    const schemaFile = path.join(packageDir, 'summary-schema.mjs');
+    const schemaDir = path.join(packageDir, 'templates', 'schemas');
+    await fs.mkdir(schemaDir, { recursive: true });
+    const schemaFile = path.join(schemaDir, 'summary-schema.mjs');
     await fs.writeFile(
       schemaFile,
       `
@@ -193,7 +195,7 @@ describe('snippet executor', () => {
       stderr: '',
     });
     const snippets = parseSnippets(
-      "{{ askAgent('Prompt', { json: true, schema: './summary-schema.mjs' }) }}",
+      "{{ askAgent('Prompt', { json: true, schema: 'schemas/summary-schema.mjs' }) }}",
     );
     const context = await executeSnippets(snippets, makeOptions());
     expect(context.snippets.snippet_0.error?.message).toContain('Schema validation failed');
@@ -215,7 +217,9 @@ describe('snippet executor', () => {
   });
 
   it('records errors when schema is provided without json flag', async () => {
-    const schemaFile = path.join(packageDir, 'schema.mjs');
+    const schemaDir = path.join(packageDir, 'templates', 'schemas');
+    await fs.mkdir(schemaDir, { recursive: true });
+    const schemaFile = path.join(schemaDir, 'schema.mjs');
     await fs.writeFile(
       schemaFile,
       `
@@ -230,7 +234,7 @@ describe('snippet executor', () => {
       stdout: 'plain text',
       stderr: '',
     });
-    const snippets = parseSnippets("{{ askAgent('Prompt', { schema: './schema.mjs' }) }}");
+    const snippets = parseSnippets("{{ askAgent('Prompt', { schema: 'schemas/schema.mjs' }) }}");
     const context = await executeSnippets(snippets, makeOptions());
     expect(context.snippets.snippet_0.error?.message).toMatch(/requires json: true/);
   });
