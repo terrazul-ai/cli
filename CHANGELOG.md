@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.0](https://github.com/terrazul-ai/tz/compare/v0.18.0...v0.19.0) (2025-11-22)
+
+
+### Features
+
+* Only print the "hang tight" message before askAgent processing ([#67](https://github.com/terrazul-ai/tz/issues/67)) ([db1f434](https://github.com/terrazul-ai/tz/commit/db1f43479f426a52deae2c3849a5fed2894f874d))
+
 ## [0.18.0](https://github.com/terrazul-ai/tz/compare/v0.17.0...v0.18.0) (2025-11-22)
 
 
