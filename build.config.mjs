@@ -37,6 +37,57 @@ async function ensureYogaAsset() {
   }
 }
 
+async function bundleZodForSea() {
+  let zodEntry;
+  let zodPackagePath;
+  try {
+    const zodEntryResolved = await import.meta.resolve('zod', import.meta.url);
+    const zodPackageResolved = await import.meta.resolve('zod/package.json', import.meta.url);
+    zodEntry = zodEntryResolved.startsWith('file:')
+      ? fileURLToPath(zodEntryResolved)
+      : zodEntryResolved;
+    zodPackagePath = zodPackageResolved.startsWith('file:')
+      ? fileURLToPath(zodPackageResolved)
+      : zodPackageResolved;
+  } catch (error) {
+    throw new Error(`Failed to resolve zod dependency: ${error?.message ?? error}`);
+  }
+
+  const vendorDir = path.join(__dirname, 'dist', 'vendor', 'zod');
+  await fsPromises.mkdir(vendorDir, { recursive: true });
+
+  await esbuild.build({
+    entryPoints: [zodEntry],
+    outfile: path.join(vendorDir, 'index.mjs'),
+    bundle: true,
+    platform: 'node',
+    target: ['node18'],
+    format: 'esm',
+    logLevel: 'silent',
+    sourcemap: false,
+    legalComments: 'none',
+  });
+
+  const packageJson = JSON.parse(await fsPromises.readFile(zodPackagePath, 'utf8'));
+  const vendorPackageJson = {
+    name: 'zod',
+    version: packageJson.version ?? '0.0.0',
+    type: 'module',
+    main: './index.mjs',
+    module: './index.mjs',
+    exports: {
+      '.': './index.mjs',
+      './package.json': './package.json',
+    },
+  };
+
+  await fsPromises.writeFile(
+    path.join(vendorDir, 'package.json'),
+    `${JSON.stringify(vendorPackageJson, null, 2)}\n`,
+    'utf8',
+  );
+}
+
 async function writeSeaWrapper() {
   const seaWrapperCode = `#!/usr/bin/env node
 // CJS wrapper that executes the bundled ESM entry via Module.runMain
@@ -44,8 +95,8 @@ async function writeSeaWrapper() {
   try {
     const { getAsset } = require('node:sea');
     const { writeFileSync, mkdirSync } = require('node:fs');
-    const { tmpdir } = require('node:os');
-    const { join } = require('node:path');
+    const { tmpdir, homedir } = require('node:os');
+    const { join, delimiter } = require('node:path');
     const Module = require('node:module');
 
     // Create temp directory for extracted assets
@@ -61,6 +112,34 @@ async function writeSeaWrapper() {
     const yogaWasm = getAsset('yoga.wasm');
     const yogaFile = join(tempDir, 'yoga.wasm');
     writeFileSync(yogaFile, Buffer.from(yogaWasm));
+
+    // Expose zod to schema modules installed under ~/.terrazul/store
+    try {
+      const zodIndex = getAsset('vendor/zod/index.mjs', 'utf8');
+      const zodPackage = getAsset('vendor/zod/package.json', 'utf8');
+      const nodeModulesRoot = join(homedir(), '.terrazul', 'node_modules');
+      const zodDir = join(nodeModulesRoot, 'zod');
+      mkdirSync(zodDir, { recursive: true });
+      writeFileSync(join(zodDir, 'index.mjs'), zodIndex);
+      writeFileSync(join(zodDir, 'package.json'), zodPackage);
+
+      // Ensure resolution includes ~/.terrazul/node_modules for ESM imports
+      const existingNodePath = process.env.NODE_PATH;
+      process.env.NODE_PATH = existingNodePath
+        ? nodeModulesRoot + delimiter + existingNodePath
+        : nodeModulesRoot;
+      if (!Module.globalPaths.includes(nodeModulesRoot)) {
+        Module.globalPaths.unshift(nodeModulesRoot);
+      }
+      if (typeof Module._initPaths === 'function') {
+        Module._initPaths();
+      }
+    } catch (error) {
+      console.warn(
+        'Warning: Failed to prepare embedded zod dependency:',
+        error?.message ?? error,
+      );
+    }
 
     // Ensure the extracted bundle is treated as the main module
     const argv = process.argv;
@@ -103,6 +182,7 @@ async function buildSeaFetcherBundle() {
 async function runPostBuildSteps() {
   await writeSeaWrapper();
   await buildSeaFetcherBundle();
+  await bundleZodForSea();
 
   try {
     fs.chmodSync('dist/tz.mjs', 0o755);
