@@ -100,9 +100,24 @@ async function buildSeaFetcherBundle() {
   });
 }
 
+async function buildZodProviderBundle() {
+  await esbuild.build({
+    entryPoints: ['src/runtime/zod-provider.ts'],
+    outfile: 'dist/runtime/zod-provider.mjs',
+    bundle: true,
+    platform: 'node',
+    target: ['node18'],
+    format: 'esm',
+    logLevel: 'info',
+    sourcemap: false,
+    legalComments: 'none',
+  });
+}
+
 async function runPostBuildSteps() {
   await writeSeaWrapper();
   await buildSeaFetcherBundle();
+  await buildZodProviderBundle();
 
   try {
     fs.chmodSync('dist/tz.mjs', 0o755);

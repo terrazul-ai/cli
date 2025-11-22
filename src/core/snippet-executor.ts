@@ -9,6 +9,7 @@ import { DIRECTORY_DEFAULT_FILENAMES, safeResolveWithin } from './destinations.j
 import { ErrorCode, TerrazulError } from './errors.js';
 import { interpolate } from '../utils/handlebars-runtime.js';
 import { generateSnippetId } from '../utils/snippet-parser.js';
+import { ensureZodRuntime } from '../utils/schema-runtime.js';
 import { defaultToolSpec, invokeTool, parseToolOutput, stripAnsi } from '../utils/tool-runner.js';
 
 import type { ToolSpec, ToolType } from '../types/context.js';
@@ -380,6 +381,18 @@ async function validateWithSchema(
       );
     }
   }
+
+  // Ensure zod runtime is available before importing the schema module
+  try {
+    await ensureZodRuntime(options.packageDir);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new TerrazulError(
+      ErrorCode.UNKNOWN_ERROR,
+      `Failed to set up zod runtime for schema: ${message}`,
+    );
+  }
+
   let mod: unknown;
   try {
     mod = await import(pathToFileURL(absolute).href);
