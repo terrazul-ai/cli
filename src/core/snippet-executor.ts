@@ -41,6 +41,13 @@ export async function executeSnippets(
   // Create new in-memory caches for within-command deduplication
   const cache = new Map<CacheKey, CacheEntry>();
   const promptCache = new Map<string, string>();
+  let analysisMessageLogged = false;
+
+  const logAnalysisMessage = () => {
+    if (analysisMessageLogged) return;
+    analysisMessageLogged = true;
+    console.log('\nAnalyzing your codebase, this may take a couple minutes. Hang tight!\n');
+  };
 
   // Dry runs (e.g. tz apply --dry-run) still execute snippets so previews remain accurate, so
   // we purposefully do not short-circuit on options.dryRun here.
@@ -60,16 +67,18 @@ export async function executeSnippets(
 
   // PASS 2: Execute all askAgent snippets (can reference askUser variables)
   const askAgentSnippets = snippets.filter((s) => s.type === 'askAgent');
-  if (askAgentSnippets.length > 0) {
-    console.log('\nAnalyzing your codebase, this may take a couple minutes. Hang tight!\n');
-  }
   for (const snippet of askAgentSnippets) {
-    const result = await runAskAgent(snippet, options, cache, promptCache, context).catch(
-      (error) => ({
-        value: null,
-        error: toSnippetError(error),
-      }),
-    );
+    const result = await runAskAgent(
+      snippet,
+      options,
+      cache,
+      promptCache,
+      context,
+      logAnalysisMessage,
+    ).catch((error) => ({
+      value: null,
+      error: toSnippetError(error),
+    }));
     context.snippets[snippet.id] = result;
     if (!result.error && snippet.varName) {
       context.vars[snippet.varName] = result.value;
@@ -143,6 +152,7 @@ async function runAskAgent(
   cache: Map<CacheKey, CacheEntry>,
   promptCache: Map<string, string>,
   context: SnippetExecutionContext,
+  onBeforeInvoke?: () => void,
 ): Promise<SnippetValue> {
   // Check persistent cache first (unless --no-cache)
   if (!options.noCache && options.cacheManager && options.packageName && options.packageVersion) {
@@ -195,6 +205,8 @@ async function runAskAgent(
     });
     return cached.value;
   }
+
+  onBeforeInvoke?.();
 
   let execution;
   try {
